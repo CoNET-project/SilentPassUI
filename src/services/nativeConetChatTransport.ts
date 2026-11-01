@@ -9,9 +9,9 @@
  * `webkit.messageHandlers.CashTreesIOS`), Chat UI must **never** spawn the
  * TypeScript gossip Worker — even if `chatModuleCommand` is briefly missing.
  * Native `BeamioConetChatModule` owns OpenPGP, SSE listen, SI POST, and history
- * I/O. EOA signing stays on the PWA main thread (1B): native emits
- * `chatModuleSignRequest`; this client signs via ethers and replies with
- * `chatModuleSignResponse`.
+ * I/O. The module signs with the wallet key it gets at `init` (kept in
+ * Keychain / Keystore). Older modules still emit `chatModuleSignRequest`; this
+ * client signs via ethers and replies with `chatModuleSignResponse`.
  *
  * Browser path is unchanged (Worker). Prefer this client for any iOS shell
  * (checked before Android).
@@ -121,12 +121,14 @@ const IOS_NATIVE_CHAT_BRIDGE: NativeChatBridge = {
 	},
 }
 
-function stripPrivateKeyFromIdentity(identity: BeamioChatConfig['identity']): BeamioChatConfig['identity'] {
-	return {
-		...identity,
-		// 1B: never send EOA hex to native / Keychain.
-		privateKeyHex: '',
-	}
+/**
+ * Native shells get the wallet key with the PGP key: the module keeps it in
+ * Keychain / Keystore and signs `mailbox_listen`, ACKs and sends itself, so a
+ * call push can open the mailbox listen before this page runs. Older modules
+ * ignore it and keep asking the page (`chatModuleSignRequest`).
+ */
+function identityForNative(identity: BeamioChatConfig['identity']): BeamioChatConfig['identity'] {
+	return { ...identity }
 }
 
 /** How long load/append wait for the native history key (two PWA signatures) before trying anyway. */
@@ -453,7 +455,7 @@ class NativeConetChatClientImpl implements BeamioChatClient {
 		this.nodes = await this.config.getNodes().catch(() => [])
 		this.routes = []
 		const payload = {
-			identity: stripPrivateKeyFromIdentity(this.config.identity),
+			identity: identityForNative(this.config.identity),
 			conetRpcUrl: this.config.conetRpcUrl,
 			addressPgpContractAddress: this.config.addressPgpContractAddress,
 			ipfsBaseUrl: this.config.ipfsBaseUrl,
@@ -469,6 +471,21 @@ class NativeConetChatClientImpl implements BeamioChatClient {
 			// native module holds the mailbox ACK until then. Older SDKs ignore it.
 			deferAck: true,
 		}
+		// Hand the keys to the native daemon first (`provisionIdentity`, stored in
+		// Keychain / Keystore). `init` still carries them for shells that predate
+		// the command (the page can update before the shell does).
+		const id = this.config.identity
+		this.postCommand({
+			type: 'provisionIdentity',
+			reqId: -1,
+			payload: {
+				eoa: id.eoaAddress,
+				walletPrivateKey: id.privateKeyHex,
+				pgpPrivateKeyArmored: id.pgpPrivateKeyArmored,
+				pgpPublicKeyArmored: id.pgpPublicKeyArmored,
+				ownRoute: id.ownRouteArmoredPublicKey,
+			},
+		})
 		const ready = await this.request<{ historyApi?: unknown } | undefined>({ type: 'init', reqId: 0, payload }, 180_000)
 		this.historyBridge._setHistoryApi(Number(ready && typeof ready === 'object' ? ready.historyApi : 0) || 0)
 	}

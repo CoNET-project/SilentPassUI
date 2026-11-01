@@ -11,7 +11,8 @@ import contracts from '@/utils/contracts'
 import {ethers} from 'ethers'
 import {aesGcmEncrypt, aesGcmDecrypt, toBase64, fromBase64, storeSystemData } from '@/services/beamio'
 import { publishNativePwaLog } from '@/utils/cashTreesNativePwaLog'
-import { getWorkerGossipListenParams, getWorkerGossipRouteArmor, isWorkerGossipActive, isWorkerGossipBusy, retargetWorkerGossipRoute, startWorkerGossipListen, stopWorkerGossip } from '@/services/chatWorkerBridge'
+import { getWorkerGossipListenParams, getWorkerGossipRouteArmor, isWorkerGossipActive, isWorkerGossipBusy, isNativeChatListenOwner, pauseNativeChatListen, resumeNativeChatListen, retargetWorkerGossipRoute, startWorkerGossipListen, stopWorkerGossip } from '@/services/chatWorkerBridge'
+import { isCashTreesAndroidChatModuleAvailable, isCashTreesAndroidChatModuleRunning } from '@/utils/cashTreesAndroidConetChat'
 import { wrapArmorToMailboxWork } from '@conet.project/chat-sdk'
 
 function chatBootLog(message: string, level: 'info' | 'warn' | 'error' = 'info'): void {
@@ -155,14 +156,35 @@ export const getKeysFromCoNETPGPSC = async (keyIDOrAddress: string, privateKeyAr
 
 
 
+/**
+ * Last non-empty Guardian list. A chain RPC hiccup (for example while every SI
+ * node restarts) used to return [] and stop chat until the app was restarted.
+ */
+let lastGoodChatNodes: nodeInfo[] = []
+
 /** 获取 CoNET 节点列表（供 sendMessage 等使用），可单独调用无需 initChat */
 export const getCoNETNodesForChat = async (): Promise<nodeInfo[]> => {
+	const fresh = await loadCoNETNodesFromChain()
+	if (fresh.length) {
+		lastGoodChatNodes = fresh
+		return fresh
+	}
+	if (lastGoodChatNodes.length) {
+		chatBootLog(`CoNET node list read failed; using the last list (${lastGoodChatNodes.length})`, 'warn')
+		return lastGoodChatNodes.slice()
+	}
+	return []
+}
+
+const loadCoNETNodesFromChain = async (): Promise<nodeInfo[]> => {
 	let timer: ReturnType<typeof setTimeout> | undefined
 	try {
 		const _nodes = await Promise.race([
 			(async () => {
-				const _nodes1 = await GuardianNodesMainnet.getAllNodes(0, 400)
-				const _nodes2 = await GuardianNodesMainnet.getAllNodes(400, 800)
+				const [_nodes1, _nodes2] = await Promise.all([
+					GuardianNodesMainnet.getAllNodes(0, 400),
+					GuardianNodesMainnet.getAllNodes(400, 800),
+				])
 				return [..._nodes1, ..._nodes2]
 			})(),
 			new Promise<never>((_, reject) => {
@@ -203,6 +225,45 @@ const isPgpKeyComplete = (pgp: initBeamioPGPKeysRet | undefined): boolean => {
 
 /** 互斥：确保同一时刻只有一个 initChat 在执行 */
 let initChatInProgress = false
+
+/**
+ * initChat that stopped for a network reason (no Guardian nodes, listen did
+ * not open) retries by itself: 2/4/8/16/30 s, then every 30 s, until chat is
+ * listening. Each retry is a normal initChat (random entry, no wallet sent).
+ */
+const CHAT_RETRY_DELAYS_MS = [2_000, 4_000, 8_000, 16_000, 30_000]
+let chatRetryTimer: ReturnType<typeof setTimeout> | undefined
+let chatRetryAttempt = 0
+let chatRetryArgs: Parameters<typeof initChat> | null = null
+
+const clearChatRetry = (resetBackoff: boolean) => {
+	if (chatRetryTimer !== undefined) clearTimeout(chatRetryTimer)
+	chatRetryTimer = undefined
+	if (resetBackoff) chatRetryAttempt = 0
+}
+
+const scheduleChatRetry = (reason: string, args: Parameters<typeof initChat>) => {
+	chatRetryArgs = args
+	if (chatRetryTimer !== undefined) return
+	const delay = CHAT_RETRY_DELAYS_MS[Math.min(chatRetryAttempt, CHAT_RETRY_DELAYS_MS.length - 1)]
+	chatRetryAttempt += 1
+	chatBootLog(`initChat retry #${chatRetryAttempt} in ${delay / 1000}s (${reason})`, 'warn')
+	chatRetryTimer = setTimeout(() => {
+		chatRetryTimer = undefined
+		const retryArgs = chatRetryArgs
+		if (!retryArgs) return
+		if (currentGossipAbortController && !currentGossipAbortController.signal.aborted) {
+			chatRetryAttempt = 0
+			return
+		}
+		if (initChatInProgress) {
+			scheduleChatRetry('another start is running', retryArgs)
+			return
+		}
+		const [setProfiles, setAllNodes, setGossip, , newMessage] = retryArgs
+		void initChat(setProfiles, setAllNodes, setGossip, false, newMessage)
+	}, delay)
+}
 
 export const initChat = async (setProfiles: (val: profile[]) => void, setAllNodes: (val: nodeInfo[]) => void, setGossip: (val: boolean) => void, gossip: boolean, newMessage: (val: string) => void) => {
 	if (initChatInProgress) {
@@ -358,6 +419,7 @@ export const initChat = async (setProfiles: (val: profile[]) => void, setAllNode
 		if (!allNodes?.length) {
 			chatBootLog('initChat abort: no CoNET gossip nodes', 'warn')
 			setGossip(false)
+			scheduleChatRetry('no CoNET nodes', [setProfiles, setAllNodes, setGossip, false, newMessage])
 			return
 		}
 	
@@ -373,10 +435,14 @@ export const initChat = async (setProfiles: (val: profile[]) => void, setAllNode
 		if (!started) {
 			chatBootLog('initChat: gossip listen did not start — clearing gossip flag for retry', 'warn')
 			setGossip(false)
+			scheduleChatRetry('listen did not start', [setProfiles, setAllNodes, setGossip, false, newMessage])
+		} else {
+			clearChatRetry(true)
 		}
 	} catch (error) {
 		chatBootLog(`initChat error: ${(error as Error)?.message ?? String(error)}`, 'error')
 		setGossip(false)
+		scheduleChatRetry('error', [setProfiles, setAllNodes, setGossip, false, newMessage])
 	} finally {
 		initChatInProgress = false
 	}
@@ -955,6 +1021,11 @@ export const shouldResumeGossipListen = (staleMs = 45_000): boolean => {
 	// still opening, so the voice relay found no listen and failed.
 	if (isWorkerGossipBusy()) return false
 	if (!currentGossipAbortController || currentGossipAbortController.signal.aborted) return true
+	// Native shells: the chat module owns the listen and reconnects it by
+	// itself. Rebuilding chat here took ~9 s and held the incoming offer and the
+	// caller's cancel in the mailbox meanwhile.
+	if (isNativeChatListenOwner()) return false
+	if (isCashTreesAndroidChatModuleAvailable() && isCashTreesAndroidChatModuleRunning()) return false
 	// Connecting / draining offline — do not abort
 	if (!lastGossipActivityAt) return false
 	return Date.now() - lastGossipActivityAt > staleMs
@@ -979,6 +1050,15 @@ export const prepareGossipListenResume = (reason = 'foreground_resume'): void =>
 export const pauseGossipListenOnBackground = (
 	setGossip: (val: boolean) => void,
 ): void => {
+	// True unload: no background retries; the next foreground resume restarts chat.
+	clearChatRetry(false)
+	chatRetryArgs = null
+	// Native shells: pause the module's listen (it stays up while a call rings
+	// or is up) instead of destroying it.
+	if (pauseNativeChatListen()) {
+		chatBootLog('pauseGossipListenOnBackground: native listen paused', 'info')
+		return
+	}
 	if (!currentGossipAbortController || currentGossipAbortController.signal.aborted) {
 		setGossip(false)
 		return
@@ -1004,6 +1084,12 @@ export const resumeGossipListenOnForeground = async (
 ): Promise<void> => {
 	if (gossipResumeInFlight) {
 		chatBootLog('foreground resume skipped: restart already running', 'info')
+		return
+	}
+	// Native shells: resume the module's listen; never tear it down and rebuild
+	// (a call or other senders' messages may be arriving on it).
+	if (resumeNativeChatListen()) {
+		chatBootLog(`foreground resume: native listen resumed${force ? ' (wake)' : ''}`, 'info')
 		return
 	}
 	if (!force && !shouldResumeGossipListen(staleMs)) {

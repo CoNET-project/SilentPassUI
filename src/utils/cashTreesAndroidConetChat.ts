@@ -39,6 +39,22 @@ export function isCashTreesAndroidChatModuleAvailable(): boolean {
 	return !!host && typeof host.chatModuleCommand === 'function'
 }
 
+/**
+ * True while chat-sdk-android's mailbox listen is running. It reconnects on its
+ * own after a drop (same session, new random entry), so the page must not tear
+ * it down and rebuild chat just because no bytes arrived for a while.
+ */
+export function isCashTreesAndroidChatModuleRunning(): boolean {
+	const host = getAndroidChatHost()
+	if (!host || typeof host.chatModuleIsRunning !== 'function') return false
+	try {
+		const v = Reflect.apply(host.chatModuleIsRunning, host, [])
+		return v === true || v === 'true'
+	} catch {
+		return false
+	}
+}
+
 export function isCashTreesAndroidConetChatAvailable(): boolean {
 	const host = getAndroidChatHost()
 	if (!host) return false

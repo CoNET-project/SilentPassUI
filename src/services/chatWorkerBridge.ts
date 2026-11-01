@@ -69,6 +69,7 @@ type ChatWorkerClient = BeamioChatClient
 
 /** Only one listen client is alive per process. A new session replaces the old. */
 let activeClient: ChatWorkerClient | null = null
+let activeClientIsNative = false
 
 /**
  * Inbound line → mailbox armor hashes waiting for the page to store the line.
@@ -351,6 +352,46 @@ export const stopWorkerGossip = (): void => {
 /** True when a worker listen client is currently alive. */
 export const isWorkerGossipActive = (): boolean => activeClient !== null
 
+/**
+ * Native shell: the Conet Chat Module owns the mailbox listen and reconnects it
+ * itself. The page only pauses / resumes it and never tears it down to "resume";
+ * the module defers a pause while a call rings or is up.
+ */
+export const isNativeChatListenOwner = (): boolean => activeClient !== null && activeClientIsNative
+
+export const pauseNativeChatListen = (): boolean => {
+	if (!isNativeChatListenOwner()) return false
+	;(activeClient as { pause?: () => void }).pause?.()
+	return true
+}
+
+export const resumeNativeChatListen = (): boolean => {
+	if (!isNativeChatListenOwner()) return false
+	;(activeClient as { resume?: () => void }).resume?.()
+	return true
+}
+
+/**
+ * Logout / wallet removal: the module stops and forgets the wallet and PGP keys
+ * it keeps for call pushes. Call before the page drops the wallet.
+ */
+export const clearNativeChatIdentity = (): void => {
+	const cmd = { type: 'clearIdentity', reqId: -1 }
+	try {
+		const ios = (window as unknown as { CashTreesIOS?: { chatModuleCommand?: (p: Record<string, unknown>) => void } })
+			.CashTreesIOS
+		if (typeof ios?.chatModuleCommand === 'function') {
+			ios.chatModuleCommand({ action: 'chatModuleCommand', command: cmd })
+			return
+		}
+		const android = (window as unknown as { CashTreesAndroid?: { chatModuleCommand?: (json: string) => void } })
+			.CashTreesAndroid
+		android?.chatModuleCommand?.(JSON.stringify(cmd))
+	} catch {
+		/* no shell */
+	}
+}
+
 /** True while gossip init or a voice relay open must not be torn down. */
 export const isWorkerGossipBusy = (): boolean =>
 	workerInitPromise !== null || activeVoiceRelay !== null
@@ -423,6 +464,7 @@ const startWorkerGossipListenInternal = async (p: StartWorkerGossipParams): Prom
 		p.onLog?.('info', 'chat listen: TypeScript gossip Worker (browser)')
 	}
 	activeClient = client
+	activeClientIsNative = useIosNative || useAndroidNative
 
 	const unsubs: Array<() => void> = []
 	unsubs.push(

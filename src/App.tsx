@@ -115,7 +115,7 @@ import { ingestAaMultisigFromChat } from '@/utils/aaMultisigIngest'
 import { tu } from '@/locale/beamioLocale'
 import { mapServerError } from '@/locale/mapServerError'
 import { installPwaLifecycleRecovery } from '@/utils/pwaLifecycleRecovery'
-import { applyNativeIncomingVoiceOfferFromLine, reportNativeIncomingSystemCall, claimIncomingVoiceCallReport, claimedVoiceCallerAddress, claimedVoiceCallerTag, dismissNativeIncomingVoiceCall, findPhoneCallByIds, forgetIncomingVoiceOffer, formatLookedUpBeamioTag, isVoiceCallOfferActive, isVoiceCallOfferRinging, lookupIncomingVoiceOffer, markVoiceCallTerminal, mergePhoneCallRecord, nativeIncomingSystemCallPayload, parseVoiceCallSignal, recoverVoiceCallOfferSigner, rememberIncomingVoiceOffer, replacePhoneCallInRows, VOICE_CALL_IDENTITY_WARNING, voiceCallClaimMismatchesKey } from '@/utils/voiceCallSession'
+import { applyNativeIncomingVoiceOfferFromLine, reportNativeIncomingSystemCall, claimIncomingVoiceCallReport, claimedVoiceCallerAddress, claimedVoiceCallerTag, dismissNativeIncomingVoiceCall, findPhoneCallByIds, forgetIncomingVoiceOffer, formatLookedUpBeamioTag, isVoiceCallOfferActive, isVoiceCallOfferRinging, lookupIncomingVoiceOffer, markVoiceCallTerminal, mergePhoneCallRecord, nativeIncomingSystemCallPayload, noteNativeCallAnswered, parseVoiceCallSignal, phoneCallStatusForPeerHangup, recoverVoiceCallOfferSigner, rememberIncomingVoiceOffer, replacePhoneCallInRows, VOICE_CALL_IDENTITY_WARNING, voiceCallClaimMismatchesKey } from '@/utils/voiceCallSession'
 
 global.Buffer = require("buffer").Buffer
 
@@ -1358,6 +1358,9 @@ function AppShell() {
 			const sessionId = String(detail.sessionId || '').trim()
 			const key = `${callId}:${sessionId}`
 			if (!callId && !sessionId) return
+			// The shell may answer before this page has the offer; remember it so
+			// the call record ends as "Call ended", not "Call cancelled".
+			noteNativeCallAnswered(callId, sessionId)
 			if (nativeVoiceAnswerKeyRef.current === key) return
 			nativeVoiceAnswerKeyRef.current = key
 			pendingAnswerKey = key
@@ -1406,6 +1409,15 @@ function AppShell() {
 			openChatAndAccept()
 		}
 
+		// Shell answered an incoming call itself: record only, no page accept.
+		const onNativeConnected = (event: Event) => {
+			const detail = (event as CustomEvent<{ action?: string; callId?: string; sessionId?: string }>).detail
+			if (detail?.action !== 'callConnected') return
+			noteNativeCallAnswered(String(detail.callId || ''), String(detail.sessionId || ''))
+		}
+
+		window.addEventListener('cashtreesandroid', onNativeConnected)
+		window.addEventListener('cashtreesios', onNativeConnected)
 		window.addEventListener('cashtreesandroid', onNativeAnswer)
 		window.addEventListener('cashtreesios', onNativeAnswer)
 		window.addEventListener('cashtreesandroid', onNativeHangupCancelsLateAccept)
@@ -1413,6 +1425,8 @@ function AppShell() {
 		return () => {
 			cancelled = true
 			clearLateAccept()
+			window.removeEventListener('cashtreesandroid', onNativeConnected)
+			window.removeEventListener('cashtreesios', onNativeConnected)
 			window.removeEventListener('cashtreesandroid', onNativeAnswer)
 			window.removeEventListener('cashtreesios', onNativeAnswer)
 			window.removeEventListener('cashtreesandroid', onNativeHangupCancelsLateAccept)
@@ -1971,21 +1985,23 @@ function AppShell() {
 						current?.signal?.sessionId === signal.sessionId ? null : current,
 					)
 					const callRows = Array.isArray(profile.phoneCalls) ? profile.phoneCalls : []
-					const existing = callRows.find((item: PhoneCallRecord) => item.sessionId === signal.sessionId)
+					// Match by callId too: the peer's hangup can carry its own session id.
+					const existing = findPhoneCallByIds(callRows, {
+						callId: signal.callId,
+						sessionId: signal.sessionId,
+					})
 					const merged = mergePhoneCallRecord(existing, {
 						callId: signal.callId || existing?.callId || signal.sessionId,
-						sessionId: signal.sessionId,
+						sessionId: existing?.sessionId || signal.sessionId,
 						peerAddress: existing?.peerAddress || signAddr,
 						direction: existing?.direction ?? 'incoming',
-						status: 'cancelled',
+						// Hangup of a connected call is "ended"; only an unanswered ring is "cancelled".
+						status: phoneCallStatusForPeerHangup(existing),
 						createdAt: existing?.createdAt ?? msg.timestamp,
 						endedAt: Number(signal.timestamp) || msg.timestamp,
 					})
 					if (merged) {
-						profile.phoneCalls = [
-							...callRows.filter((item: PhoneCallRecord) => item.sessionId !== merged.sessionId),
-							merged,
-						]
+						profile.phoneCalls = replacePhoneCallInRows(callRows, merged)
 					}
 				}
 			} catch {

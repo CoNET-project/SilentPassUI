@@ -619,6 +619,49 @@ const PHONE_CALL_TERMINAL_STATUSES: ReadonlySet<PhoneCallRecord['status']> = new
 export const isPhoneCallTerminalStatus = (status: PhoneCallRecord['status'] | undefined): boolean =>
 	Boolean(status && PHONE_CALL_TERMINAL_STATUSES.has(status))
 
+/** Outcomes that mean "never connected". A call that was answered cannot end in one of them. */
+const PHONE_CALL_UNANSWERED_STATUSES: ReadonlySet<PhoneCallRecord['status']> = new Set([
+	'cancelled',
+	'declined',
+	'missed',
+	'timed_out',
+])
+
+/**
+ * Calls the native shell answered (CallKit / Telecom), by callId and sessionId.
+ * The shell can answer before the PWA has the offer (FCM / VoIP wake), so the
+ * page never runs its own accept and the record stays "ringing". Kept in memory
+ * for the life of the page.
+ */
+const nativeAnsweredAt = new Map<string, number>()
+
+export const noteNativeCallAnswered = (callId: string, sessionId: string, at = Date.now()): void => {
+	for (const id of [nonBlank(callId), nonBlank(sessionId)]) {
+		if (id && !nativeAnsweredAt.has(id)) nativeAnsweredAt.set(id, at)
+	}
+	while (nativeAnsweredAt.size > 100) {
+		const oldest = nativeAnsweredAt.keys().next().value
+		if (oldest === undefined) break
+		nativeAnsweredAt.delete(oldest)
+	}
+	publishNativePwaLog('info', `[voice] call record answered by shell callId=${Boolean(nonBlank(callId))} sessionId=${Boolean(nonBlank(sessionId))}`)
+}
+
+const nativeAnsweredAtFor = (record: { callId?: string; sessionId?: string } | null | undefined): number =>
+	nativeAnsweredAt.get(nonBlank(record?.callId)) || nativeAnsweredAt.get(nonBlank(record?.sessionId)) || 0
+
+export const phoneCallWasAnswered = (record: PhoneCallRecord | null | undefined): boolean =>
+	Boolean(record && (record.status === 'answered' || Number(record.answeredAt || 0) > 0 || nativeAnsweredAtFor(record) > 0))
+
+/**
+ * Status for a `voice_end_v1` from the peer: the peer hung up a connected call
+ * ("ended"), or the caller gave up before anyone answered ("cancelled").
+ */
+export const phoneCallStatusForPeerHangup = (
+	existing: PhoneCallRecord | null | undefined,
+): PhoneCallRecord['status'] =>
+	phoneCallWasAnswered(existing) || existing?.status === 'ended' ? 'ended' : 'cancelled'
+
 /**
  * Keep the further-along status when two snapshots of the same call arrive out
  * of order. A later `ringing` history row must not paint the bubble back to
@@ -690,7 +733,21 @@ export const mergePhoneCallRecord = (
 	const sameCall = phoneCallIdsOverlap(current, incoming)
 	if (!sameCall) return incoming
 	const keepCurrent = (PHONE_CALL_STATUS_RANK[current.status] ?? 0) > (PHONE_CALL_STATUS_RANK[incoming.status] ?? 0)
-	const status = keepCurrent ? current.status : incoming.status
+	let status = keepCurrent ? current.status : incoming.status
+	const answered = phoneCallWasAnswered(current) || phoneCallWasAnswered(incoming)
+	// Once either side saw the call answered, a later "unanswered" outcome (the
+	// peer's hangup read as cancel, a stale ring timeout) means the call ended.
+	if (answered && PHONE_CALL_UNANSWERED_STATUSES.has(status)) status = 'ended'
+	if (answered && status === 'ringing') status = 'answered'
+	const answeredAt = current.answeredAt ?? incoming.answeredAt
+		?? (nativeAnsweredAtFor(current) || nativeAnsweredAtFor(incoming) || undefined)
+	const endedAt = status === 'ringing'
+		? undefined
+		: (keepCurrent ? current.endedAt ?? incoming.endedAt : incoming.endedAt ?? current.endedAt)
+	const knownDuration = keepCurrent ? current.durationMs ?? incoming.durationMs : incoming.durationMs ?? current.durationMs
+	const durationMs = knownDuration ?? (status === 'ended' && answeredAt && endedAt
+		? Math.max(0, phoneCallStampMs(endedAt) - phoneCallStampMs(answeredAt)) || undefined
+		: undefined)
 	return {
 		...current,
 		...incoming,
@@ -701,11 +758,9 @@ export const mergePhoneCallRecord = (
 		direction: current.direction || incoming.direction,
 		peerAddress: nonBlank(current.peerAddress) || nonBlank(incoming.peerAddress),
 		createdAt: current.createdAt || incoming.createdAt,
-		answeredAt: current.answeredAt ?? incoming.answeredAt,
-		endedAt: status === 'ringing'
-			? undefined
-			: (keepCurrent ? current.endedAt ?? incoming.endedAt : incoming.endedAt ?? current.endedAt),
-		durationMs: keepCurrent ? current.durationMs ?? incoming.durationMs : incoming.durationMs ?? current.durationMs,
+		answeredAt,
+		endedAt,
+		durationMs,
 	}
 }
 

@@ -36,7 +36,6 @@ export const ZH = {
 	'Share URL is unavailable': '分享链接不可用',
 	'Claim URL copied': '领取链接已复制',
 	'Could not share claim URL': '无法分享领取链接',
-	'20 B-Units claimed!': '已领取 20 B-Unit！',
 	'Create failed': '创建失败',
 	'Upload failed': '上传失败',
 	'Copy failed': '复制失败',

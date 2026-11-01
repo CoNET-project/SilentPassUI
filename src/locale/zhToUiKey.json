@@ -21,7 +21,6 @@
   "分享链接不可用": "share_url_is_unavailable",
   "领取链接已复制": "claim_url_copied",
   "无法分享领取链接": "could_not_share_claim_url",
-  "已领取 20 B-Unit！": "20_b_units_claimed",
   "创建失败": "create_failed",
   "上传失败": "upload_failed",
   "复制失败": "copy_failed",

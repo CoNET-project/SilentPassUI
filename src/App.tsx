@@ -509,7 +509,7 @@ function AppShell() {
     }
   }
 
-  // App 初始化时检查可否领取 BeamioBUnits，可领取则自动发起领取请求
+  // App 初始化时检查可否领取 BeamioBUnits，可领取则自动发起领取请求（静默，不弹提示）
   // 重要：claimant 必须从私钥推导，不能使用 keyID，否则会导致 signer != claimant 链上失败
   useEffect(() => {
     if (bUnitClaimAttemptedRef.current || !profiles?.length) return
@@ -527,11 +527,7 @@ function AppShell() {
       return
     }
     bUnitClaimAttemptedRef.current = true
-    void runAutoBUnitFreeClaimIfEligible(p0.privateKeyArmor!, claimant).then((outcome) => {
-      if (outcome === 'claimed_success') {
-        Toast.show({ content: tu('20_b_units_claimed'), position: 'top' })
-      }
-    }).catch(() => {})
+    void runAutoBUnitFreeClaimIfEligible(p0.privateKeyArmor!, claimant).catch(() => {})
   }, [profiles])
 
   const { pathname } = useLocation()

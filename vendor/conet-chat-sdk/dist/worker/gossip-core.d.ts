@@ -48,6 +48,12 @@ export declare class GossipCore {
      * ordinary frames for the UI.
      */
     private voiceV2;
+    /**
+     * v2 state of a listen that was stopped. A reconnect reopens the same session
+     * and must register the same write key (the peer already has it) and keep
+     * the peer's key, so v2 survives the drop.
+     */
+    private voiceV2Retained;
     private readonly voiceReorder;
     private lastActivityAt;
     private paused;

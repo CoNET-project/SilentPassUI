@@ -649,6 +649,9 @@ const openActiveVoiceRelay = (sessionId: string): Promise<boolean> => {
 	return tracked
 }
 
+/** AES key of the last voice listen, kept across voice_unlisten for a same-session reconnect. */
+let lastVoiceChannelKey: { sessionId: string; key: string } = { sessionId: '', key: '' }
+
 export const startWorkerVoiceListen = async (
 	sessionId: string,
 	pushWakeup?: {
@@ -662,6 +665,10 @@ export const startWorkerVoiceListen = async (
 	},
 	channelKey?: string,
 ): Promise<boolean> => {
+	// A reconnect reopens the same session without the call's key: keep it, so
+	// the worker re-registers the same v2 channel (no wake fields this time).
+	if (!channelKey && lastVoiceChannelKey.sessionId === sessionId) channelKey = lastVoiceChannelKey.key
+	if (channelKey) lastVoiceChannelKey = { sessionId, key: channelKey }
 	activeVoiceRelay = { sessionId, pushWakeup, channelKey }
 	const started = await openActiveVoiceRelay(sessionId)
 	if (started) return true

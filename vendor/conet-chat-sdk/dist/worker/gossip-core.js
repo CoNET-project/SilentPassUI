@@ -142,6 +142,12 @@ export class GossipCore {
          * ordinary frames for the UI.
          */
         this.voiceV2 = null;
+        /**
+         * v2 state of a listen that was stopped. A reconnect reopens the same session
+         * and must register the same write key (the peer already has it) and keep
+         * the peer's key, so v2 survives the drop.
+         */
+        this.voiceV2Retained = null;
         this.voiceReorder = new VoiceFrameReorderBuffer({
             // Voice jitter ~120ms; video fragment groups ~200ms. Do not skip_ahead
             // immediately when a later seq arrives first — wait then timeout.
@@ -1174,11 +1180,20 @@ export class GossipCore {
                     if (result.ok) {
                         if (++v2.txOk === 1)
                             this.emit.log('info', 'voice v2 first chunk accepted');
+                        v2.chunkMiss = 0;
                         return true;
                     }
-                    if (result.error === 'voice_chunk_auth' || result.error === 'target_voice_session_not_found' || result.error === 'invalid_voice_chunk') {
+                    if (result.error === 'voice_chunk_auth' || result.error === 'invalid_voice_chunk') {
                         v2.disabled = true;
                         this.emit.log('warn', `voice v2 chunk refused (${result.error}); v1 for the rest of the call`);
+                    }
+                    else if (result.error === 'target_voice_session_not_found') {
+                        // The peer's listen is down (reconnecting) or reopened without v2.
+                        // Send this frame as v1 and keep v2: the peer re-listens with the
+                        // same write key, and the next chunk goes through again.
+                        if (++v2.chunkMiss === 1 || v2.chunkMiss % 50 === 0) {
+                            this.emit.log('warn', `voice v2 chunk target missing x${v2.chunkMiss}; this frame as v1`);
+                        }
                     }
                     else {
                         return false;
@@ -1312,15 +1327,32 @@ export class GossipCore {
         // Drop pending reorder state from the previous listen so a new session
         // cannot stall behind an old nextSeq / overflowed buffer.
         this.voiceReorder.clear();
+        const previous = [this.voiceV2, this.voiceV2Retained].find((v) => v?.sessionId === sessionId) ?? null;
         this.voiceV2 = null;
+        this.voiceV2Retained = null;
         const locator = locatorFromSessionId(sessionId);
-        if (channelKey && locator) {
+        const sameKey = (raw) => {
+            if (!previous || !raw)
+                return !!previous && !raw;
+            try {
+                const key = base64ToBytes(raw);
+                return key.length === previous.key.length && key.every((b, i) => b === previous.key[i]);
+            }
+            catch {
+                return false;
+            }
+        };
+        if (previous && sameKey(channelKey)) {
+            // Reconnect: same write key and peer key; the handshake re-confirms ownV2.
+            this.voiceV2 = { ...previous, ownV2: false };
+        }
+        else if (channelKey && locator) {
             try {
                 const key = base64ToBytes(channelKey);
                 if (key.length === 32) {
                     this.voiceV2 = {
                         sessionId, locator, key, writeKey: randomWriteKey(), ownV2: false,
-                        peerWriteKey: null, peerSessionId: '', callId: '', disabled: false, txOk: 0, rx: 0,
+                        peerWriteKey: null, peerSessionId: '', callId: '', disabled: false, txOk: 0, rx: 0, chunkMiss: 0,
                     };
                 }
             }
@@ -1549,8 +1581,10 @@ export class GossipCore {
         const wallet = this.wallet;
         this.voiceListenController?.abort('voice_stop');
         this.voiceListenController = null;
-        if (this.voiceV2?.sessionId === sessionId)
+        if (this.voiceV2?.sessionId === sessionId) {
+            this.voiceV2Retained = this.voiceV2;
             this.voiceV2 = null;
+        }
         if (!route || !wallet)
             return true;
         const innerArmor = await encryptOpaqueVoiceCommand({

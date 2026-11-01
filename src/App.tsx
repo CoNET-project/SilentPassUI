@@ -115,7 +115,7 @@ import { ingestAaMultisigFromChat } from '@/utils/aaMultisigIngest'
 import { tu } from '@/locale/beamioLocale'
 import { mapServerError } from '@/locale/mapServerError'
 import { installPwaLifecycleRecovery } from '@/utils/pwaLifecycleRecovery'
-import { applyNativeIncomingVoiceOfferFromLine, claimIncomingVoiceCallReport, claimedVoiceCallerAddress, claimedVoiceCallerTag, dismissNativeIncomingVoiceCall, findPhoneCallByIds, forgetIncomingVoiceOffer, formatLookedUpBeamioTag, isVoiceCallOfferActive, isVoiceCallOfferRinging, lookupIncomingVoiceOffer, markVoiceCallTerminal, mergePhoneCallRecord, nativeIncomingSystemCallPayload, parseVoiceCallSignal, recoverVoiceCallOfferSigner, rememberIncomingVoiceOffer, replacePhoneCallInRows, VOICE_CALL_IDENTITY_WARNING, voiceCallClaimMismatchesKey } from '@/utils/voiceCallSession'
+import { applyNativeIncomingVoiceOfferFromLine, reportNativeIncomingSystemCall, claimIncomingVoiceCallReport, claimedVoiceCallerAddress, claimedVoiceCallerTag, dismissNativeIncomingVoiceCall, findPhoneCallByIds, forgetIncomingVoiceOffer, formatLookedUpBeamioTag, isVoiceCallOfferActive, isVoiceCallOfferRinging, lookupIncomingVoiceOffer, markVoiceCallTerminal, mergePhoneCallRecord, nativeIncomingSystemCallPayload, parseVoiceCallSignal, recoverVoiceCallOfferSigner, rememberIncomingVoiceOffer, replacePhoneCallInRows, VOICE_CALL_IDENTITY_WARNING, voiceCallClaimMismatchesKey } from '@/utils/voiceCallSession'
 
 global.Buffer = require("buffer").Buffer
 
@@ -1852,8 +1852,7 @@ function AppShell() {
 						// Chat can claim the same offer first; the system card
 						// still needs the recovered wallet and looked-up tag.
 						applyNativeIncomingVoiceOfferFromLine(displayText)
-						dispatchNativeSystemCallAction(
-							'reportIncomingSystemCall',
+						reportNativeIncomingSystemCall(
 							nativeIncomingSystemCallPayload({
 								callId: signal.callId,
 								sessionId: signal.sessionId,
@@ -1887,9 +1886,8 @@ function AppShell() {
 									? { ...current, from: provenAddress, displayTag: tag, ...nextClaim }
 									: current,
 							)
-							dispatchNativeSystemCallAction(
-								'reportIncomingSystemCall',
-								nativeIncomingSystemCallPayload({
+							reportNativeIncomingSystemCall(
+							nativeIncomingSystemCallPayload({
 									callId: signal.callId,
 									sessionId: signal.sessionId,
 									peerAddress: provenAddress,

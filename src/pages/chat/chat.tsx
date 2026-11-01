@@ -85,6 +85,7 @@ import { storeSystemData, AuthorizationSign } from '@/services/beamio'
 import { useBeamioTagDatabase } from '@/providers/BeamioTagDatabaseProvider'
 import { fiatPrefix } from '@/services/currency'
 import { beginCallTiming, markCallTiming, timeCallStep } from '@/utils/callTiming'
+import { newVoiceLinkState, noteVoiceLinkRx, tickVoiceLink, type VoiceLinkState } from '@/utils/voiceLinkPolicy'
 import { dispatchNativeSystemCallAction, getCashTreesNativeNfcBridge, getCashTreesNativeNfcHost, isCashTreesNativeWebView, notifyNativeVoiceMicReady, openExternalUrl, requestNativeCameraCapture, requestNativePhotoPicker, saveFileToNative } from '@/utils/cashTreesNativeNfc'
 import { MessageSendReceiveCard } from "./components/messageSendReceiveCard"
 import { AaMultisigChatRequestCard } from '@/components/chat/AaMultisigChatRequestCard'
@@ -123,6 +124,7 @@ import {
 	encryptVoiceFrame,
 	claimIncomingVoiceCallReport,
 	applyNativeIncomingVoiceOfferFromLine,
+	reportNativeIncomingSystemCall,
 	hasReportedIncomingVoiceCall,
 	isVoiceCallProtocolMessage,
 	claimedVoiceCallerAddress,
@@ -2093,6 +2095,10 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 	 * so any delay or failure in that write left "Ringing" up for a live call.
 	 */
 	const [voiceCallAnswered, setVoiceCallAnswered] = useState(false)
+	/** Browser call: the media SSE went quiet and is being reopened. */
+	const [voiceReconnecting, setVoiceReconnecting] = useState(false)
+	/** Browser call link health (see the watchdog effect below). */
+	const voiceLinkRef = useRef<VoiceLinkState>(newVoiceLinkState(0))
 	const voiceCallKeyRef = useRef<Uint8Array | null>(null)
 	const voiceCallPeerSessionRef = useRef<string | null>(null)
 	const voicePeerRouteRef = useRef<string>('')
@@ -2654,6 +2660,7 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 					setVoiceError('Voice audio relay is unavailable. Please try the call again.')
 				} else if (sent) {
 					voiceFrameSendFailuresRef.current = 0
+					voiceLinkRef.current.lastTxOkAt = Date.now()
 					if (!loggedSentFrame) {
 						loggedSentFrame = true
 						logMicDiag('frame_sent', { seq: voiceFrameSeqRef.current })
@@ -3469,9 +3476,8 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 						identityWarning: nextMismatch ? VOICE_CALL_IDENTITY_WARNING : '',
 					}
 					setIncomingCaller({ address: provenAddress, tag, ...nextClaim })
-					dispatchNativeSystemCallAction(
-						'reportIncomingSystemCall',
-						nativeIncomingSystemCallPayload({
+					reportNativeIncomingSystemCall(
+							nativeIncomingSystemCallPayload({
 							callId: signal.callId,
 							sessionId: signal.sessionId,
 							peerAddress: provenAddress,
@@ -3495,9 +3501,8 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 						expiresAt: signal.expiresAt,
 					})
 					applyNativeIncomingVoiceOfferFromLine(latest.text)
-					dispatchNativeSystemCallAction(
-						'reportIncomingSystemCall',
-						nativeIncomingSystemCallPayload({
+					reportNativeIncomingSystemCall(
+							nativeIncomingSystemCallPayload({
 							callId: signal.callId,
 							sessionId: signal.sessionId,
 							peerAddress: provenAddress,
@@ -4085,6 +4090,56 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 		setVoiceCallAnswered(false)
 		setVoiceCallState('idle')
 	}, [allNodes, clearSoftRemoteVideo, privateKey, profiles, stopSoftLocalVideo, toAddress, upsertPhoneCallRecord])
+
+	// Browser call link watchdog. The worker's media SSE is not reopened when
+	// it drops mid-call, so audio stopped while both sides showed the call.
+	// Once media runs: 8 s without a peer frame reopens voice_listen for the same
+	// session (backoff 1/2/4/8 s; voice_unlisten first from the 2nd try, since
+	// the mailbox answers session_conflict while it still holds the old socket).
+	// No wake fields, no wallet: the session id is the only capability used.
+	// No peer frame AND no accepted uplink for 25 s ends the call.
+	useEffect(() => {
+		if (isCashTreesNativeWebView()) return
+		if (voiceCallState !== 'outgoing' || !voiceCallAnswered) return
+		const sessionId = voiceCallSessionRef.current?.trim() || ''
+		if (!sessionId) return
+		const link = newVoiceLinkState(Date.now())
+		voiceLinkRef.current = link
+		setVoiceReconnecting(false)
+		let disposed = false
+		const timer = window.setInterval(() => {
+			if (disposed) return
+			const decision = tickVoiceLink(link, Date.now())
+			if (decision.kind === 'none') return
+			if (decision.kind === 'lost') {
+				setVoiceReconnecting(false)
+				console.warn('[voice-link] connection lost', { attempts: link.attempt })
+				// endVoiceCall clears voiceError; show the reason once it is done.
+				void endVoiceCall('ended').finally(() => setVoiceError('Call ended: connection lost'))
+				return
+			}
+			if (decision.startedReconnecting) setVoiceReconnecting(true)
+			if (decision.kind !== 'reconnect') return
+			link.inFlight = true
+			void (async () => {
+				try {
+					if (decision.unlistenFirst) {
+						await stopWorkerVoiceListen(sessionId)
+						await new Promise((done) => setTimeout(done, 1_500))
+					}
+					if (disposed) return
+					const ok = await startWorkerVoiceListen(sessionId)
+					console.info('[voice-link] reopen', { attempt: decision.attempt, ok })
+				} finally {
+					link.inFlight = false
+				}
+			})()
+		}, 1_000)
+		return () => {
+			disposed = true
+			window.clearInterval(timer)
+		}
+	}, [endVoiceCall, voiceCallAnswered, voiceCallState])
 
 	// A failed browser dial has no call to end: just close the call window.
 	const endOrDismissVoiceCall = useCallback(() => {
@@ -4684,6 +4739,7 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 			return
 		}
 		console.warn('[voice-rx] take', frame.seq)
+		if (noteVoiceLinkRx(voiceLinkRef.current, Date.now())) setVoiceReconnecting(false)
 		const notePeerRx = (patch: Record<string, unknown>) => {
 			const host = window as Window & { __voicePeerRx?: Record<string, unknown> }
 			host.__voicePeerRx = { ...(host.__voicePeerRx || {}), ...patch, at: Date.now() }
@@ -7031,6 +7087,8 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 	const voiceRelayOpenFailed = voiceError === VOICE_RELAY_OPEN_ERROR
 	const voiceCallStatusLabel = voiceRelayOpenFailed || voiceDialFailed
 		? 'Call failed'
+		: voiceReconnecting && (voiceCallAnswered || activeVoiceCallRecord?.status === 'answered')
+		? 'Reconnecting…'
 		: voiceCallConnecting
 		? 'Connecting'
 		: (activeVoiceCallRecord?.status === 'answered' || voiceCallAnswered)
@@ -7251,7 +7309,7 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 									<span className="max-w-[10rem] truncate text-[17px] font-bold">{activeVoicePeerLabel}</span>
 									<span className="font-mono text-[15px] font-bold text-white/75">
 										{voiceCallAnswered || activeVoiceCallRecord?.status === 'answered'
-											? voiceInCallClockLabel
+											? (voiceReconnecting ? 'Reconnecting…' : voiceInCallClockLabel)
 											: voiceCallStatusLabel}
 									</span>
 									<ChevronUp className="h-4 w-4 text-white/80" aria-hidden />
@@ -7278,7 +7336,7 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 									<p className="text-[28px] font-bold tracking-tight">{activeVoicePeerLabel}</p>
 									<p className="mt-1.5 font-mono text-[18px] tracking-wide text-white/70">
 										{voiceCallAnswered || activeVoiceCallRecord?.status === 'answered'
-											? voiceInCallClockLabel
+											? (voiceReconnecting ? 'Reconnecting…' : voiceInCallClockLabel)
 											: voiceCallStatusLabel === 'Connecting' || voiceCallStatusLabel === 'Ringing'
 												? 'Calling…'
 												: voiceCallStatusLabel}

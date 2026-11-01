@@ -171,11 +171,11 @@ class BeamioChatClientImpl {
         });
         return !!r?.sent;
     }
-    async startVoiceListen(sessionId, pushWakeup) {
+    async startVoiceListen(sessionId, pushWakeup, channelKey) {
         // Offer encryption plus the 12s mailbox handshake can run past 25s.
         // Timing out here makes the call screen say the relay failed while
         // the worker is still opening it.
-        const r = await this.request({ type: 'voiceListen', reqId: 0, sessionId, pushWakeup }, 45000);
+        const r = await this.request({ type: 'voiceListen', reqId: 0, sessionId, pushWakeup, channelKey }, 45000);
         return !!r?.started;
     }
     async stopVoiceListen(sessionId) {

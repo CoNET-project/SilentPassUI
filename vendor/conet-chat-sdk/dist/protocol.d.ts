@@ -107,6 +107,8 @@ export type WorkerCommand = {
          */
         calleeRoute?: string;
     };
+    /** Base64 AES session key of the call: enables voice channel v2. */
+    channelKey?: string;
 } | {
     type: 'voiceUnlisten';
     reqId: number;

@@ -242,11 +242,12 @@ class BeamioChatClientImpl implements BeamioChatClient {
 			recipientPgp?: string
 			calleeRoute?: string
 		},
+		channelKey?: string,
 	): Promise<boolean> {
 		// Offer encryption plus the 12s mailbox handshake can run past 25s.
 		// Timing out here makes the call screen say the relay failed while
 		// the worker is still opening it.
-		const r = await this.request<{ started: boolean }>({ type: 'voiceListen', reqId: 0, sessionId, pushWakeup }, 45_000)
+		const r = await this.request<{ started: boolean }>({ type: 'voiceListen', reqId: 0, sessionId, pushWakeup, channelKey }, 45_000)
 		return !!r?.started
 	}
 

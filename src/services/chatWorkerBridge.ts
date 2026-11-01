@@ -112,6 +112,8 @@ type VoiceRelayRequest = {
 		recipientPgp?: string
 		calleeRoute?: string
 	}
+	/** Base64 AES session key of the call: lets the worker use voice channel v2. */
+	channelKey?: string
 }
 
 /** Survives a gossip-worker restart so an in-progress call can reopen its mailbox SSE. */
@@ -625,7 +627,7 @@ const openActiveVoiceRelay = (sessionId: string): Promise<boolean> => {
 			return false
 		}
 		try {
-			const started = await client.startVoiceListen(sessionId, relay.pushWakeup)
+			const started = await client.startVoiceListen(sessionId, relay.pushWakeup, relay.channelKey)
 			if (!started) console.warn('[voiceListen] worker refused to open the voice relay')
 			if (started && activeVoiceRelay?.sessionId !== sessionId) {
 				console.warn(`[voiceListen] relay cleared after the worker accepted session=${sessionId}`)
@@ -647,6 +649,9 @@ const openActiveVoiceRelay = (sessionId: string): Promise<boolean> => {
 	return tracked
 }
 
+/** AES key of the last voice listen, kept across voice_unlisten for a same-session reconnect. */
+let lastVoiceChannelKey: { sessionId: string; key: string } = { sessionId: '', key: '' }
+
 export const startWorkerVoiceListen = async (
 	sessionId: string,
 	pushWakeup?: {
@@ -658,8 +663,13 @@ export const startWorkerVoiceListen = async (
 		recipientPgp?: string
 		calleeRoute?: string
 	},
+	channelKey?: string,
 ): Promise<boolean> => {
-	activeVoiceRelay = { sessionId, pushWakeup }
+	// A reconnect reopens the same session without the call's key: keep it, so
+	// the worker re-registers the same v2 channel (no wake fields this time).
+	if (!channelKey && lastVoiceChannelKey.sessionId === sessionId) channelKey = lastVoiceChannelKey.key
+	if (channelKey) lastVoiceChannelKey = { sessionId, key: channelKey }
+	activeVoiceRelay = { sessionId, pushWakeup, channelKey }
 	const started = await openActiveVoiceRelay(sessionId)
 	if (started) return true
 	if (activeVoiceRelay?.sessionId !== sessionId) {

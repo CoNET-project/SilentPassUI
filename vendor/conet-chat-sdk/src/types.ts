@@ -472,6 +472,8 @@ export interface BeamioChatClient {
 			recipientPgp?: string
 			calleeRoute?: string
 		},
+		/** Base64 AES session key of the call: enables voice channel v2. */
+		channelKey?: string,
 	): Promise<boolean>
 	stopVoiceListen(sessionId: string): Promise<boolean>
 	on<K extends ChatEventName>(event: K, cb: ChatEventListener<K>): Unsubscribe

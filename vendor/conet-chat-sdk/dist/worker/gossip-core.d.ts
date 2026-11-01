@@ -40,6 +40,20 @@ export declare class GossipCore {
     private userPgpKeyID;
     private listenController;
     private voiceListenController;
+    /**
+     * Voice channel v2 for the current listen (CoNET Chat rule 23). The UI hands
+     * over the call's AES session key; the worker registers a write key, puts it
+     * into the caps frame, turns outgoing frames into metadata-free chunks once
+     * the peer's caps carry `chan: 2`, and turns incoming chunks back into
+     * ordinary frames for the UI.
+     */
+    private voiceV2;
+    /**
+     * v2 state of a listen that was stopped. A reconnect reopens the same session
+     * and must register the same write key (the peer already has it) and keep
+     * the peer's key, so v2 survives the drop.
+     */
+    private voiceV2Retained;
     private readonly voiceReorder;
     private lastActivityAt;
     private paused;
@@ -97,8 +111,25 @@ export declare class GossipCore {
      * through entries that are not that mailbox, like every other mailbox command.
      * The mailbox never decrypts `offerArmor`; it is callee user-PGP ciphertext.
      */
+    /**
+     * With `push: 1` a v2 callee mailbox also rings the callee itself (it finds
+     * the callee from the offer's recipient key ID) and answers `pushed: true`,
+     * so our voice_listen need not carry the callee wallet. Resolves to whether
+     * it rang; old mailboxes never say so.
+     */
     private indexVoiceOfferOnCalleeMailbox;
+    /** One voice command through up to two entries; the node's JSON answer or null. */
+    private postVoiceCommandForJson;
     sendVoiceFrame(routerArmoredPublicKey: string, frame: Record<string, unknown>): Promise<boolean>;
+    /**
+     * One entry POST for a v2 chunk (a second entry only on a network failure).
+     * Reads the node's JSON so a refused chunk can fall back to v1.
+     */
+    private postVoiceChunk;
+    /** A v2 chunk on our own channel → the ordinary frame the UI already handles. */
+    private handleVoiceChunk;
+    /** Peer caps with `chan: 2` carry the write key for the peer's channel. */
+    private notePeerVoiceCaps;
     startVoiceListen(sessionId: string, pushWakeup?: {
         callId: string;
         calleeEoa: string;
@@ -107,7 +138,9 @@ export declare class GossipCore {
         offerText?: string;
         recipientPgp?: string;
         calleeRoute?: string;
-    }): Promise<boolean>;
+    }, 
+    /** Base64 AES session key of the call: enables voice channel v2. */
+    channelKey?: string): Promise<boolean>;
     stopVoiceListen(sessionId: string): Promise<boolean>;
 }
 //# sourceMappingURL=gossip-core.d.ts.map

@@ -273,7 +273,7 @@ async function handle(cmd: WorkerInbound): Promise<void> {
 		}
 		case 'voiceListen': {
 			try {
-				const ok = await gossip!.startVoiceListen(cmd.sessionId, cmd.pushWakeup)
+				const ok = await gossip!.startVoiceListen(cmd.sessionId, cmd.pushWakeup, cmd.channelKey)
 				post({ type: 'ack', reqId: cmd.reqId, ok: true, result: { started: ok } })
 			} catch (ex) {
 				post({ type: 'ack', reqId: cmd.reqId, ok: false, error: (ex as Error)?.message ?? String(ex) })

@@ -42,4 +42,9 @@ export declare function wrapArmorToEntryRoute(innerArmor: string, entryRoutePubl
 export declare function encryptRouteCommand(wallet: Wallet, command: Record<string, unknown>, routePublicKeyArmored: string): Promise<string>;
 /** Encrypt a voice route command without embedding a recoverable EOA signature. */
 export declare function encryptOpaqueVoiceCommand(command: Record<string, unknown>, routePublicKeyArmored: string): Promise<string>;
+/**
+ * Voice channel v2 chunk → OpenPGP armor (binary literal, no compression: the
+ * chunk is AES output) encrypted to a **route** public key. Unsigned, no wallet.
+ */
+export declare function encryptVoiceChunkLiteral(literal: Uint8Array, routePublicKeyArmored: string): Promise<string>;
 //# sourceMappingURL=envelope.d.ts.map

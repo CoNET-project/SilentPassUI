@@ -158,8 +158,12 @@ import {
 } from '@/utils/voiceCallSession'
 import {
 	decodeBjpgFrame,
+	encodeBjp2Frame,
 	encodeBjpgFrame,
 	hasBjpgMagic,
+	VOICE_LOCAL_VIDEO_CAPS,
+	VOICE_VIDEO_SEQ_BASE,
+	type BjpgDecodedFrame,
 	isLikelyVoiceMediaPlain,
 	startAndroidNativeMicCapture,
 	startVoiceCapture,
@@ -1910,6 +1914,85 @@ type ChatListProps = {
 
 const VOICE_RELAY_OPEN_ERROR = 'Voice call could not open a temporary relay.'
 
+/** Soft video: same limits as the native shells (SI rejects payloads over 12 000 base64 chars). */
+const SOFT_VIDEO_LONG_EDGE = 320
+const SOFT_VIDEO_MAX_JPEG_BYTES = 8_800
+const SOFT_VIDEO_QUALITY_STEPS = [0.5, 0.4, 0.32, 0.25, 0.18]
+/** Remote video is shown this long after its fastest observed transit (≈ audio delay). */
+const REMOTE_VIDEO_PLAYOUT_DELAY_MS = 300
+
+/** Browser counterpart of the shells' `[VideoStats]` 2 s window. */
+function newSoftVideoStats() {
+	return {
+		windowStart: Date.now(),
+		txCap: 0,
+		txSent: 0,
+		txFail: 0,
+		txJpegBytes: 0,
+		txEncodeMs: 0,
+		txSendMs: 0,
+		txOversize: 0,
+		rxIn: 0,
+		rxShown: 0,
+		rxSuperseded: 0,
+		rxBytes: 0,
+		rxLatSum: 0,
+		rxLatN: 0,
+	}
+}
+
+function flushSoftVideoStats(stats: ReturnType<typeof newSoftVideoStats>, peerCaps: number): ReturnType<typeof newSoftVideoStats> {
+	const now = Date.now()
+	const seconds = (now - stats.windowStart) / 1000
+	if (seconds < 2) return stats
+	if (stats.txCap > 0 || stats.rxIn > 0) {
+		const avg = (sum: number, n: number) => (n > 0 ? Math.round(sum / n) : 0)
+		const fps = (n: number) => (n / Math.max(seconds, 0.1)).toFixed(1)
+		console.info([
+			`[VideoStats] mode=${peerCaps >= 2 ? 'v2' : 'v1'} peerCaps=${peerCaps}`,
+			`tx cap=${stats.txCap} sent=${stats.txSent} fail=${stats.txFail} oversize=${stats.txOversize} fps=${fps(stats.txSent)}`,
+			`jpegAvg=${avg(stats.txJpegBytes, stats.txSent)}B encAvg=${avg(stats.txEncodeMs, stats.txCap)}ms sendAvg=${avg(stats.txSendMs, stats.txSent + stats.txFail)}ms`,
+			`| rx in=${stats.rxIn} shown=${stats.rxShown} superseded=${stats.rxSuperseded} fps=${fps(stats.rxShown)} bytesAvg=${avg(stats.rxBytes, stats.rxIn)}B`,
+			`latAvg=${avg(stats.rxLatSum, stats.rxLatN)}ms`,
+		].join(' '))
+	}
+	return newSoftVideoStats()
+}
+
+/**
+ * Draw the camera frame with its long edge at most SOFT_VIDEO_LONG_EDGE and
+ * step JPEG quality (then size) down until it fits the relay limit.
+ */
+async function encodeSoftVideoJpeg(
+	source: HTMLVideoElement,
+	canvas: HTMLCanvasElement,
+	ctx: CanvasRenderingContext2D,
+): Promise<{ jpeg: Uint8Array; w: number; h: number } | null> {
+	const srcW = source.videoWidth
+	const srcH = source.videoHeight
+	if (srcW < 2 || srcH < 2) return null
+	let scale = Math.min(1, SOFT_VIDEO_LONG_EDGE / Math.max(srcW, srcH))
+	for (let attempt = 0; attempt < 3; attempt += 1) {
+		const w = Math.max(16, Math.round(srcW * scale))
+		const h = Math.max(16, Math.round(srcH * scale))
+		if (canvas.width !== w || canvas.height !== h) {
+			canvas.width = w
+			canvas.height = h
+		}
+		ctx.drawImage(source, 0, 0, w, h)
+		for (const quality of SOFT_VIDEO_QUALITY_STEPS) {
+			const blob = await new Promise<Blob | null>((resolve) => {
+				canvas.toBlob((b) => resolve(b), 'image/jpeg', quality)
+			})
+			if (blob && blob.size > 64 && blob.size < SOFT_VIDEO_MAX_JPEG_BYTES) {
+				return { jpeg: new Uint8Array(await blob.arrayBuffer()), w, h }
+			}
+		}
+		scale *= 0.8
+	}
+	return null
+}
+
 export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction, onAutoVoiceCallActionHandled, onVoiceCallActive, onShowThread, threadHidden = false }: ChatProps) {
 	const navigate = useNavigate()
 	const [text, setText] = useState("")
@@ -2027,6 +2110,18 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 	const softLocalVideoElRef = useRef<HTMLVideoElement | null>(null)
 	const softVideoFrameIdRef = useRef(0)
 	const remoteVideoBlobUrlRef = useRef<string | null>(null)
+	/** Peer's announced video capability (`voice_media_caps_v1`); 0 = older peer. */
+	const peerVideoCapsRef = useRef(0)
+	/** Next split-seq video number (offset from VOICE_VIDEO_SEQ_BASE). */
+	const softVideoSeqRef = useRef(0)
+	/** Remote frame pacing: capture time of the newest frame shown, fastest transit seen. */
+	const remoteVideoShownCaptureRef = useRef(0)
+	const remoteVideoMinDeltaRef = useRef<number | null>(null)
+	/** Remote frames go straight to this element; only the first frame touches React state. */
+	const remoteVideoImgRef = useRef<HTMLImageElement | null>(null)
+	const remoteVideoHasFrameRef = useRef(false)
+	const sendMediaCapsRef = useRef<(reason: string) => void>(() => {})
+	const softVideoStatsRef = useRef(newSoftVideoStats())
 	const voiceCallStreamRef = useRef<MediaStream | null>(null)
 	/** Android: open mic while Telecom is still RINGING (MODE_RINGTONE). */
 	const androidIncomingMicPrewarmRef = useRef<MediaStream | null>(null)
@@ -2974,8 +3069,66 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 		if (prev) {
 			try { URL.revokeObjectURL(prev) } catch { /* ignore */ }
 		}
+		remoteVideoHasFrameRef.current = false
+		remoteVideoShownCaptureRef.current = 0
+		remoteVideoMinDeltaRef.current = null
 		setRemoteVoiceVideoUrl(null)
 		setPeerVoiceVideoEnabled(false)
+	}, [])
+
+	/** The remote `<img>` takes its first frame from the ref when it mounts. */
+	const attachRemoteVideoImg = useCallback((el: HTMLImageElement | null) => {
+		remoteVideoImgRef.current = el
+		if (el && remoteVideoBlobUrlRef.current) el.src = remoteVideoBlobUrlRef.current
+	}, [])
+
+	/**
+	 * Show one remote frame. Frames with a capture time (BJP2) keep the sender's
+	 * cadence: each is shown at capture + fastest transit + a fixed delay, and a
+	 * frame older than one already shown is dropped. Only the first frame goes
+	 * through React state; later ones swap the `<img>` source directly, so the
+	 * chat page does not re-render on every frame.
+	 */
+	const showRemoteVideoFrame = useCallback((decoded: BjpgDecodedFrame) => {
+		const stats = softVideoStatsRef.current
+		const display = () => {
+			if (decoded.captureMs > 0) {
+				if (decoded.captureMs < remoteVideoShownCaptureRef.current) {
+					stats.rxSuperseded += 1
+					return
+				}
+				remoteVideoShownCaptureRef.current = decoded.captureMs
+			}
+			const url = URL.createObjectURL(new Blob([decoded.jpeg], { type: 'image/jpeg' }))
+			const prev = remoteVideoBlobUrlRef.current
+			remoteVideoBlobUrlRef.current = url
+			const img = remoteVideoImgRef.current
+			if (img) img.src = url
+			if (!remoteVideoHasFrameRef.current) {
+				remoteVideoHasFrameRef.current = true
+				setPeerVoiceVideoEnabled(true)
+				setRemoteVoiceVideoUrl(url)
+			}
+			if (prev) {
+				try { URL.revokeObjectURL(prev) } catch { /* ignore */ }
+			}
+			stats.rxShown += 1
+		}
+		if (decoded.captureMs <= 0) {
+			display()
+			return
+		}
+		const now = Date.now()
+		const delta = now - decoded.captureMs
+		stats.rxLatSum += delta
+		stats.rxLatN += 1
+		// Track the fastest transit; relax slowly so a slower path is adopted.
+		const prevMin = remoteVideoMinDeltaRef.current
+		const minDelta = prevMin === null ? delta : Math.min(delta, prevMin + 2)
+		remoteVideoMinDeltaRef.current = minDelta
+		const waitMs = Math.max(0, decoded.captureMs + minDelta + REMOTE_VIDEO_PLAYOUT_DELAY_MS - now)
+		if (waitMs <= 0) display()
+		else setTimeout(display, waitMs)
 	}, [])
 
 	// Soft local PiP mounts only when softLocalVideoOn — bind stream after paint.
@@ -3002,10 +3155,14 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 		setVoiceVideoNote(null)
 	}, [])
 
-	/** Soft BJPG / control uplink — shares seq with PCM; mediaKind marks video. */
+	/**
+	 * Soft BJPG / control uplink. Controls and old-style BJPG share seq with PCM;
+	 * split-seq video (peer announced video ≥ 2) passes its own `seqOverride`.
+	 */
 	const sendSoftVoiceUplink = useCallback(async (
 		plain: Uint8Array,
 		mediaKind?: 'video',
+		seqOverride?: number,
 	): Promise<boolean> => {
 		const key = voiceCallKeyRef.current
 		const targetSessionId = voiceCallPeerSessionRef.current
@@ -3033,12 +3190,32 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 			sessionId: localSessionId,
 			targetSessionId,
 			...(peerWallet ? { to: peerWallet } : {}),
-			seq: voiceFrameSeqRef.current++,
+			seq: seqOverride ?? voiceFrameSeqRef.current++,
 			timestamp: Math.floor(Date.now() / 1000),
 			...(mediaKind ? { mediaKind } : {}),
 			payload,
 		})
 	}, [chatData, toAddress])
+
+	/**
+	 * Announce what this page can receive (`voice_media_caps_v1`, AES control).
+	 * Only when the page itself carries the call media (not inside a native shell).
+	 */
+	sendMediaCapsRef.current = (reason: string) => {
+		if (isCashTreesNativeWebView()) return
+		const callId = voiceCallOfferRef.current?.callId || ''
+		const localSessionId = voiceCallSessionRef.current?.trim() || ''
+		if (!callId || !localSessionId) return
+		const body = new TextEncoder().encode(JSON.stringify({
+			type: 'voice_media_caps_v1',
+			callId,
+			sessionId: localSessionId,
+			video: VOICE_LOCAL_VIDEO_CAPS,
+			timestamp: Date.now(),
+		}))
+		void sendSoftVoiceUplink(body)
+		console.info('[voice-video] media caps sent', reason)
+	}
 
 	const toggleSoftLocalVideo = useCallback(async () => {
 		if (softLocalVideoOn) {
@@ -3086,12 +3263,12 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 					type: 'voice_video_enable_v1',
 					callId,
 					sessionId: localSessionId,
+					// The peer learns our capability even if a caps frame was lost.
+					video: VOICE_LOCAL_VIDEO_CAPS,
 					timestamp: Date.now(),
 				}))
 				void sendSoftVoiceUplink(body)
 			}
-			const videoTrack = stream.getVideoTracks()[0]
-			const settings = videoTrack?.getSettings?.() || {}
 			const canvas = document.createElement('canvas')
 			const ctx = canvas.getContext('2d')
 			const probe = document.createElement('video')
@@ -3120,22 +3297,37 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 					void (async () => {
 						if (cancelled) return
 						try {
-							const w = Math.max(1, Math.floor(probe.videoWidth || Number(settings.width) || 320))
-							const h = Math.max(1, Math.floor(probe.videoHeight || Number(settings.height) || 240))
-							if (canvas.width !== w || canvas.height !== h) {
-								canvas.width = w
-								canvas.height = h
+							if (!ctx) return
+							const stats = softVideoStatsRef.current
+							const captureMs = Date.now()
+							stats.txCap += 1
+							// 320 px long edge and ≤ 8.8 KB, like the shells: the relay
+							// rejects larger payloads, so full 640×480 frames never arrived.
+							const encoded = await encodeSoftVideoJpeg(probe, canvas, ctx)
+							stats.txEncodeMs += Date.now() - captureMs
+							if (!encoded) {
+								stats.txOversize += 1
+								return
 							}
-							if (!ctx || w < 2 || h < 2) return
-							ctx.drawImage(probe, 0, 0, w, h)
-							const blob = await new Promise<Blob | null>((resolve) => {
-								canvas.toBlob((b) => resolve(b), 'image/jpeg', 0.72)
-							})
-							if (!blob || cancelled) return
-							const jpeg = new Uint8Array(await blob.arrayBuffer())
+							if (cancelled) return
+							const { jpeg, w, h } = encoded
 							softVideoFrameIdRef.current += 1
-							const framed = encodeBjpgFrame(jpeg, w, h, softVideoFrameIdRef.current)
-							const sent = await sendSoftVoiceUplink(framed, 'video')
+							// Split seq + capture time only for peers that announced it.
+							const split = peerVideoCapsRef.current >= 2
+							const framed = split
+								? encodeBjp2Frame(jpeg, w, h, softVideoFrameIdRef.current, captureMs)
+								: encodeBjpgFrame(jpeg, w, h, softVideoFrameIdRef.current)
+							const seqOverride = split ? VOICE_VIDEO_SEQ_BASE + (++softVideoSeqRef.current) : undefined
+							const sendStarted = Date.now()
+							const sent = await sendSoftVoiceUplink(framed, 'video', seqOverride)
+							stats.txSendMs += Date.now() - sendStarted
+							if (sent) {
+								stats.txSent += 1
+								stats.txJpegBytes += jpeg.length
+							} else {
+								stats.txFail += 1
+							}
+							softVideoStatsRef.current = flushSoftVideoStats(stats, peerVideoCapsRef.current)
 							notePeerVideo({
 								localSent: sent,
 								frameId: softVideoFrameIdRef.current,
@@ -3184,6 +3376,9 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 		voiceReceivedSeqRef.current = -1
 		voiceReceivedSeqsRef.current.clear()
 		voiceMediaStartingRef.current = false
+		peerVideoCapsRef.current = 0
+		softVideoSeqRef.current = 0
+		softVideoStatsRef.current = newSoftVideoStats()
 		const controller = voiceControllerRef.current
 		voiceControllerRef.current = null
 		try { voiceCaptureStopRef.current?.() } catch { /* already stopped */ }
@@ -4659,7 +4854,22 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 					void endVoiceCall('ended', false)
 					return
 				}
+				if (control?.type === 'voice_media_caps_v1') {
+					const video = Number((control as { video?: unknown }).video || 0)
+					if (video > 0) {
+						const first = peerVideoCapsRef.current === 0
+						peerVideoCapsRef.current = video
+						console.info('[voice-video] peer media caps', video)
+						// Reply once so both sides know even if our first announcement was lost.
+						if (first) sendMediaCapsRef.current('reply')
+					}
+					return
+				}
 				if (control?.type === 'voice_video_enable_v1') {
+					const video = Number((control as { video?: unknown }).video || 0)
+					if (video > 0) peerVideoCapsRef.current = video
+					// The peer is about to send video: make sure it knows what we can receive.
+					sendMediaCapsRef.current('peer-video-on')
 					setPeerVoiceVideoEnabled(true)
 					const host = window as Window & { __voicePeerVideo?: Record<string, unknown> }
 					host.__voicePeerVideo = {
@@ -4694,6 +4904,21 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 				callTonesRef.current?.stopRingback()
 				const seq = Number(frame.seq)
 				if (!Number.isSafeInteger(seq) || seq < 0) return
+				// Split-seq video: its own seq range, never mixed into the audio seq
+				// bookkeeping below (the worker already dropped duplicates).
+				if (seq >= VOICE_VIDEO_SEQ_BASE) {
+					const decoded = decodeBjpgFrame(plain)
+					const stats = softVideoStatsRef.current
+					if (!decoded) {
+						notePeerRx({ rxFail: 'video_decode', seq })
+						return
+					}
+					stats.rxIn += 1
+					stats.rxBytes += plain.length
+					showRemoteVideoFrame(decoded)
+					softVideoStatsRef.current = flushSoftVideoStats(stats, peerVideoCapsRef.current)
+					return
+				}
 				// Fan-out through multiple entry nodes can deliver the same frame more
 				// than once. Never enqueue duplicates or old frames into the PCM player.
 				if (
@@ -4725,15 +4950,10 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 						}
 						return
 					}
-					const blob = new Blob([decoded.jpeg], { type: 'image/jpeg' })
-					const url = URL.createObjectURL(blob)
-					const prev = remoteVideoBlobUrlRef.current
-					remoteVideoBlobUrlRef.current = url
-					if (prev) {
-						try { URL.revokeObjectURL(prev) } catch { /* ignore */ }
-					}
-					setPeerVoiceVideoEnabled(true)
-					setRemoteVoiceVideoUrl(url)
+					softVideoStatsRef.current.rxIn += 1
+					softVideoStatsRef.current.rxBytes += plain.length
+					showRemoteVideoFrame(decoded)
+					softVideoStatsRef.current = flushSoftVideoStats(softVideoStatsRef.current, peerVideoCapsRef.current)
 					host.__voicePeerVideo = {
 						...(host.__voicePeerVideo || {}),
 						rxOk: true,
@@ -4780,7 +5000,7 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 				setVoiceError('Incoming voice audio could not be decoded.')
 			}
 		})()
-	}), [clearSoftRemoteVideo, endVoiceCall, voiceCallState])
+	}), [clearSoftRemoteVideo, endVoiceCall, showRemoteVideoFrame, voiceCallState])
 
 	const openMultisigFromChat = useCallback(
 		(messageText: string, isMeMessage: boolean, taskId: string, aaAccount?: string) => {
@@ -7009,7 +7229,7 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 						<div className="absolute inset-0" aria-label="Remote video">
 							{remoteVoiceVideoUrl ? (
 								<img
-									src={remoteVoiceVideoUrl}
+									ref={attachRemoteVideoImg}
 									alt=""
 									className="h-full w-full object-cover"
 									draggable={false}

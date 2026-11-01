@@ -1,4 +1,5 @@
 import type { VoiceFrame } from './types.js'
+import { VOICE_VIDEO_SEQ_BASE } from './types.js'
 
 export type VoiceFrameDirection = 'inbound' | 'outbound' | 'uplink' | 'downlink'
 export interface VoiceFrameChunk extends VoiceFrame {
@@ -87,6 +88,8 @@ function reassemble(group: VoiceFrameChunk[]): VoiceFrameChunk {
 }
 export class VoiceFrameReorderBuffer {
 	private readonly streams = new Map<string, StreamState>()
+	/** Split-seq video already delivered, per session (duplicate guard). */
+	private readonly videoSeen = new Map<string, Set<number>>()
 	private readonly reorderDelayMs: number
 	private readonly videoReorderDelayMs: number
 	private readonly maxPendingChunks: number
@@ -102,6 +105,7 @@ export class VoiceFrameReorderBuffer {
 	push(frame: VoiceFrameChunk, now = Date.now()): VoiceFrameChunk[] {
 		if (frame.type !== 'voice_frame_v1' || !frame.sessionId || !Number.isSafeInteger(frame.seq)
 			|| frame.seq < 0 || typeof frame.payload !== 'string' || !validChunkShape(frame)) return []
+		if (frame.seq >= VOICE_VIDEO_SEQ_BASE) return this.passVideo(frame)
 		const key = streamKey(frame)
 		const state = this.streams.get(key) ?? this.createState(key)
 		if (state.nextSeq === null) state.nextSeq = frame.seq
@@ -157,7 +161,30 @@ export class VoiceFrameReorderBuffer {
 		}
 		return delivered
 	}
+	/**
+	 * Split-seq video bypasses the audio stream state: deliver at once (the UI
+	 * orders frames by the capture time inside the payload), drop duplicates.
+	 */
+	private passVideo(frame: VoiceFrameChunk): VoiceFrameChunk[] {
+		const key = streamKey(frame)
+		let seen = this.videoSeen.get(key)
+		if (!seen) {
+			seen = new Set()
+			this.videoSeen.set(key, seen)
+		}
+		if (seen.has(frame.seq)) return []
+		seen.add(frame.seq)
+		if (seen.size > 256) {
+			const floor = frame.seq - 128
+			for (const s of seen) if (s < floor) seen.delete(s)
+		}
+		this.emit({ type: 'frame', frame })
+		return [frame]
+	}
 	clear(sessionId?: string): void {
+		for (const key of this.videoSeen.keys()) {
+			if (!sessionId || key.startsWith(`${sessionId}:`)) this.videoSeen.delete(key)
+		}
 		for (const [key, state] of this.streams) {
 			if (sessionId && !key.startsWith(`${sessionId}:`)) continue
 			if (state.timer !== null) clearTimeout(state.timer)

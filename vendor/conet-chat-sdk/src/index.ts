@@ -83,3 +83,4 @@ export type {
 	VoiceFrame,
 } from './types.js'
 export type { VoiceConflictEvent, VoiceGapEvent, VoiceFrameChunk } from './voice-reorder.js'
+export { VOICE_VIDEO_SEQ_BASE } from './types.js'

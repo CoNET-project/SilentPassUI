@@ -23,7 +23,7 @@ import { getRandomNode, getRandomNodes, markGossipNodeBad, markGossipNodeHealthy
 import { base64ToUtf8, keccakUtf8, utf8ToBase64 } from '../crypto.js';
 import { GROUP_V1_MAX_MEMBERS, assertGroupRosterV1, classifyGroupPlaintext, createGroupMessageV1, createPaddedGroupDeliveryPacket, groupRosterHash, looksLikeGroupText, normalizeGroupAddress, signGroupObject, } from '../group.js';
 import { armorToString, buildPostBody, encryptOpaqueVoiceCommand, encryptRouteCommand, wrapArmorToEntryRoute, wrapArmorToMailboxWork } from '../envelope.js';
-import { VoiceFrameReorderBuffer } from '../voice-reorder.js';
+import { DEFAULT_VIDEO_REORDER_DELAY_MS, DEFAULT_VOICE_REORDER_DELAY_MS, VoiceFrameReorderBuffer, } from '../voice-reorder.js';
 const GOSSIP_STOP_REASONS = new Set([
     'root_stop',
     'replaced_by_new_connection',
@@ -134,6 +134,10 @@ export class GossipCore {
         this.listenController = null;
         this.voiceListenController = null;
         this.voiceReorder = new VoiceFrameReorderBuffer({
+            // Voice jitter ~120ms; video fragment groups ~200ms. Do not skip_ahead
+            // immediately when a later seq arrives first — wait then timeout.
+            reorderDelayMs: DEFAULT_VOICE_REORDER_DELAY_MS,
+            videoReorderDelayMs: DEFAULT_VIDEO_REORDER_DELAY_MS,
             onEvent: (event) => {
                 if (event.type === 'frame')
                     this.emit.voiceFrame(event.frame);
@@ -816,7 +820,12 @@ export class GossipCore {
         this.emit.group(payload);
         return true;
     }
-    async postToEntries(innerArmor, excludeDomains) {
+    /**
+     * POST armor to entry nodes. Text gossip may fan out in parallel.
+     * Voice/video media frames must pass `{ fanout: 1 }` so a single seq is
+     * delivered once (any one 2xx succeeds; wave2 is retry only, not a duplicate).
+     */
+    async postToEntries(innerArmor, excludeDomains, options) {
         const send = async (targets) => {
             if (!targets.length)
                 return false;
@@ -846,12 +855,14 @@ export class GossipCore {
             }));
             return results.some(Boolean);
         };
-        const fanout = this.cfg?.runtime.sendFanout ?? 3;
-        const wave1 = await pickGossipEntryNodesForSend(this.nodes, Math.min(fanout + 1, this.nodes.length), excludeDomains);
+        const fanout = options?.fanout ?? this.cfg?.runtime.sendFanout ?? 3;
+        // Media: exactly one entry per wave. Text: historical fanout+1 parallel picks.
+        const pickCount = fanout <= 1 ? 1 : Math.min(fanout + 1, Math.max(1, this.nodes.length));
+        const wave1 = await pickGossipEntryNodesForSend(this.nodes, pickCount, excludeDomains);
         if (await send(wave1))
             return true;
         const tried = new Set([...excludeDomains, ...wave1.map((n) => n.domain)]);
-        const wave2 = await pickGossipEntryNodesForSend(this.nodes, Math.min(fanout + 1, this.nodes.length), tried);
+        const wave2 = await pickGossipEntryNodesForSend(this.nodes, pickCount, tried);
         return send(wave2);
     }
     // ---- Presence (wallet_online_query, encrypt to mailbox B, POST via C ≠ B) --
@@ -1073,15 +1084,15 @@ export class GossipCore {
             this.emit.log('warn', `sendVoiceFrame rejected: callId=${!!candidate.callId} session=${!!candidate.sessionId} to=${!!to} targetSession=${targetSessionOk} seq=${candidate.seq} payload=${typeof candidate.payload === 'string' ? candidate.payload.length : 0}`);
             return false;
         }
+        // The peer's mailbox decrypts this command, so it carries only what the
+        // relay needs (CoNET Chat protocol): no sender or recipient wallet. The
+        // sessionId is the capability; identity stays inside the AES payload.
         const command = {
             command: 'voice_uplink',
             type: 'voice_frame_v1',
-            walletAddress: this.wallet?.address,
-            from: this.wallet?.address,
             callId: candidate.callId,
             sessionId: candidate.sessionId,
             targetSessionId,
-            ...(to ? { to } : {}),
             direction: candidate.direction || 'uplink',
             seq: candidate.seq,
             frameTimestamp: candidate.timestamp,
@@ -1093,7 +1104,8 @@ export class GossipCore {
         };
         const innerArmor = await encryptOpaqueVoiceCommand(command, routerArmoredPublicKey);
         const mailboxDomains = new Set(pickRouteNodesByArmoredKey(this.nodes, routerArmoredPublicKey).map((n) => n.domain));
-        return this.postToEntries(innerArmor, mailboxDomains);
+        // One successful entry POST per frame — never parallel fanout of the same seq.
+        return this.postToEntries(innerArmor, mailboxDomains, { fanout: 1 });
     }
     async startVoiceListen(sessionId, pushWakeup) {
         const wallet = this.wallet;

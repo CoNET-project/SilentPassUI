@@ -1,4 +1,4 @@
-import { createOwnRegisterBackoff, OWN_ROUTE_RECHECK_DELAYS_MS, pickRecordedMailbox, planOwnChatRoute, readOwnChainState, recheckListenRoute, resolveCurrentMailbox } from './chatOwnRoutePlan'
+import { createOwnRegisterBackoff, OWN_ROUTE_RECHECK_DELAYS_MS, pickRecordedMailbox, planOwnChatRoute, readOwnChainState, recheckListenRoute, REGISTER_VERIFY_DELAYS_MS, resolveCurrentMailbox, verifyRegistration } from './chatOwnRoutePlan'
 import type { OwnChainRead } from './chatOwnRoutePlan'
 import type { OwnChainRecord, OwnMailbox, OwnPrivateBlob } from './chatOwnRoutePlan'
 
@@ -331,3 +331,42 @@ describe('createOwnRegisterBackoff', () => {
 	})
 })
 
+
+describe('verifyRegistration (RC3d R15: record shows a few seconds after the API reply)', () => {
+	const run = (replies: Array<string | null | 'throw'>, sleepOk = () => true) => {
+		const waits: number[] = []
+		let i = 0
+		return verifyRegistration<string>({
+			sleep: async (ms) => { waits.push(ms); return sleepOk() },
+			read: async () => {
+				const r = replies[i++]
+				if (r === 'throw') throw new Error('rpc down')
+				return r ?? null
+			},
+		}).then((out) => ({ ...out, waits }))
+	}
+
+	it('confirms on the first read when the record is already there', async () => {
+		expect(await run(['rec'])).toEqual({ record: 'rec', reads: 1, waits: [1_500] })
+	})
+
+	it('keeps reading while the chain still shows the old record (R15 case)', async () => {
+		expect(await run([null, 'rec'])).toEqual({ record: 'rec', reads: 2, waits: [1_500, 3_000] })
+	})
+
+	it('treats a failed read like "not yet" and tries again', async () => {
+		expect(await run(['throw', null, 'rec'])).toEqual({ record: 'rec', reads: 3, waits: [1_500, 3_000, 6_000] })
+	})
+
+	it('gives up after three reads, about 10.5 s in all', async () => {
+		const out = await run([null, null, null, 'late'])
+		expect(out).toEqual({ record: null, reads: 3, waits: [...REGISTER_VERIFY_DELAYS_MS] })
+		expect(out.waits.reduce((a, b) => a + b, 0)).toBe(10_500)
+	})
+
+	it('stops reading once the session ends', async () => {
+		let calls = 0
+		const out = await run(['rec'], () => ++calls < 1)
+		expect(out).toEqual({ record: null, reads: 0, waits: [1_500] })
+	})
+})

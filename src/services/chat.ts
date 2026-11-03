@@ -14,7 +14,7 @@ import { publishNativePwaLog } from '@/utils/cashTreesNativePwaLog'
 import { sendChatViaNativeDaemon, getWorkerGossipListenParams, getWorkerGossipRouteArmor, isWorkerGossipActive, isWorkerGossipBusy, isNativeChatListenOwner, pauseNativeChatListen, resumeNativeChatListen, retargetWorkerGossipRoute, startWorkerGossipListen, stopWorkerGossip } from '@/services/chatWorkerBridge'
 import { isCashTreesAndroidChatModuleAvailable, isCashTreesAndroidChatModuleRunning } from '@/utils/cashTreesAndroidConetChat'
 import { wrapArmorToMailboxWork } from '@conet.project/chat-sdk'
-import { createOwnRegisterBackoff, pickRecordedMailbox, planOwnChatRoute, readOwnChainState, recheckListenRoute, resolveCurrentMailbox } from '@/services/chatOwnRoutePlan'
+import { createOwnRegisterBackoff, pickRecordedMailbox, planOwnChatRoute, readOwnChainState, recheckListenRoute, resolveCurrentMailbox, verifyRegistration } from '@/services/chatOwnRoutePlan'
 import type { OwnPrivateBlob } from '@/services/chatOwnRoutePlan'
 
 function chatBootLog(message: string, level: 'info' | 'warn' | 'error' = 'info'): void {
@@ -433,21 +433,26 @@ export const initChat = async (setProfiles: (val: profile[]) => void, setAllNode
 					target.routeKeyID,
 				)
 				if (registered) {
-					await new Promise(resolve => setTimeout(resolve, 1500))
-					const verified = await getOwnKeysFromCoNETPGPSC(profile.privateKeyArmor)
-					const verifiedKeyID = (verified?.userPgpKeyID || '').toUpperCase()
-					if (
-						verified?.privateArmored?.trim() &&
-						localKeyID &&
-						verifiedKeyID === localKeyID
-					) {
+					// The record can take a few seconds to show: read up to 3 times (1.5/3/6 s).
+					const wantRoute = mailboxKeyId(target.routeKeyID || '')
+					const { record: verified, reads } = await verifyRegistration({
+						sleep: (ms) => new Promise<boolean>(resolve => setTimeout(() => resolve(true), ms)),
+						read: async () => {
+							const v = await getOwnKeysFromCoNETPGPSC(profile.privateKeyArmor)
+							if (!v?.privateArmored?.trim() || !v.routersArmoreds || !localKeyID) return null
+							if ((v.userPgpKeyID || '').toUpperCase() !== localKeyID) return null
+							if (wantRoute && mailboxKeyId(v.routePgpKeyID || '') !== wantRoute) return null
+							return v
+						},
+					})
+					if (verified) {
 						routes = verified.routersArmoreds || ''
 						routeConfirmed = Boolean(routes)
 						if (routeConfirmed) noteOwnMailboxVerified(ownWallet, verified.routePgpKeyID || '', routes)
-						chatBootLog('PGP chain/local key verified before gossip listen')
+						chatBootLog(`PGP chain/local key verified before gossip listen (read ${reads})`)
 					} else {
 						chatBootLog(
-							'PGP registration could not be verified; gossip listen will use the current key only if the route is valid',
+							`PGP registration not on chain after ${reads} reads; gossip listen will use the current key only if the route is valid`,
 							'error',
 						)
 					}
@@ -456,7 +461,8 @@ export const initChat = async (setProfiles: (val: profile[]) => void, setAllNode
 					ownRegisterBackoff.reset()
 				} else {
 					const waitMs = ownRegisterBackoff.fail(Date.now())
-					chatBootLog(`own mailbox: registration failed ${ownRegisterBackoff.failures()}x; next try in ${waitMs / 1000}s`, 'warn')
+					const what = registered ? 'registration not confirmed' : 'registration failed'
+					chatBootLog(`own mailbox: ${what} ${ownRegisterBackoff.failures()}x; next try in ${waitMs / 1000}s`, 'warn')
 				}
 				if (!registered && plan.target === 'random') {
 					// A new account whose registration failed has no mailbox yet.

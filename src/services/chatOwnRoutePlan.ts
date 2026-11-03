@@ -223,6 +223,33 @@ export function createOwnRegisterBackoff(delaysMs: readonly number[] = OWN_ROUTE
 	}
 }
 
+/** Waits before each chain read that checks a registration the API accepted (ms). */
+export const REGISTER_VERIFY_DELAYS_MS: readonly number[] = [1_500, 3_000, 6_000]
+
+/**
+ * After the API accepted a registration: read the chain until the record shows
+ * our user key and the registered mailbox. 2026-11-02 RC3d R15: one read 1.5 s
+ * after the API reply often still saw the old record, so a good registration
+ * was logged as failed and counted in the backoff. `read` returns null for a
+ * failed read or a record that does not match yet. Returns the first match,
+ * or null after the last read (or once `sleep` reports the session ended).
+ */
+export async function verifyRegistration<T>(deps: {
+	read: () => Promise<T | null>
+	sleep: (ms: number) => Promise<boolean>
+	delaysMs?: readonly number[]
+}): Promise<{ record: T | null; reads: number }> {
+	const delays = deps.delaysMs ?? REGISTER_VERIFY_DELAYS_MS
+	let reads = 0
+	for (const wait of delays) {
+		if (!(await deps.sleep(wait))) break
+		reads += 1
+		const record = await deps.read().catch(() => null)
+		if (record) return { record, reads }
+	}
+	return { record: null, reads }
+}
+
 /**
  * After a listen started on a mailbox no working chain read confirmed
  * (`keep-current`, or a registration that could not be verified): read the

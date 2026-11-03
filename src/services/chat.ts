@@ -315,21 +315,52 @@ export const initBeamioPGPKeys = async (profile: profile): Promise<initBeamioPGP
 	return ret
 }
 
+/**
+ * Message the wallet signs for `POST /api/regiestChatRoute` (EIP-191).
+ * Must match x402sdk `src/chatRouteAuth.ts` `buildRegiestChatRouteMessage`.
+ */
+const buildRegiestChatRouteMessage = (p: {
+	wallet: string
+	keyID: string
+	publicKeyArmored: string
+	encrypKeyArmored: string
+	routeKeyID: string
+	timestamp: number
+	nonce: string
+}): string => [
+	'Beamio regiestChatRoute',
+	`wallet:${p.wallet.toLowerCase()}`,
+	`keyID:${p.keyID}`,
+	`publicKeyArmoredHash:${ethers.keccak256(ethers.toUtf8Bytes(p.publicKeyArmored))}`,
+	`encrypKeyArmoredHash:${ethers.keccak256(ethers.toUtf8Bytes(p.encrypKeyArmored))}`,
+	`routeKeyID:${p.routeKeyID}`,
+	`timestamp:${p.timestamp}`,
+	`nonce:${p.nonce.toLowerCase()}`,
+].join('\n')
+
+/** Signed request body; the API rejects unsigned or foreign-signed requests. */
+const signRegiestChatRouteBody = async (privateKey: string, pubArmor: string, keyID: string, priArmor: string, routeKeyID: string) => {
+	const Wallet = new ethers.Wallet(privateKey)
+	const fields = {
+		wallet: Wallet.address,
+		keyID: String(keyID || '').trim(),
+		publicKeyArmored: toBase64(pubArmor).trim(),
+		encrypKeyArmored: String(await aesGcmEncrypt(priArmor, privateKey)).trim(),
+		routeKeyID: String(routeKeyID || '').trim(),
+		timestamp: Date.now(),
+		nonce: ethers.hexlify(ethers.randomBytes(16)),
+	}
+	const signature = await Wallet.signMessage(buildRegiestChatRouteMessage(fields))
+	return { ...fields, signature }
+}
+
 export const regiestChatRoute = async (privateKey: string, pubArmor: string, keyID: string, priArmor: string, routeKeyID: string) => {
-	const Wallet = new ethers.Wallet(privateKey, conetDepinProvider)
-	const encryptPri = await aesGcmEncrypt(priArmor, privateKey)
-	const publicKeyArmored = toBase64(pubArmor)
 	try {
+		const signedBody = await signRegiestChatRouteBody(privateKey, pubArmor, keyID, priArmor, routeKeyID)
 		const res = await fetch(`${beamioApi}/api/regiestChatRoute`, {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({
-				wallet: Wallet.address,
-				keyID,
-				publicKeyArmored,
-				encrypKeyArmored: encryptPri,
-				routeKeyID
-			})
+			body: JSON.stringify(signedBody)
 		})
 		const json = await res.json()
 		if (!res.ok) {

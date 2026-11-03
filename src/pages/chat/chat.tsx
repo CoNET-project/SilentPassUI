@@ -167,6 +167,8 @@ import {
 	voiceCallClaimMismatchesKey,
 	makeVoiceCallSignal,
 	type VoiceCallSignal,
+	withSettledIncomingOutcome,
+	askShellWhichIncomingCallsRang,
 	voicePeerRingingMatches,
 	wasVoicePeerRinging,
 	pageEndsSystemCall,
@@ -2353,11 +2355,13 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 		if (!currentProfiles.length) return
 		const current: PhoneCallRecord[] = Array.isArray(currentProfiles[0].phoneCalls) ? currentProfiles[0].phoneCalls : []
 		const previous = findPhoneCallByIds(current, patch)
-		const merged = mergePhoneCallRecord(previous, {
+		const mergedRow = mergePhoneCallRecord(previous, {
 			...patch,
 			createdAt: previous?.createdAt ?? patch.createdAt,
 		})
-		if (!merged) return
+		if (!mergedRow) return
+		// A replayed offer for a call the shell already ended must not ring the record.
+		const merged = withSettledIncomingOutcome(mergedRow)
 		const nextProfiles = currentProfiles.slice()
 		nextProfiles[0] = {
 			...currentProfiles[0],
@@ -2371,6 +2375,7 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 			setCoNET_Data(CoNET_Data)
 		}
 		void storeSystemData()
+		askShellWhichIncomingCallsRang(nextProfiles[0].phoneCalls)
 		// Patch live chat bubbles in place so "Calling…" upgrades even before phoneCalls re-merge.
 		setMessages(prev => {
 			let changed = false

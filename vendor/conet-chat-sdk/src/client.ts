@@ -29,7 +29,10 @@ import type {
 	NodeInfo,
 	Unsubscribe,
 } from './types.js'
-import type { WorkerInbound, WorkerInitPayload, WorkerOutbound } from './protocol.js'
+import { CHAT_DAEMON_PROTOCOL_VERSION } from './protocol.js'
+import type { ChatDaemonHello, VoiceOfferArgs, WorkerInbound, WorkerInitPayload, WorkerOutbound } from './protocol.js'
+import type { VoiceCallV3Config } from './voice-v3.js'
+import { negotiateChatDaemon } from './daemon.js'
 
 export interface BeamioChatClientOptions {
 	/**
@@ -151,6 +154,20 @@ class BeamioChatClientImpl implements BeamioChatClient {
 		await this.request<void>({ type: 'init', reqId: 0, payload }, 180_000)
 	}
 
+	/** `hello` (protocol v1). Null when the worker is not running or did not answer. */
+	async hello(): Promise<ChatDaemonHello | null> {
+		if (!this.worker) return null
+		try {
+			const result = await this.request<unknown>(
+				{ type: 'hello', reqId: 0, protocolVersion: CHAT_DAEMON_PROTOCOL_VERSION },
+				5_000,
+			)
+			return negotiateChatDaemon(result).status === 'negotiated' ? (result as ChatDaemonHello) : null
+		} catch {
+			return null
+		}
+	}
+
 	setRoutes(routes: ChatRoute[]): void {
 		this.routes = routes || []
 		this.postCommand({ type: 'setRoutes', routes: this.routes })
@@ -231,24 +248,15 @@ class BeamioChatClientImpl implements BeamioChatClient {
 		return !!r?.sent
 	}
 
-	async startVoiceListen(
-		sessionId: string,
-		pushWakeup?: {
-			callId: string
-			calleeEoa: string
-			expiresAt: number
-			timestamp: number
-			offerText?: string
-			recipientPgp?: string
-			calleeRoute?: string
-		},
-		channelKey?: string,
-	): Promise<boolean> {
-		// Offer encryption plus the 12s mailbox handshake can run past 25s.
-		// Timing out here makes the call screen say the relay failed while
-		// the worker is still opening it.
-		const r = await this.request<{ started: boolean }>({ type: 'voiceListen', reqId: 0, sessionId, pushWakeup, channelKey }, 45_000)
+	async startVoiceListen(sessionId: string, call?: VoiceCallV3Config): Promise<boolean> {
+		// Two relay handshakes (12 s each, a retry on another relay) can run past 25 s.
+		const r = await this.request<{ started: boolean }>({ type: 'voiceListen', reqId: 0, sessionId, call }, 45_000)
 		return !!r?.started
+	}
+
+	async sendVoiceOffer(offer: VoiceOfferArgs): Promise<{ ok: boolean; pushed: boolean }> {
+		const r = await this.request<{ ok: boolean; pushed: boolean }>({ type: 'voiceOffer', reqId: 0, offer }, 30_000)
+		return { ok: !!r?.ok, pushed: !!r?.pushed }
 	}
 
 	async stopVoiceListen(sessionId: string): Promise<boolean> {

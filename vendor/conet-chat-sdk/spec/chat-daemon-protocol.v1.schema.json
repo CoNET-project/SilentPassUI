@@ -1,0 +1,2635 @@
+{
+	"$schema": "http://json-schema.org/draft-07/schema#",
+	"$id": "https://github.com/CoNET-project/chat-sdk/spec/chat-daemon-protocol.v1.schema.json",
+	"title": "ChatDaemon protocol v1",
+	"description": "Generated from @conet.project/chat-sdk src/protocol.ts by scripts/genDaemonSchema.ts. Do not edit by hand. A message is either a ChatDaemonCommand (page → daemon) or a ChatDaemonOutbound (daemon → page).",
+	"x-protocolVersion": 1,
+	"x-capabilities": [
+		"identity.provision",
+		"signing.local",
+		"lifecycle.daemon",
+		"inbound.deferAck",
+		"history.v2",
+		"call.control",
+		"voice.channelV2",
+		"voice.delegated",
+		"group.v1",
+		"presence.query",
+		"mailbox.command",
+		"send.mailboxWrap"
+	],
+	"anyOf": [
+		{
+			"$ref": "#/definitions/ChatDaemonCommand"
+		},
+		{
+			"$ref": "#/definitions/ChatDaemonOutbound"
+		}
+	],
+	"definitions": {
+		"AckErrorEvent": {
+			"type": "object",
+			"properties": {
+				"type": {
+					"type": "string",
+					"const": "ack"
+				},
+				"reqId": {
+					"type": "number"
+				},
+				"ok": {
+					"type": "boolean",
+					"const": false
+				},
+				"error": {
+					"type": "string",
+					"description": "Short code, never key material or plaintext (e.g. `unknown_command`, `bad_identity`)."
+				}
+			},
+			"required": [
+				"type",
+				"reqId",
+				"ok",
+				"error"
+			],
+			"additionalProperties": false
+		},
+		"AckInboundCommand": {
+			"type": "object",
+			"properties": {
+				"type": {
+					"type": "string",
+					"const": "ackInbound"
+				},
+				"armorHashes": {
+					"type": "array",
+					"items": {
+						"type": "string"
+					}
+				},
+				"armorHash": {
+					"type": "string",
+					"description": "Single-hash form accepted by native daemons."
+				}
+			},
+			"required": [
+				"type",
+				"armorHashes"
+			],
+			"additionalProperties": false,
+			"description": "The page stored these inbound messages (capability `inbound.deferAck`): send the mailbox ACK and the sender receipt now.",
+			"x-privacy": {
+				"walletSignature": [
+					"ownMailbox",
+					"recipientLayer"
+				],
+				"viaEntry": true,
+				"nodeSees": "Own mailbox B: `gossip_delivery_ack` (own wallet + armor hash). Sender: a `beamio_chat_delivery_receipt_v1` sent like `send` with NoPush (receipt and our signature only inside the sender's user-PGP layer).",
+				"rules": [
+					14,
+					16,
+					18,
+					19,
+					22
+				]
+			}
+		},
+		"AckOkEvent": {
+			"type": "object",
+			"properties": {
+				"type": {
+					"type": "string",
+					"const": "ack"
+				},
+				"reqId": {
+					"type": "number"
+				},
+				"ok": {
+					"type": "boolean",
+					"const": true
+				},
+				"result": {}
+			},
+			"required": [
+				"type",
+				"reqId",
+				"ok"
+			],
+			"additionalProperties": false
+		},
+		"ChatDaemonCapability": {
+			"type": "string",
+			"enum": [
+				"identity.provision",
+				"signing.local",
+				"lifecycle.daemon",
+				"inbound.deferAck",
+				"history.v2",
+				"call.control",
+				"voice.channelV2",
+				"voice.delegated",
+				"group.v1",
+				"presence.query",
+				"mailbox.command",
+				"send.mailboxWrap"
+			]
+		},
+		"ChatDaemonCommand": {
+			"anyOf": [
+				{
+					"$ref": "#/definitions/HelloCommand"
+				},
+				{
+					"$ref": "#/definitions/ProvisionIdentityCommand"
+				},
+				{
+					"$ref": "#/definitions/ClearIdentityCommand"
+				},
+				{
+					"$ref": "#/definitions/InitCommand"
+				},
+				{
+					"$ref": "#/definitions/SetRoutesCommand"
+				},
+				{
+					"$ref": "#/definitions/SetNodesCommand"
+				},
+				{
+					"$ref": "#/definitions/NodesResponseCommand"
+				},
+				{
+					"$ref": "#/definitions/SendCommand"
+				},
+				{
+					"$ref": "#/definitions/SendGroupCommand"
+				},
+				{
+					"$ref": "#/definitions/IssueGroupRosterCommand"
+				},
+				{
+					"$ref": "#/definitions/IssueGroupTombstoneCommand"
+				},
+				{
+					"$ref": "#/definitions/QueryPresenceCommand"
+				},
+				{
+					"$ref": "#/definitions/QueryNativeWakeCommand"
+				},
+				{
+					"$ref": "#/definitions/HistoryLoadCommand"
+				},
+				{
+					"$ref": "#/definitions/HistoryReadCommand"
+				},
+				{
+					"$ref": "#/definitions/HistoryAppendCommand"
+				},
+				{
+					"$ref": "#/definitions/MailboxCommandCommand"
+				},
+				{
+					"$ref": "#/definitions/OwnMailboxCommandCommand"
+				},
+				{
+					"$ref": "#/definitions/VoiceFrameCommand"
+				},
+				{
+					"$ref": "#/definitions/VoiceListenCommand"
+				},
+				{
+					"$ref": "#/definitions/VoiceOfferCommand"
+				},
+				{
+					"$ref": "#/definitions/VoiceUnlistenCommand"
+				},
+				{
+					"$ref": "#/definitions/AckInboundCommand"
+				},
+				{
+					"$ref": "#/definitions/PauseCommand"
+				},
+				{
+					"$ref": "#/definitions/ResumeCommand"
+				},
+				{
+					"$ref": "#/definitions/DestroyCommand"
+				}
+			],
+			"description": "Every command a daemon accepts."
+		},
+		"ChatDaemonHello": {
+			"type": "object",
+			"properties": {
+				"protocolVersion": {
+					"type": "number",
+					"description": "Newest protocol version the daemon speaks."
+				},
+				"minProtocolVersion": {
+					"type": "number",
+					"description": "Oldest protocol version the daemon still speaks (default: `protocolVersion`)."
+				},
+				"sdkVersion": {
+					"type": "string",
+					"description": "The daemon package version, e.g. `0.2.0` (TS), `0.1.8` (iOS), `0.2.6` (Android)."
+				},
+				"implementation": {
+					"$ref": "#/definitions/ChatDaemonImplementation"
+				},
+				"capabilities": {
+					"type": "array",
+					"items": {
+						"$ref": "#/definitions/ChatDaemonCapability"
+					}
+				}
+			},
+			"required": [
+				"protocolVersion",
+				"sdkVersion",
+				"implementation",
+				"capabilities"
+			],
+			"additionalProperties": false,
+			"description": "`hello` answer (`ack.result`)."
+		},
+		"ChatDaemonImplementation": {
+			"type": "string",
+			"enum": [
+				"ts-worker",
+				"ios",
+				"android"
+			],
+			"description": "Which implementation answered `hello`."
+		},
+		"ChatDaemonOutbound": {
+			"anyOf": [
+				{
+					"$ref": "#/definitions/ReadyEvent"
+				},
+				{
+					"$ref": "#/definitions/AckOkEvent"
+				},
+				{
+					"$ref": "#/definitions/AckErrorEvent"
+				},
+				{
+					"$ref": "#/definitions/InboundMessageEvent"
+				},
+				{
+					"$ref": "#/definitions/GroupEvent"
+				},
+				{
+					"$ref": "#/definitions/DeliveryEvent"
+				},
+				{
+					"$ref": "#/definitions/PresenceEventMessage"
+				},
+				{
+					"$ref": "#/definitions/StatusEventMessage"
+				},
+				{
+					"$ref": "#/definitions/HistoryBufferEventMessage"
+				},
+				{
+					"$ref": "#/definitions/VoiceFrameEvent"
+				},
+				{
+					"$ref": "#/definitions/VoiceGapEventMessage"
+				},
+				{
+					"$ref": "#/definitions/VoiceConflictEventMessage"
+				},
+				{
+					"$ref": "#/definitions/LogEvent"
+				},
+				{
+					"$ref": "#/definitions/NodesRequestEvent"
+				},
+				{
+					"$ref": "#/definitions/NodesResponseConsumeEvent"
+				}
+			]
+		},
+		"ChatIdentity": {
+			"type": "object",
+			"properties": {
+				"eoaAddress": {
+					"type": "string",
+					"description": "EOA address (checksummed or lower — SDK normalises)."
+				},
+				"privateKeyHex": {
+					"type": "string",
+					"description": "Raw ethers private key hex (with or without 0x). Used inside the worker to build an `ethers.Wallet` for EIP-191 signing and to derive the history master secret. Consumer/POS may inject a persisted key; bizSite injects a session-memory-only key. The SDK holds it only in the worker's memory."
+				},
+				"pgpPrivateKeyArmored": {
+					"type": "string",
+					"description": "Armored PGP private key for this identity's chat route (decrypts inbound)."
+				},
+				"pgpPassphrase": {
+					"type": "string",
+					"description": "Passphrase for the armored PGP private key, if any."
+				},
+				"pgpPublicKeyArmored": {
+					"type": "string",
+					"description": "Armored PGP public key (for regiestChatRoute / diagnostics)."
+				},
+				"ownRouteArmoredPublicKey": {
+					"type": "string",
+					"description": "This identity's own mailbox route armored public key (mailbox B)."
+				}
+			},
+			"required": [
+				"eoaAddress",
+				"privateKeyHex",
+				"pgpPrivateKeyArmored"
+			],
+			"additionalProperties": false,
+			"description": "Signing material + capabilities the host injects. The SDK never persists private keys itself."
+		},
+		"ChatRoute": {
+			"type": "object",
+			"properties": {
+				"address": {
+					"type": "string",
+					"description": "Contact EOA address (lower-case)."
+				},
+				"userPublicKeyArmored": {
+					"type": "string",
+					"description": "Recipient's user PGP public key — business payloads are encrypted to this."
+				},
+				"routerArmoredPublicKey": {
+					"type": "string",
+					"description": "Recipient mailbox B route armored public key — listen/ACK/mailbox work are encrypted to this."
+				},
+				"routePgpKeyID": {
+					"type": "string"
+				}
+			},
+			"required": [
+				"address",
+				"userPublicKeyArmored"
+			],
+			"additionalProperties": false,
+			"description": "Per-contact chat route metadata resolved from AddressPGP."
+		},
+		"ChatStatus": {
+			"type": "string",
+			"enum": [
+				"idle",
+				"connecting",
+				"listening",
+				"reconnecting",
+				"paused",
+				"error"
+			]
+		},
+		"ClearIdentityCommand": {
+			"type": "object",
+			"properties": {
+				"type": {
+					"type": "string",
+					"const": "clearIdentity"
+				},
+				"reqId": {
+					"type": "number"
+				}
+			},
+			"required": [
+				"type",
+				"reqId"
+			],
+			"additionalProperties": false,
+			"description": "Logout / wallet switch / wallet removal: stop, forget keys, inbox store and session. Answer: `ack { ok }`.",
+			"x-privacy": {
+				"walletSignature": [],
+				"viaEntry": false,
+				"nodeSees": "Nothing. Local wipe of keys, inbox store and session.",
+				"rules": []
+			}
+		},
+		"CommandPrivacy": {
+			"type": "object",
+			"properties": {
+				"walletSignature": {
+					"type": "array",
+					"items": {
+						"$ref": "#/definitions/WalletSignaturePath"
+					},
+					"description": "Wallet signature paths this command can produce (empty = none)."
+				},
+				"viaEntry": {
+					"type": "boolean",
+					"description": "`true`: POST through entry nodes (never directly to a mailbox). `false`: no CoNET node traffic."
+				},
+				"nodeSees": {
+					"type": "string",
+					"description": "What CoNET nodes (entry, mailbox) and other services can read in plaintext."
+				},
+				"rules": {
+					"type": "array",
+					"items": {
+						"type": "number"
+					},
+					"description": "Rules (13–23) this command must satisfy."
+				},
+				"gap": {
+					"type": "string",
+					"description": "Open item or known exception, if any."
+				}
+			},
+			"required": [
+				"walletSignature",
+				"viaEntry",
+				"nodeSees",
+				"rules"
+			],
+			"additionalProperties": false
+		},
+		"DeliveryEvent": {
+			"type": "object",
+			"properties": {
+				"type": {
+					"type": "string",
+					"const": "event:delivery"
+				},
+				"payload": {
+					"$ref": "#/definitions/DeliveryReceiptEvent"
+				}
+			},
+			"required": [
+				"type",
+				"payload"
+			],
+			"additionalProperties": false
+		},
+		"DeliveryReceiptEvent": {
+			"type": "object",
+			"properties": {
+				"sendId": {
+					"type": "string"
+				},
+				"deliveredAt": {
+					"type": "number",
+					"description": "Milliseconds since epoch."
+				},
+				"from": {
+					"type": "string",
+					"description": "Contact EOA that acknowledged."
+				},
+				"armorHash": {
+					"type": "string"
+				}
+			},
+			"required": [
+				"sendId",
+				"deliveredAt"
+			],
+			"additionalProperties": false
+		},
+		"DestroyCommand": {
+			"type": "object",
+			"properties": {
+				"type": {
+					"type": "string",
+					"const": "destroy"
+				}
+			},
+			"required": [
+				"type"
+			],
+			"additionalProperties": false,
+			"description": "End this page session. Native keeps the stored identity (use `clearIdentity` to forget it).",
+			"x-privacy": {
+				"walletSignature": [],
+				"viaEntry": false,
+				"nodeSees": "Nothing (the listen closes).",
+				"rules": []
+			}
+		},
+		"GroupAdminProposalV1": {
+			"type": "object",
+			"properties": {
+				"type": {
+					"type": "string",
+					"const": "conet_group_admin_proposal_v1"
+				},
+				"groupId": {
+					"type": "string"
+				},
+				"rosterHash": {
+					"type": "string"
+				},
+				"proposalId": {
+					"type": "string"
+				},
+				"createdAt": {
+					"type": "number"
+				},
+				"expiresAt": {
+					"type": "number"
+				},
+				"action": {
+					"type": "string",
+					"enum": [
+						"add_member",
+						"remove_member",
+						"add_admin",
+						"remove_admin",
+						"rename"
+					]
+				},
+				"value": {
+					"type": "object",
+					"additionalProperties": {}
+				},
+				"signer": {
+					"type": "string"
+				},
+				"signature": {
+					"type": "string"
+				}
+			},
+			"required": [
+				"type",
+				"groupId",
+				"rosterHash",
+				"proposalId",
+				"createdAt",
+				"expiresAt",
+				"action",
+				"value",
+				"signer",
+				"signature"
+			],
+			"additionalProperties": false
+		},
+		"GroupEvent": {
+			"type": "object",
+			"properties": {
+				"type": {
+					"type": "string",
+					"const": "event:group"
+				},
+				"payload": {
+					"$ref": "#/definitions/GroupInboundEvent"
+				}
+			},
+			"required": [
+				"type",
+				"payload"
+			],
+			"additionalProperties": false
+		},
+		"GroupInboundEvent": {
+			"type": "object",
+			"properties": {
+				"kind": {
+					"type": "string",
+					"enum": [
+						"roster",
+						"proposal",
+						"tombstone",
+						"message"
+					]
+				},
+				"recoveredFrom": {
+					"type": "string"
+				},
+				"receivedAt": {
+					"type": "number"
+				},
+				"roster": {
+					"$ref": "#/definitions/GroupRosterV1"
+				},
+				"proposal": {
+					"$ref": "#/definitions/GroupAdminProposalV1"
+				},
+				"tombstone": {
+					"$ref": "#/definitions/GroupTombstoneV1"
+				},
+				"message": {
+					"$ref": "#/definitions/GroupMessageV1"
+				}
+			},
+			"required": [
+				"kind",
+				"recoveredFrom",
+				"receivedAt"
+			],
+			"additionalProperties": false
+		},
+		"GroupIssueRosterRequest": {
+			"type": "object",
+			"properties": {
+				"name": {
+					"type": "string"
+				},
+				"memberEoas": {
+					"type": "array",
+					"items": {
+						"type": "string"
+					},
+					"description": "Other members. The worker adds the signing owner."
+				},
+				"routes": {
+					"type": "array",
+					"items": {
+						"$ref": "#/definitions/ChatRoute"
+					}
+				},
+				"expiresAt": {
+					"type": "number"
+				},
+				"groupId": {
+					"type": "string"
+				},
+				"previous": {
+					"anyOf": [
+						{
+							"$ref": "#/definitions/GroupRosterV1"
+						},
+						{
+							"type": "null"
+						}
+					]
+				},
+				"nextMemberEoas": {
+					"type": "array",
+					"items": {
+						"type": "string"
+					}
+				},
+				"nextAdmins": {
+					"type": "array",
+					"items": {
+						"type": "string"
+					}
+				}
+			},
+			"required": [
+				"name",
+				"memberEoas",
+				"routes",
+				"expiresAt"
+			],
+			"additionalProperties": false
+		},
+		"GroupIssueTombstoneRequest": {
+			"type": "object",
+			"properties": {
+				"roster": {
+					"$ref": "#/definitions/GroupRosterV1"
+				},
+				"routes": {
+					"type": "array",
+					"items": {
+						"$ref": "#/definitions/ChatRoute"
+					}
+				}
+			},
+			"required": [
+				"roster",
+				"routes"
+			],
+			"additionalProperties": false
+		},
+		"GroupMemberV1": {
+			"type": "object",
+			"properties": {
+				"eoa": {
+					"type": "string"
+				},
+				"pgpFingerprint": {
+					"type": "string"
+				},
+				"keyEpoch": {
+					"type": "number"
+				}
+			},
+			"required": [
+				"eoa",
+				"pgpFingerprint",
+				"keyEpoch"
+			],
+			"additionalProperties": false
+		},
+		"GroupMessageV1": {
+			"type": "object",
+			"properties": {
+				"type": {
+					"type": "string",
+					"const": "conet_group_message_v1"
+				},
+				"groupId": {
+					"type": "string"
+				},
+				"rosterHash": {
+					"type": "string"
+				},
+				"sendId": {
+					"type": "string"
+				},
+				"seq": {
+					"type": "number"
+				},
+				"createdAt": {
+					"type": "number"
+				},
+				"expiresAt": {
+					"type": "number"
+				},
+				"body": {
+					"type": "string"
+				},
+				"signer": {
+					"type": "string"
+				},
+				"signature": {
+					"type": "string"
+				}
+			},
+			"required": [
+				"type",
+				"groupId",
+				"rosterHash",
+				"sendId",
+				"seq",
+				"createdAt",
+				"expiresAt",
+				"body",
+				"signer",
+				"signature"
+			],
+			"additionalProperties": false
+		},
+		"GroupPolicyV1": {
+			"type": "object",
+			"properties": {
+				"name": {
+					"type": "string"
+				},
+				"owner": {
+					"type": "string"
+				},
+				"admins": {
+					"type": "array",
+					"items": {
+						"type": "string"
+					}
+				}
+			},
+			"required": [
+				"name",
+				"owner",
+				"admins"
+			],
+			"additionalProperties": false
+		},
+		"GroupRosterV1": {
+			"type": "object",
+			"properties": {
+				"type": {
+					"type": "string",
+					"const": "conet_group_roster_v1"
+				},
+				"groupId": {
+					"type": "string"
+				},
+				"version": {
+					"type": "number"
+				},
+				"prevRosterHash": {
+					"type": [
+						"string",
+						"null"
+					]
+				},
+				"issuedAt": {
+					"type": "number"
+				},
+				"expiresAt": {
+					"type": "number"
+				},
+				"policy": {
+					"$ref": "#/definitions/GroupPolicyV1"
+				},
+				"members": {
+					"type": "array",
+					"items": {
+						"$ref": "#/definitions/GroupMemberV1"
+					}
+				},
+				"signer": {
+					"type": "string"
+				},
+				"signature": {
+					"type": "string"
+				}
+			},
+			"required": [
+				"type",
+				"groupId",
+				"version",
+				"prevRosterHash",
+				"issuedAt",
+				"expiresAt",
+				"policy",
+				"members",
+				"signer",
+				"signature"
+			],
+			"additionalProperties": false
+		},
+		"GroupSendRequest": {
+			"type": "object",
+			"properties": {
+				"roster": {
+					"$ref": "#/definitions/GroupRosterV1"
+				},
+				"body": {
+					"type": "string"
+				},
+				"seq": {
+					"type": "number"
+				},
+				"expiresAt": {
+					"type": "number"
+				},
+				"sendId": {
+					"type": "string"
+				},
+				"maxMembers": {
+					"type": "number"
+				},
+				"paddingBucketBytes": {
+					"type": "number"
+				},
+				"maxConcurrency": {
+					"type": "number"
+				},
+				"routes": {
+					"type": "array",
+					"items": {
+						"$ref": "#/definitions/ChatRoute"
+					},
+					"description": "Member routes used for this fan-out. Mailbox B is excluded per recipient."
+				}
+			},
+			"required": [
+				"roster",
+				"body",
+				"seq",
+				"expiresAt",
+				"routes"
+			],
+			"additionalProperties": false
+		},
+		"GroupTombstoneV1": {
+			"type": "object",
+			"properties": {
+				"type": {
+					"type": "string",
+					"const": "conet_group_tombstone_v1"
+				},
+				"groupId": {
+					"type": "string"
+				},
+				"removedAtVersion": {
+					"type": "number"
+				},
+				"previousRosterHash": {
+					"type": "string"
+				},
+				"issuedAt": {
+					"type": "number"
+				},
+				"signer": {
+					"type": "string"
+				},
+				"signature": {
+					"type": "string"
+				}
+			},
+			"required": [
+				"type",
+				"groupId",
+				"removedAtVersion",
+				"previousRosterHash",
+				"issuedAt",
+				"signer",
+				"signature"
+			],
+			"additionalProperties": false
+		},
+		"HelloCommand": {
+			"type": "object",
+			"properties": {
+				"type": {
+					"type": "string",
+					"const": "hello"
+				},
+				"reqId": {
+					"type": "number"
+				},
+				"protocolVersion": {
+					"type": "number",
+					"description": "The caller's protocol version (informational)."
+				}
+			},
+			"required": [
+				"type",
+				"reqId"
+			],
+			"additionalProperties": false,
+			"description": "First command: protocol version and capabilities. Answer: `ack.result` =  {@link  ChatDaemonHello } .",
+			"x-privacy": {
+				"walletSignature": [],
+				"viaEntry": false,
+				"nodeSees": "Nothing. Local bridge call only.",
+				"rules": []
+			}
+		},
+		"HistoryAppendCommand": {
+			"type": "object",
+			"properties": {
+				"type": {
+					"type": "string",
+					"const": "historyAppend"
+				},
+				"reqId": {
+					"type": "number"
+				},
+				"entry": {
+					"type": "object",
+					"properties": {
+						"ts": {
+							"type": "number"
+						},
+						"peer": {
+							"type": "string",
+							"description": "Contact EOA (lower)."
+						},
+						"dir": {
+							"type": "string",
+							"enum": [
+								"in",
+								"out"
+							],
+							"description": "'out' = sent by me, 'in' = received."
+						},
+						"sendId": {
+							"type": "string"
+						},
+						"body": {
+							"type": "string",
+							"description": "Decrypted plaintext body (the ChatMessage JSON string as the host stored it)."
+						}
+					},
+					"required": [
+						"ts",
+						"peer",
+						"dir",
+						"body"
+					],
+					"additionalProperties": false
+				}
+			},
+			"required": [
+				"type",
+				"reqId",
+				"entry"
+			],
+			"additionalProperties": false,
+			"x-privacy": {
+				"walletSignature": [
+					"apiRelay"
+				],
+				"viaEntry": false,
+				"nodeSees": "IPFS gateway: encrypted fragment + index. Beamio API relay and the chain: own wallet + new index hash (EIP-712 `SetPointer`).",
+				"rules": []
+			}
+		},
+		"HistoryBufferEvent": {
+			"type": "object",
+			"properties": {
+				"peer": {
+					"type": "string",
+					"description": "Contact EOA (lower) this batch belongs to, or 'all' when global."
+				},
+				"entries": {
+					"type": "array",
+					"items": {
+						"$ref": "#/definitions/HistoryEntry"
+					}
+				},
+				"isTail": {
+					"type": "boolean",
+					"description": "True when this batch is the tail (most recent) portion."
+				}
+			},
+			"required": [
+				"peer",
+				"entries"
+			],
+			"additionalProperties": false,
+			"description": "History buffer increment fed to the UI during restore / append."
+		},
+		"HistoryBufferEventMessage": {
+			"type": "object",
+			"properties": {
+				"type": {
+					"type": "string",
+					"const": "event:historyBuffer"
+				},
+				"payload": {
+					"$ref": "#/definitions/HistoryBufferEvent"
+				}
+			},
+			"required": [
+				"type",
+				"payload"
+			],
+			"additionalProperties": false
+		},
+		"HistoryEntry": {
+			"type": "object",
+			"properties": {
+				"seq": {
+					"type": "number"
+				},
+				"ts": {
+					"type": "number"
+				},
+				"peer": {
+					"type": "string",
+					"description": "Contact EOA (lower)."
+				},
+				"dir": {
+					"type": "string",
+					"enum": [
+						"in",
+						"out"
+					],
+					"description": "'out' = sent by me, 'in' = received."
+				},
+				"sendId": {
+					"type": "string"
+				},
+				"body": {
+					"type": "string",
+					"description": "Decrypted plaintext body (the ChatMessage JSON string as the host stored it)."
+				}
+			},
+			"required": [
+				"seq",
+				"ts",
+				"peer",
+				"dir",
+				"body"
+			],
+			"additionalProperties": false,
+			"description": "A single stored history entry (decrypted)."
+		},
+		"HistoryLoadCommand": {
+			"type": "object",
+			"properties": {
+				"type": {
+					"type": "string",
+					"const": "historyLoad"
+				},
+				"reqId": {
+					"type": "number"
+				},
+				"options": {
+					"$ref": "#/definitions/HistoryLoadOptions"
+				}
+			},
+			"required": [
+				"type",
+				"reqId"
+			],
+			"additionalProperties": false,
+			"x-privacy": {
+				"walletSignature": [],
+				"viaEntry": false,
+				"nodeSees": "CoNET RPC: `getPointer(ownEoa)` + IP. IPFS gateway: content hashes of AES-GCM fragments + IP. The key-derivation signatures stay on the device.",
+				"rules": []
+			}
+		},
+		"HistoryLoadOptions": {
+			"type": "object",
+			"properties": {
+				"peer": {
+					"type": "string",
+					"description": "Restore for a single contact, or all known contacts."
+				},
+				"tailCount": {
+					"type": "number",
+					"description": "How many most-recent entries to decrypt eagerly (the \"last 2 screens\"). Default 60."
+				},
+				"localOnly": {
+					"type": "boolean",
+					"description": "When true, skip network and only read the local IndexedDB mirror (instant open)."
+				},
+				"emit": {
+					"type": "string",
+					"enum": [
+						"all",
+						"fresh"
+					],
+					"description": "`all` replays every decrypted entry to `historyBuffer`. `fresh` emits only entries that were not already in the local plaintext corpus. Default `fresh` so a later sync does not re-deliver the corpus."
+				}
+			},
+			"additionalProperties": false,
+			"description": "History load options."
+		},
+		"HistoryReadCommand": {
+			"type": "object",
+			"properties": {
+				"type": {
+					"type": "string",
+					"const": "historyRead"
+				},
+				"reqId": {
+					"type": "number"
+				},
+				"options": {
+					"$ref": "#/definitions/HistoryReadOptions"
+				}
+			},
+			"required": [
+				"type",
+				"reqId"
+			],
+			"additionalProperties": false,
+			"x-privacy": {
+				"walletSignature": [],
+				"viaEntry": false,
+				"nodeSees": "Nothing. Local corpus.",
+				"rules": []
+			}
+		},
+		"HistoryReadOptions": {
+			"type": "object",
+			"properties": {
+				"peer": {
+					"type": "string",
+					"description": "Contact EOA. Omit to read every peer."
+				},
+				"query": {
+					"type": "string",
+					"description": "Full-text query over extracted message text (body, call status, file name). Whitespace-separated terms are AND-matched, case-insensitive."
+				},
+				"limit": {
+					"type": "number",
+					"description": "Keep the newest matches when set."
+				}
+			},
+			"additionalProperties": false,
+			"description": "Read the chat module's local decrypted history. Already-decrypted entries come from the worker corpus and are not fetched from IPFS again."
+		},
+		"InboundMessageEvent": {
+			"type": "object",
+			"properties": {
+				"type": {
+					"type": "string",
+					"const": "event:message"
+				},
+				"payload": {
+					"type": "object",
+					"additionalProperties": false,
+					"properties": {
+						"from": {
+							"type": "string"
+						},
+						"line": {
+							"type": "string",
+							"description": "Host-ready JSON envelope string — exactly what the app's `addNewMessage` serial queue consumes today (outer `{ timestamp, text, from, signMessage }` with `_beamioPgpArmorHash` attached for mailbox ACK). Host still runs `checkSign` + business parse on this on the main thread."
+						},
+						"armorHash": {
+							"type": "string",
+							"description": "keccak256 of the received PGP armor (matches SI saveLocal hash for delivery ACK)."
+						},
+						"plain": {
+							"type": "boolean",
+							"description": "True when the inbound frame was a plaintext envelope (no PGP decrypt happened)."
+						},
+						"viaDomain": {
+							"type": "string",
+							"description": "Node domain that forwarded this (diagnostic only)."
+						},
+						"receivedAt": {
+							"type": "number"
+						}
+					},
+					"required": [
+						"line",
+						"receivedAt"
+					]
+				}
+			},
+			"required": [
+				"type",
+				"payload"
+			],
+			"additionalProperties": false,
+			"description": "Decrypted inbound line. TS Worker: still to be verified by the page. Native: already verified; `from` is the recovered signer (rule 15)."
+		},
+		"InitCommand": {
+			"type": "object",
+			"properties": {
+				"type": {
+					"type": "string",
+					"const": "init"
+				},
+				"reqId": {
+					"type": "number"
+				},
+				"payload": {
+					"$ref": "#/definitions/WorkerInitPayload"
+				}
+			},
+			"required": [
+				"type",
+				"reqId",
+				"payload"
+			],
+			"additionalProperties": false,
+			"description": "Start a session and the mailbox listen. Answer: `ready` (native: `result.historyApi = 2`).",
+			"x-privacy": {
+				"walletSignature": [
+					"ownMailbox"
+				],
+				"viaEntry": true,
+				"nodeSees": "Entry C: client IP + ciphertext with the own mailbox route key ID, then only sealed, 256-byte-aligned SSE frames (`streamKey` in the listen command; no recipient key ID, wallet or frame type). Own mailbox B: own wallet in the signed `mailbox_listen` (its own registered mailbox). History setup reads `getPointer(ownEoa)` from the CoNET RPC (RPC sees own wallet + IP).",
+				"rules": [
+					14,
+					16,
+					19
+				]
+			}
+		},
+		"IssueGroupRosterCommand": {
+			"type": "object",
+			"properties": {
+				"type": {
+					"type": "string",
+					"const": "issueGroupRoster"
+				},
+				"reqId": {
+					"type": "number"
+				},
+				"request": {
+					"$ref": "#/definitions/GroupIssueRosterRequest"
+				}
+			},
+			"required": [
+				"type",
+				"reqId",
+				"request"
+			],
+			"additionalProperties": false,
+			"x-privacy": {
+				"walletSignature": [
+					"recipientLayer"
+				],
+				"viaEntry": true,
+				"nodeSees": "Same as `sendGroup`; the owner-signed roster is inside each member's user-PGP layer.",
+				"rules": [
+					14,
+					16,
+					18,
+					19,
+					22
+				]
+			}
+		},
+		"IssueGroupTombstoneCommand": {
+			"type": "object",
+			"properties": {
+				"type": {
+					"type": "string",
+					"const": "issueGroupTombstone"
+				},
+				"reqId": {
+					"type": "number"
+				},
+				"request": {
+					"$ref": "#/definitions/GroupIssueTombstoneRequest"
+				}
+			},
+			"required": [
+				"type",
+				"reqId",
+				"request"
+			],
+			"additionalProperties": false,
+			"x-privacy": {
+				"walletSignature": [
+					"recipientLayer"
+				],
+				"viaEntry": true,
+				"nodeSees": "Same as `sendGroup`.",
+				"rules": [
+					14,
+					16,
+					18,
+					19,
+					22
+				]
+			}
+		},
+		"LogEvent": {
+			"type": "object",
+			"properties": {
+				"type": {
+					"type": "string",
+					"const": "event:log"
+				},
+				"level": {
+					"type": "string",
+					"enum": [
+						"info",
+						"warn",
+						"error"
+					]
+				},
+				"message": {
+					"type": "string"
+				}
+			},
+			"required": [
+				"type",
+				"level",
+				"message"
+			],
+			"additionalProperties": false,
+			"description": "Diagnostics. Never contains private keys, mnemonics, session keys or message content."
+		},
+		"MailboxCommandCommand": {
+			"type": "object",
+			"properties": {
+				"type": {
+					"type": "string",
+					"const": "mailboxCommand"
+				},
+				"reqId": {
+					"type": "number"
+				},
+				"routerArmoredPublicKey": {
+					"type": "string"
+				},
+				"command": {
+					"type": "object",
+					"additionalProperties": {}
+				}
+			},
+			"required": [
+				"type",
+				"reqId",
+				"routerArmoredPublicKey",
+				"command"
+			],
+			"additionalProperties": false,
+			"description": "Sign + encrypt a mailbox command to route B and POST via entry ≠ B. Only for the own mailbox or rule-21 queries.",
+			"x-privacy": {
+				"walletSignature": [
+					"ownMailbox",
+					"peerMailbox"
+				],
+				"viaEntry": true,
+				"nodeSees": "The target mailbox decrypts the command and sees the wallet signature and every field. Entry ≠ that mailbox: client IP + ciphertext.",
+				"rules": [
+					19,
+					20,
+					21,
+					22
+				],
+				"gap": "Generic: signs with the own wallet. Use only for the own mailbox (e.g. `gossip_delivery_ack`) or rule-21 queries; never for a command a contact's mailbox executes (rules 20, 22)."
+			}
+		},
+		"NativeSignRequest": {
+			"type": "object",
+			"properties": {
+				"action": {
+					"type": "string",
+					"const": "chatModuleSignRequest"
+				},
+				"reqId": {
+					"type": [
+						"string",
+						"number"
+					]
+				},
+				"kind": {
+					"type": "string",
+					"enum": [
+						"eip191",
+						"eip712"
+					]
+				},
+				"message": {
+					"type": "string",
+					"description": "eip191: the exact text to sign."
+				},
+				"typedData": {
+					"type": "object",
+					"additionalProperties": {},
+					"description": "eip712: `{ domain, types, primaryType, message | value }`."
+				}
+			},
+			"required": [
+				"action",
+				"reqId",
+				"kind"
+			],
+			"additionalProperties": false,
+			"description": "Native daemon → page: sign with the page's wallet key. Sent only by daemons without `signing.local`, or with it but no stored key. The page answers with `chatModuleSignResponse { reqId, ok, signature?, error? }`."
+		},
+		"NativeSignResponse": {
+			"type": "object",
+			"properties": {
+				"reqId": {
+					"type": [
+						"string",
+						"number"
+					]
+				},
+				"ok": {
+					"type": "boolean"
+				},
+				"signature": {
+					"type": "string"
+				},
+				"error": {
+					"type": "string"
+				}
+			},
+			"required": [
+				"reqId",
+				"ok"
+			],
+			"additionalProperties": false
+		},
+		"NodeInfo": {
+			"type": "object",
+			"properties": {
+				"region": {
+					"type": "string"
+				},
+				"ip_addr": {
+					"type": "string"
+				},
+				"armoredPublicKey": {
+					"type": "string"
+				},
+				"nftNumber": {
+					"type": "number"
+				},
+				"domain": {
+					"type": "string"
+				},
+				"lastEposh": {
+					"type": "number"
+				},
+				"owner": {
+					"type": "string"
+				}
+			},
+			"required": [
+				"region",
+				"ip_addr",
+				"armoredPublicKey",
+				"nftNumber",
+				"domain"
+			],
+			"additionalProperties": false,
+			"description": "A CoNET Guardian / entry / mailbox node descriptor. Mirrors the app `nodeInfo`."
+		},
+		"NodesRequestEvent": {
+			"type": "object",
+			"properties": {
+				"type": {
+					"type": "string",
+					"const": "nodesRequest"
+				},
+				"reqId": {
+					"type": "number"
+				}
+			},
+			"required": [
+				"type",
+				"reqId"
+			],
+			"additionalProperties": false,
+			"description": "The daemon asks the host to refresh the node list (host owns discovery)."
+		},
+		"NodesResponseCommand": {
+			"type": "object",
+			"properties": {
+				"type": {
+					"type": "string",
+					"const": "nodesResponse"
+				},
+				"reqId": {
+					"type": "number"
+				},
+				"nodes": {
+					"type": "array",
+					"items": {
+						"$ref": "#/definitions/NodeInfo"
+					}
+				}
+			},
+			"required": [
+				"type",
+				"reqId",
+				"nodes"
+			],
+			"additionalProperties": false,
+			"description": "Host → daemon answer to `nodesRequest`.",
+			"x-privacy": {
+				"walletSignature": [],
+				"viaEntry": false,
+				"nodeSees": "Nothing. Local state.",
+				"rules": []
+			}
+		},
+		"NodesResponseConsumeEvent": {
+			"type": "object",
+			"properties": {
+				"type": {
+					"type": "string",
+					"const": "nodesResponse:consume"
+				},
+				"reqId": {
+					"type": "number"
+				}
+			},
+			"required": [
+				"type",
+				"reqId"
+			],
+			"additionalProperties": false
+		},
+		"OwnMailboxCommandCommand": {
+			"type": "object",
+			"properties": {
+				"type": {
+					"type": "string",
+					"const": "ownMailboxCommand"
+				},
+				"reqId": {
+					"type": "number"
+				},
+				"command": {
+					"type": "object",
+					"additionalProperties": {}
+				}
+			},
+			"required": [
+				"type",
+				"reqId",
+				"command"
+			],
+			"additionalProperties": false,
+			"description": "Same as `mailboxCommand`, to the own mailbox route.",
+			"x-privacy": {
+				"walletSignature": [
+					"ownMailbox"
+				],
+				"viaEntry": true,
+				"nodeSees": "Own mailbox B: own wallet + the command (e.g. push registration). Entry C ≠ B: client IP + ciphertext.",
+				"rules": [
+					14,
+					19
+				]
+			}
+		},
+		"PauseCommand": {
+			"type": "object",
+			"properties": {
+				"type": {
+					"type": "string",
+					"const": "pause"
+				}
+			},
+			"required": [
+				"type"
+			],
+			"additionalProperties": false,
+			"description": "Page went to the background. With `lifecycle.daemon` the daemon may defer it (ringing / in call).",
+			"x-privacy": {
+				"walletSignature": [],
+				"viaEntry": false,
+				"nodeSees": "Nothing (the listen closes).",
+				"rules": []
+			}
+		},
+		"PresenceEvent": {
+			"type": "object",
+			"properties": {
+				"online": {
+					"type": "object",
+					"additionalProperties": {
+						"type": "boolean"
+					},
+					"description": "Map of contact address(lower) → online. Only trusted `ok:true` replies included."
+				}
+			},
+			"required": [
+				"online"
+			],
+			"additionalProperties": false
+		},
+		"PresenceEventMessage": {
+			"type": "object",
+			"properties": {
+				"type": {
+					"type": "string",
+					"const": "event:presence"
+				},
+				"payload": {
+					"$ref": "#/definitions/PresenceEvent"
+				}
+			},
+			"required": [
+				"type",
+				"payload"
+			],
+			"additionalProperties": false
+		},
+		"ProvisionIdentityCommand": {
+			"type": "object",
+			"properties": {
+				"type": {
+					"type": "string",
+					"const": "provisionIdentity"
+				},
+				"reqId": {
+					"type": "number"
+				},
+				"payload": {
+					"$ref": "#/definitions/ProvisionIdentityPayload"
+				}
+			},
+			"required": [
+				"type",
+				"reqId",
+				"payload"
+			],
+			"additionalProperties": false,
+			"description": "Hand the keys to the daemon (capability `identity.provision`). Answer: `ack { ok }`.",
+			"x-privacy": {
+				"walletSignature": [],
+				"viaEntry": false,
+				"nodeSees": "Nothing. The keys cross the in-process page → daemon bridge only; native stores them in Keychain / Keystore and never logs them.",
+				"rules": [
+					16
+				]
+			}
+		},
+		"ProvisionIdentityPayload": {
+			"type": "object",
+			"properties": {
+				"eoa": {
+					"type": "string",
+					"description": "Wallet address. The daemon refuses a `walletPrivateKey` that does not derive it."
+				},
+				"walletPrivateKey": {
+					"type": "string",
+					"description": "Raw wallet private key hex. Never logged. Native: Keychain / Keystore only; refused when it cannot be stored."
+				},
+				"pgpPrivateKeyArmored": {
+					"type": "string"
+				},
+				"pgpPublicKeyArmored": {
+					"type": "string"
+				},
+				"ownRoute": {
+					"type": "string",
+					"description": "Own mailbox B route armored public key."
+				}
+			},
+			"required": [
+				"eoa",
+				"walletPrivateKey",
+				"pgpPrivateKeyArmored"
+			],
+			"additionalProperties": false,
+			"description": "`provisionIdentity` payload (capability `identity.provision`)."
+		},
+		"QueryNativeWakeCommand": {
+			"type": "object",
+			"properties": {
+				"type": {
+					"type": "string",
+					"const": "queryNativeWake"
+				},
+				"reqId": {
+					"type": "number"
+				},
+				"contact": {
+					"$ref": "#/definitions/ChatRoute"
+				}
+			},
+			"required": [
+				"type",
+				"reqId",
+				"contact"
+			],
+			"additionalProperties": false,
+			"description": "Answer: `ack.result` = boolean | null (TS) or `{ ok, nativeWakeable }` (native).",
+			"x-privacy": {
+				"walletSignature": [
+					"peerMailbox"
+				],
+				"viaEntry": true,
+				"nodeSees": "Same as `queryPresence` (`wallet_native_wake_query`).",
+				"rules": [
+					19,
+					21
+				],
+				"gap": "Known exception (rule 21), same as `queryPresence`."
+			}
+		},
+		"QueryPresenceCommand": {
+			"type": "object",
+			"properties": {
+				"type": {
+					"type": "string",
+					"const": "queryPresence"
+				},
+				"reqId": {
+					"type": "number"
+				},
+				"contacts": {
+					"type": "array",
+					"items": {
+						"$ref": "#/definitions/ChatRoute"
+					}
+				}
+			},
+			"required": [
+				"type",
+				"reqId",
+				"contacts"
+			],
+			"additionalProperties": false,
+			"description": "Answer: `ack.result` = address → online (trusted answers only).",
+			"x-privacy": {
+				"walletSignature": [
+					"peerMailbox"
+				],
+				"viaEntry": true,
+				"nodeSees": "Contact mailbox: querier wallet (signed `wallet_online_query.walletAddress`) + target wallet. Entry C ≠ B: querier IP + ciphertext.",
+				"rules": [
+					19,
+					21
+				],
+				"gap": "Known exception (rule 21): the contact mailbox learns who asks. To be solved with web3://; do not patch ad hoc."
+			}
+		},
+		"ReadyEvent": {
+			"type": "object",
+			"properties": {
+				"type": {
+					"type": "string",
+					"const": "ready"
+				},
+				"reqId": {
+					"type": "number"
+				},
+				"result": {
+					"type": "object",
+					"properties": {
+						"historyApi": {
+							"type": "number"
+						}
+					},
+					"additionalProperties": false,
+					"description": "Native: `{ historyApi: 2 }`."
+				}
+			},
+			"required": [
+				"type",
+				"reqId"
+			],
+			"additionalProperties": false
+		},
+		"ResumeCommand": {
+			"type": "object",
+			"properties": {
+				"type": {
+					"type": "string",
+					"const": "resume"
+				}
+			},
+			"required": [
+				"type"
+			],
+			"additionalProperties": false,
+			"x-privacy": {
+				"walletSignature": [
+					"ownMailbox"
+				],
+				"viaEntry": true,
+				"nodeSees": "Same as the listen part of `init`.",
+				"rules": [
+					14,
+					19
+				]
+			}
+		},
+		"SendCommand": {
+			"type": "object",
+			"properties": {
+				"type": {
+					"type": "string",
+					"const": "send"
+				},
+				"reqId": {
+					"type": "number"
+				},
+				"to": {
+					"$ref": "#/definitions/ChatRoute"
+				},
+				"payload": {
+					"type": "string",
+					"description": "The pending-row JSON the wallet signs (`{ sendId, from: 'me', text, createdAt }`)."
+				},
+				"sendId": {
+					"type": "string"
+				},
+				"beamioNoPush": {
+					"type": "boolean"
+				}
+			},
+			"required": [
+				"type",
+				"reqId",
+				"to",
+				"payload",
+				"sendId"
+			],
+			"additionalProperties": false,
+			"description": "Business payload to one contact. Answer: `ack.result = { sent, sendId }`.",
+			"x-privacy": {
+				"walletSignature": [
+					"recipientLayer"
+				],
+				"viaEntry": true,
+				"nodeSees": "Entry (never the recipient's or the sender's own mailbox; one at a time): sender IP, its own route key ID (outer wrap), then the recipient mailbox route key ID (mailbox-work layer), never the recipient user key ID. Recipient mailbox: decrypts the mailbox-work layer `{ data: <user-PGP armor>, NoPush? }` and sees the recipient key ID. Sender wallet, signature and PGP key are only inside the user-PGP layer.",
+				"rules": [
+					14,
+					16,
+					18,
+					19,
+					22
+				]
+			}
+		},
+		"SendGroupCommand": {
+			"type": "object",
+			"properties": {
+				"type": {
+					"type": "string",
+					"const": "sendGroup"
+				},
+				"reqId": {
+					"type": "number"
+				},
+				"request": {
+					"$ref": "#/definitions/GroupSendRequest"
+				}
+			},
+			"required": [
+				"type",
+				"reqId",
+				"request"
+			],
+			"additionalProperties": false,
+			"x-privacy": {
+				"walletSignature": [
+					"recipientLayer"
+				],
+				"viaEntry": true,
+				"nodeSees": "Per member, the same as `send`: one user-PGP armor per member (no multi-recipient armor, so no member list on the wire).",
+				"rules": [
+					14,
+					16,
+					18,
+					19,
+					22
+				],
+				"gap": "Native daemons send a plain signed envelope per member, not group V1 (no `group.v1` capability)."
+			}
+		},
+		"SetNodesCommand": {
+			"type": "object",
+			"properties": {
+				"type": {
+					"type": "string",
+					"const": "setNodes"
+				},
+				"nodes": {
+					"type": "array",
+					"items": {
+						"$ref": "#/definitions/NodeInfo"
+					}
+				}
+			},
+			"required": [
+				"type",
+				"nodes"
+			],
+			"additionalProperties": false,
+			"x-privacy": {
+				"walletSignature": [],
+				"viaEntry": false,
+				"nodeSees": "Nothing. Local state.",
+				"rules": []
+			}
+		},
+		"SetRoutesCommand": {
+			"type": "object",
+			"properties": {
+				"type": {
+					"type": "string",
+					"const": "setRoutes"
+				},
+				"routes": {
+					"type": "array",
+					"items": {
+						"$ref": "#/definitions/ChatRoute"
+					}
+				}
+			},
+			"required": [
+				"type",
+				"routes"
+			],
+			"additionalProperties": false,
+			"x-privacy": {
+				"walletSignature": [],
+				"viaEntry": false,
+				"nodeSees": "Nothing. Local state.",
+				"rules": []
+			}
+		},
+		"StatusEvent": {
+			"type": "object",
+			"properties": {
+				"status": {
+					"$ref": "#/definitions/ChatStatus"
+				},
+				"detail": {
+					"type": "string"
+				}
+			},
+			"required": [
+				"status"
+			],
+			"additionalProperties": false
+		},
+		"StatusEventMessage": {
+			"type": "object",
+			"properties": {
+				"type": {
+					"type": "string",
+					"const": "event:status"
+				},
+				"payload": {
+					"$ref": "#/definitions/StatusEvent"
+				}
+			},
+			"required": [
+				"type",
+				"payload"
+			],
+			"additionalProperties": false
+		},
+		"VoiceCallV3Config": {
+			"type": "object",
+			"properties": {
+				"callId": {
+					"type": "string"
+				},
+				"uiKey": {
+					"type": "string",
+					"description": "AES key the page uses for its own frames; the worker re-keys per channel."
+				},
+				"role": {
+					"type": "string",
+					"enum": [
+						"caller",
+						"callee"
+					]
+				},
+				"own": {
+					"type": "object",
+					"properties": {
+						"voice": {
+							"$ref": "#/definitions/VoiceOwnChannel"
+						},
+						"video": {
+							"$ref": "#/definitions/VoiceOwnChannel"
+						}
+					},
+					"required": [
+						"voice",
+						"video"
+					],
+					"additionalProperties": false
+				},
+				"peer": {
+					"type": "object",
+					"properties": {
+						"voice": {
+							"$ref": "#/definitions/VoicePeerChannel"
+						},
+						"video": {
+							"$ref": "#/definitions/VoicePeerChannel"
+						}
+					},
+					"required": [
+						"voice",
+						"video"
+					],
+					"additionalProperties": false
+				},
+				"avoidRoutes": {
+					"type": "array",
+					"items": {
+						"type": "string"
+					},
+					"description": "Route keys (armored) of both mailboxes: never used as relay or entry."
+				}
+			},
+			"required": [
+				"callId",
+				"uiKey",
+				"role",
+				"own",
+				"peer",
+				"avoidRoutes"
+			],
+			"additionalProperties": false,
+			"description": "Everything the chat worker needs to run a v3 call. Memory only."
+		},
+		"VoiceConflictEvent": {
+			"type": "object",
+			"properties": {
+				"type": {
+					"type": "string",
+					"const": "voice_conflict_v1"
+				},
+				"sessionId": {
+					"type": "string"
+				},
+				"direction": {
+					"$ref": "#/definitions/VoiceFrameDirection"
+				},
+				"seq": {
+					"type": "number"
+				},
+				"frameId": {
+					"type": "string"
+				}
+			},
+			"required": [
+				"type",
+				"sessionId",
+				"direction",
+				"seq"
+			],
+			"additionalProperties": false
+		},
+		"VoiceConflictEventMessage": {
+			"type": "object",
+			"properties": {
+				"type": {
+					"type": "string",
+					"const": "event:voiceConflict"
+				},
+				"payload": {
+					"$ref": "#/definitions/VoiceConflictEvent"
+				}
+			},
+			"required": [
+				"type",
+				"payload"
+			],
+			"additionalProperties": false
+		},
+		"VoiceFrame": {
+			"type": "object",
+			"properties": {
+				"type": {
+					"type": "string",
+					"const": "voice_frame_v1"
+				},
+				"callId": {
+					"type": "string"
+				},
+				"sessionId": {
+					"type": "string"
+				},
+				"from": {
+					"type": "string"
+				},
+				"to": {
+					"type": "string"
+				},
+				"seq": {
+					"type": "number"
+				},
+				"direction": {
+					"type": "string",
+					"enum": [
+						"uplink",
+						"downlink",
+						"inbound",
+						"outbound"
+					]
+				},
+				"timestamp": {
+					"type": "number"
+				},
+				"payload": {
+					"type": "string"
+				},
+				"frameId": {
+					"type": "string"
+				},
+				"chunkIndex": {
+					"type": "number"
+				},
+				"chunkCount": {
+					"type": "number"
+				}
+			},
+			"required": [
+				"type",
+				"callId",
+				"sessionId",
+				"from",
+				"to",
+				"seq",
+				"timestamp",
+				"payload"
+			],
+			"additionalProperties": false
+		},
+		"VoiceFrameCommand": {
+			"type": "object",
+			"properties": {
+				"type": {
+					"type": "string",
+					"const": "voiceFrame"
+				},
+				"reqId": {
+					"type": "number"
+				},
+				"routerArmoredPublicKey": {
+					"type": "string"
+				},
+				"frame": {
+					"type": "object",
+					"additionalProperties": {}
+				}
+			},
+			"required": [
+				"type",
+				"reqId",
+				"routerArmoredPublicKey",
+				"frame"
+			],
+			"additionalProperties": false,
+			"x-privacy": {
+				"walletSignature": [],
+				"viaEntry": true,
+				"nodeSees": "Peer channel relay: channel locator + MAC + opaque chunk (v3; no v1 fallback). Entry: rotating pool, never a relay or a mailbox.",
+				"rules": [
+					18,
+					20,
+					22,
+					23
+				],
+				"gap": "Native: delegated to the native voice module."
+			}
+		},
+		"VoiceFrameDirection": {
+			"type": "string",
+			"enum": [
+				"inbound",
+				"outbound",
+				"uplink",
+				"downlink"
+			]
+		},
+		"VoiceFrameEvent": {
+			"type": "object",
+			"properties": {
+				"type": {
+					"type": "string",
+					"const": "event:voiceFrame"
+				},
+				"payload": {
+					"$ref": "#/definitions/VoiceFrame"
+				}
+			},
+			"required": [
+				"type",
+				"payload"
+			],
+			"additionalProperties": false
+		},
+		"VoiceGapEvent": {
+			"type": "object",
+			"properties": {
+				"type": {
+					"type": "string",
+					"const": "voice_gap_v1"
+				},
+				"sessionId": {
+					"type": "string"
+				},
+				"direction": {
+					"$ref": "#/definitions/VoiceFrameDirection"
+				},
+				"missingSeq": {
+					"type": "array",
+					"items": {
+						"type": "number"
+					}
+				},
+				"missingChunks": {
+					"type": "array",
+					"items": {
+						"type": "number"
+					}
+				},
+				"reason": {
+					"type": "string",
+					"enum": [
+						"timeout",
+						"buffer_overflow",
+						"conflict",
+						"skip_ahead"
+					]
+				}
+			},
+			"required": [
+				"type",
+				"sessionId",
+				"direction",
+				"missingSeq",
+				"reason"
+			],
+			"additionalProperties": false
+		},
+		"VoiceGapEventMessage": {
+			"type": "object",
+			"properties": {
+				"type": {
+					"type": "string",
+					"const": "event:voiceGap"
+				},
+				"payload": {
+					"$ref": "#/definitions/VoiceGapEvent"
+				}
+			},
+			"required": [
+				"type",
+				"payload"
+			],
+			"additionalProperties": false
+		},
+		"VoiceListenCommand": {
+			"type": "object",
+			"properties": {
+				"type": {
+					"type": "string",
+					"const": "voiceListen"
+				},
+				"reqId": {
+					"type": "number"
+				},
+				"sessionId": {
+					"type": "string",
+					"description": "Own voice channel of the call (v3). Without `call`: reopen that call's channels."
+				},
+				"call": {
+					"$ref": "#/definitions/VoiceCallV3Config",
+					"description": "Voice protocol v3 call: own and peer channels (memory only)."
+				}
+			},
+			"required": [
+				"type",
+				"reqId",
+				"sessionId"
+			],
+			"additionalProperties": false,
+			"x-privacy": {
+				"walletSignature": [
+					"recipientLayer"
+				],
+				"viaEntry": true,
+				"nodeSees": "Relay (picked by this side, never a mailbox): `voice_listen` v3 = session ID, write key, temporary wallet T and its signature, and the payer wallet's signature over T (payer address, `notAfter`). Nothing about the peer or the call ID.",
+				"rules": [
+					18,
+					20,
+					23
+				],
+				"gap": "The relay learns the payer wallet (user decision 2026-11-01: payment proof by payer signature; clients may split payment across wallets). Native: delegated to the native voice module."
+			}
+		},
+		"VoiceOfferArgs": {
+			"type": "object",
+			"properties": {
+				"callId": {
+					"type": "string"
+				},
+				"sessionId": {
+					"type": "string",
+					"description": "Ring ID (32 hex): offer index and push handle, not a channel."
+				},
+				"expiresAt": {
+					"type": "number"
+				},
+				"pushTimestamp": {
+					"type": "number"
+				},
+				"offerArmor": {
+					"type": "string",
+					"description": "Callee user-PGP ciphertext of the signed offer."
+				},
+				"calleeRoute": {
+					"type": "string",
+					"description": "Callee mailbox route public key."
+				}
+			},
+			"required": [
+				"callId",
+				"sessionId",
+				"expiresAt",
+				"pushTimestamp",
+				"offerArmor",
+				"calleeRoute"
+			],
+			"additionalProperties": false,
+			"description": "`voiceOffer`: the caller's offer to the callee mailbox (`voice_offer_store`, `push: 1`)."
+		},
+		"VoiceOfferCommand": {
+			"type": "object",
+			"properties": {
+				"type": {
+					"type": "string",
+					"const": "voiceOffer"
+				},
+				"reqId": {
+					"type": "number"
+				},
+				"offer": {
+					"$ref": "#/definitions/VoiceOfferArgs"
+				}
+			},
+			"required": [
+				"type",
+				"reqId",
+				"offer"
+			],
+			"additionalProperties": false,
+			"x-privacy": {
+				"walletSignature": [
+					"recipientLayer"
+				],
+				"viaEntry": true,
+				"nodeSees": "Callee mailbox: opaque `voice_offer_store` with `push: 1` (ring ID); it stores the offer, writes it to the callee's sessions and rings the callee. The caller signature is only inside the callee user-PGP `offerArmor`.",
+				"rules": [
+					13,
+					18,
+					20,
+					22
+				]
+			}
+		},
+		"VoiceOwnChannel": {
+			"type": "object",
+			"properties": {
+				"sid": {
+					"type": "string"
+				},
+				"key": {
+					"type": "string"
+				},
+				"wk": {
+					"type": "string"
+				},
+				"tk": {
+					"type": "string"
+				},
+				"pay": {
+					"$ref": "#/definitions/VoicePayAuth"
+				},
+				"relay": {
+					"type": "string",
+					"description": "Relay route key ID (node domain). Empty: the worker picks one."
+				}
+			},
+			"required": [
+				"sid",
+				"key",
+				"wk",
+				"tk",
+				"pay"
+			],
+			"additionalProperties": false,
+			"description": "A channel this side opens (listens on)."
+		},
+		"VoicePayAuth": {
+			"type": "object",
+			"properties": {
+				"payer": {
+					"type": "string"
+				},
+				"notAfter": {
+					"type": "number"
+				},
+				"maxBytes": {
+					"type": "number"
+				},
+				"maxSeconds": {
+					"type": "number"
+				},
+				"sig": {
+					"type": "string"
+				}
+			},
+			"required": [
+				"payer",
+				"notAfter",
+				"maxBytes",
+				"maxSeconds",
+				"sig"
+			],
+			"additionalProperties": false
+		},
+		"VoicePeerChannel": {
+			"type": "object",
+			"properties": {
+				"sid": {
+					"type": "string"
+				},
+				"key": {
+					"type": "string"
+				},
+				"wk": {
+					"type": "string"
+				},
+				"relay": {
+					"type": "string"
+				},
+				"relayIp": {
+					"type": "string"
+				},
+				"relayKey": {
+					"type": "string",
+					"description": "base64 armored route key of the relay (used when our node table lacks it)."
+				}
+			},
+			"required": [
+				"sid",
+				"key",
+				"wk"
+			],
+			"additionalProperties": false,
+			"description": "A channel this side sends to. `relay` empty until the owner reports it."
+		},
+		"VoiceUnlistenCommand": {
+			"type": "object",
+			"properties": {
+				"type": {
+					"type": "string",
+					"const": "voiceUnlisten"
+				},
+				"reqId": {
+					"type": "number"
+				},
+				"sessionId": {
+					"type": "string"
+				}
+			},
+			"required": [
+				"type",
+				"reqId",
+				"sessionId"
+			],
+			"additionalProperties": false,
+			"x-privacy": {
+				"walletSignature": [],
+				"viaEntry": true,
+				"nodeSees": "The channel relay: unsigned `voice_unlisten` with the session ID.",
+				"rules": [
+					20,
+					22
+				]
+			}
+		},
+		"WalletSignaturePath": {
+			"type": "string",
+			"enum": [
+				"none",
+				"recipientLayer",
+				"ownMailbox",
+				"peerMailbox",
+				"apiRelay"
+			],
+			"description": "Where the user's wallet signature travels.  - `none`: no wallet signature leaves the device.  - `recipientLayer`: only inside ciphertext for the recipient's user PGP (rule 22).  - `ownMailbox`: inside a route command only the user's own mailbox B decrypts.  - `peerMailbox`: inside a route command a contact's mailbox decrypts (rule 21 exception only).  - `apiRelay`: an EIP-712 signature sent to the Beamio API relay / chain."
+		},
+		"WorkerInitPayload": {
+			"type": "object",
+			"properties": {
+				"identity": {
+					"$ref": "#/definitions/ChatIdentity"
+				},
+				"conetRpcUrl": {
+					"type": "string"
+				},
+				"addressPgpContractAddress": {
+					"type": "string"
+				},
+				"ipfsBaseUrl": {
+					"type": "string"
+				},
+				"ipfsWriteBaseUrl": {
+					"type": "string"
+				},
+				"chainId": {
+					"type": "number"
+				},
+				"chatIndexRegistryAddress": {
+					"type": "string",
+					"description": "ChatIndexRegistry proxy (on-chain encrypted-history head pointer)."
+				},
+				"apiBaseUrl": {
+					"type": "string",
+					"description": "Cluster API base for the gasless index-pointer relay (optional)."
+				},
+				"runtime": {
+					"type": "object",
+					"properties": {
+						"sendFanout": {
+							"type": "number",
+							"description": "Send business payload to N entry nodes in parallel (dedupe by sendId on UI). Default 3."
+						},
+						"reconnectBaseMs": {
+							"type": "number",
+							"description": "Reconnect backoff base ms. Default 4000."
+						},
+						"reconnectMaxMs": {
+							"type": "number",
+							"description": "Max reconnect backoff ms. Default 30000."
+						},
+						"outerWrap": {
+							"type": "boolean",
+							"description": "Encrypt already-built inner armor to each entry's route public key before `POST /post` (SI peel). Default `true`. One-layer user-PGP still works if false."
+						}
+					},
+					"additionalProperties": false
+				},
+				"nodes": {
+					"type": "array",
+					"items": {
+						"$ref": "#/definitions/NodeInfo"
+					},
+					"description": "Initial node snapshot (the daemon requests refreshes via `nodesRequest`)."
+				},
+				"routes": {
+					"type": "array",
+					"items": {
+						"$ref": "#/definitions/ChatRoute"
+					},
+					"description": "Initial routes to listen/probe."
+				},
+				"deferAck": {
+					"type": "boolean",
+					"description": "Capability `inbound.deferAck`: hold the mailbox ACK and the sender receipt until the page confirms the message with `ackInbound`. Ignored by daemons without the capability (they ACK at once, or leave the ACK to the page)."
+				}
+			},
+			"required": [
+				"identity",
+				"conetRpcUrl",
+				"addressPgpContractAddress",
+				"ipfsBaseUrl",
+				"chainId",
+				"chatIndexRegistryAddress",
+				"runtime",
+				"nodes",
+				"routes"
+			],
+			"additionalProperties": false,
+			"description": "Serialisable subset of config passed into the daemon at init."
+		}
+	}
+}

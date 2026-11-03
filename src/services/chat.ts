@@ -1458,13 +1458,15 @@ export const sendMessage = async (
 		|| recipientRouteByUserKey.get(normalizeArmoredKey(pgpPublic)) || ''
 	const recipientMailboxes = recipientRoute ? pickRouteNodesByArmoredKey(entryNodes, recipientRoute) : []
 	if (!recipientRoute) {
-		console.warn('[sendMessage] recipient mailbox unknown; cannot exclude it from entries')
+		// Without the recipient's mailbox route the message cannot be wrapped to
+		// it, and an unwrapped message shows the recipient key ID to the entry.
+		console.error('[sendMessage] recipient mailbox unknown; not sent')
+		return false
 	}
 	const recipientMailboxDomains = new Set(recipientMailboxes.map((n) => n.domain))
-	const recipientMailboxIps = recipientMailboxes
-		.map((n) => String(n.ip_addr || '').trim())
-		.filter(Boolean)
-	const entryPool = entryNodes.filter((n) => !recipientMailboxDomains.has(n.domain))
+	// Rule 19: nor our own mailbox (known once the listen is up; native shells add it themselves).
+	const ownMailboxDomains = new Set(gossipDeliveryAckContext?.mailboxDomains ?? [])
+	const entryPool = entryNodes.filter((n) => !recipientMailboxDomains.has(n.domain) && !ownMailboxDomains.has(n.domain))
 	if (!pgpPublic?.trim()) {
 		console.error('[sendMessage] missing recipient publicArmored')
 		return false
@@ -1501,80 +1503,65 @@ export const sendMessage = async (
 		return false
 	}
 
-	if (opts?.beamioNoPush) {
-		const mailboxKey = opts.mailboxRoutePublicKey?.trim()
-		if (!mailboxKey) {
-			console.error('[sendMessage] NoPush requires recipient mailbox route public key')
-			return false
-		}
-		try {
-			postData = await wrapArmorToMailboxWork(postData, mailboxKey, { NoPush: true })
-		} catch (ex: any) {
-			console.error(`[sendMessage] mailbox wrap Error! ${ex?.message || ex}`)
-			return false
-		}
-	}
-
-	const payload = { data: postData }
-	const postOpts: RequestInit = {
-		method: "POST",
-		headers: { "Content-Type": "application/json" },
-		body: JSON.stringify(payload),
-		// Avoid Chrome Network panel noise; does not fix node/SI failures.
-		referrerPolicy: "no-referrer",
-	}
-
-	const postToNodes = async (nodes: nodeInfo[]): Promise<boolean> => {
-		if (!nodes.length) return false
-		if (isCashTreesNativeWebView()) {
-			const shell = await postNativePgpCiphertext(postData, recipientMailboxIps)
-			if (shell.error !== 'no_si_roster' && shell.error !== 'bridge_missing') {
-				return shell.ok
-			}
-		}
-		const results = await Promise.all(
-			nodes.map(async node => {
-				const url = `https://${node.domain}.conet.network/post`
-				try {
-					const res = await postWithTimeout(url, postOpts, 12_000)
-					if (!res.ok) {
-						console.warn(`[sendMessage] ${url} → HTTP ${res.status}`)
-						markGossipNodeBad(node.domain)
-						return false
-					}
-					console.log(`[sendMessage] ${url} → ${res.status}`)
-					markGossipNodeHealthy(node.domain)
-					return true
-				} catch (ex: any) {
-					// Chrome often labels bare network / missing-ACAO failures as CORS
-					// ("strict-origin-when-cross-origin"). Prefer explicit fetch error text.
-					console.warn(`[sendMessage] ${url} → ${ex?.name || 'error'}: ${ex?.message || ex}`)
-					markGossipNodeBad(node.domain)
-					return false
-				}
-			})
-		)
-		return results.some(Boolean)
-	}
-
-	// Callers may pass a full Guardian pool or a small sample; prefer healthy entries and retry.
-	if (!entryPool.length) {
-		console.error('[sendMessage] no entry outside the recipient mailbox')
+	// Always wrap to the recipient's mailbox B: the entry sees only B's route
+	// key ID, never the recipient's key ID (B unwraps and stores).
+	try {
+		postData = await wrapArmorToMailboxWork(postData, recipientRoute, opts?.beamioNoPush ? { NoPush: true } : undefined)
+	} catch (ex: any) {
+		console.error(`[sendMessage] mailbox wrap Error! ${ex?.message || ex}`)
 		return false
 	}
-	const wave1 = await pickGossipEntryNodesForSend(entryPool, Math.min(4, entryPool.length))
-	if (await postToNodes(wave1)) return true
 
-	const tried = new Set(wave1.map(n => n.domain))
-	const wave2 = await pickGossipEntryNodesForSend(entryPool, Math.min(4, entryPool.length), tried)
-	if (await postToNodes(wave2)) return true
+	if (!entryPool.length) {
+		console.error('[sendMessage] no entry outside the mailboxes')
+		return false
+	}
+	const body = JSON.stringify({ data: postData })
+	const tried = new Set<string>()
+	const started = Date.now()
+	// One entry at a time; the next only after a clear failure (network error or
+	// reset, non-2xx, `{ ok: false }`, or no answer in 8 s). A timed-out POST may
+	// have arrived: the mailbox keeps one copy and the recipient dedupes by sendId.
+	for (let attempt = 0; attempt < SEND_MAX_ENTRIES && Date.now() - started < SEND_TOTAL_BUDGET_MS; attempt++) {
+		const [node] = await pickGossipEntryNodesForSend(entryPool, 1, tried)
+		if (!node) break
+		tried.add(node.domain)
+		const url = `https://${node.domain}.conet.network/post`
+		try {
+			const res = await postWithTimeout(url, {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body,
+				// Avoid Chrome Network panel noise; does not fix node/SI failures.
+				referrerPolicy: 'no-referrer',
+			}, SEND_ATTEMPT_TIMEOUT_MS)
+			if (!res.ok) {
+				console.warn(`[sendMessage] ${url} → HTTP ${res.status}`)
+				markGossipNodeBad(node.domain)
+				continue
+			}
+			const answer = await res.text().catch(() => '')
+			if (/"ok"\s*:\s*false/.test(answer)) {
+				console.warn(`[sendMessage] ${url} → ok:false`)
+				continue
+			}
+			markGossipNodeHealthy(node.domain)
+			return true
+		} catch (ex: any) {
+			// Chrome often labels bare network / missing-ACAO failures as CORS
+			// ("strict-origin-when-cross-origin"). Prefer explicit fetch error text.
+			console.warn(`[sendMessage] ${url} → ${ex?.name || 'error'}: ${ex?.message || ex}`)
+			markGossipNodeBad(node.domain)
+		}
+	}
 
-	console.error(
-		'[sendMessage] all entry POSTs failed',
-		[...tried, ...wave2.map(n => n.domain)],
-	)
+	console.error('[sendMessage] all entry POSTs failed', [...tried])
 	return false
 }
+
+const SEND_ATTEMPT_TIMEOUT_MS = 8_000
+const SEND_MAX_ENTRIES = 4
+const SEND_TOTAL_BUDGET_MS = 25_000
 
 
 /**

@@ -10,7 +10,7 @@ Beamio CoNET Chat SDK — **runs the gossip transport entirely inside a Web Work
 
 - **Worker-first**: every heavy crypto operation runs inside the Worker; the UI never blocks.
 - **UI-agnostic**: pure TS/ESM + `.d.ts`, no React and no app-specific imports. The host injects private keys, RPC, node discovery, IPFS, and persistence.
-- **Zero-trust routing built in**: send via entry A, listen via entry C (≠ mailbox B), `listenKind:'chat'` + `algorithm:'aes-256-cbc'` + `Securitykey`, business messages encrypted to the recipient's **EOA user PGP**, delivery ACK encrypted to the route B key. Each POST wraps inner armor to **that entry's** route public key. Clients never set `X-CoNET-Hop-Sigs`.
+- **Zero-trust routing built in**: business messages encrypted to the recipient's **EOA user PGP**, then wrapped to the recipient's mailbox B route key; one random entry at a time (never either mailbox), the next only after a clear failure; listen with `mailbox_listen` via entry C ≠ B and a per-listen `streamKey` that seals every SSE frame; delivery ACK encrypted to the route B key. Each POST wraps the armor to **that entry's** route public key. Clients never set `X-CoNET-Hop-Sigs`. (The mailbox wrap, `streamKey` and one-entry sending are the 2026-11 privacy rollout: written, not yet released.)
 - **Encrypted fragmented history**: HKDF domain separation + ratcheting fragment keys + AES-256-GCM fragments + encrypted index manifest + server-side `point-` pointers + IndexedDB local-first.
 - **Private keys never persist inside the SDK**: keys are used only in Worker memory to derive an `ethers.Wallet` and the history master. The host decides whether to persist locally (consumers/POS may store; bizSite keeps session memory only).
 
@@ -117,7 +117,7 @@ client.setRoutes(myContactRoutes)
 | `ipfsBaseUrl` | `string` | IPFS fragment gateway base, e.g. `https://ipfs.conet.network/api` |
 | `ipfsWriteBaseUrl?` | `string` | IPFS write base (defaults to `ipfsBaseUrl`) |
 | `persistence?` | `PersistenceAdapter` | IndexedDB adapter (optional; history is memory-only without it) |
-| `runtime?` | `ChatRuntimeOptions` | `sendFanout` (default 3), `reconnectBaseMs` (4000), `reconnectMaxMs` (30000), `outerWrap` (default `true`) |
+| `runtime?` | `ChatRuntimeOptions` | `reconnectBaseMs` (4000), `reconnectMaxMs` (30000), `outerWrap` (default `true`). `sendFanout` is kept for compatibility; sends no longer fan out (one entry at a time) |
 | `chainId?` | `number` | chainId in the history-master derivation domain (default `224422` CoNET L1) |
 
 ### `ChatIdentity` (key injection)
@@ -151,7 +151,7 @@ client.setRoutes(myContactRoutes)
 | Method | Description |
 |---|---|
 | `init(): Promise<void>` | start Worker, inject config/nodes; the Worker begins listening. Idempotent (no-op if already running) |
-| `sendMessage(to, payload, opts?)` | encrypt and send a business payload to a contact via entry A ≠ B. `opts.beamioNoPush` wraps `{ data, NoPush: true }` to the contact mailbox route key (sender receipts). HTTP stays `{ data }` only. Returns `{ sendId }` |
+| `sendMessage(to, payload, opts?)` | sign, encrypt to the contact's user PGP, wrap `{ data }` to the contact's mailbox route key (`to.routerArmoredPublicKey`, required: without it nothing is sent and the send fails as `recipient_mailbox_unknown`), and post through one entry at a time that is neither mailbox. `opts.beamioNoPush` adds `NoPush: true` to that wrap (sender receipts). HTTP stays `{ data }` only. Returns `{ sendId }` |
 | `queryPresence(contacts)` | probe mailbox listen-pool presence; returns `Record<addrLower, boolean>` (only `ok:true` counts) |
 | `setRoutes(routes)` | update the set of contacts to listen for / probe |
 | `setNodes(nodes)` | push a refreshed node snapshot (host owns discovery) |
@@ -168,7 +168,7 @@ client.setRoutes(myContactRoutes)
 | `message` | `InboundEnvelope` | `env.line` = host-ready JSON plaintext line (carries `_beamioPgpArmorHash`), handed to the host's serial checkSign/parse queue |
 | `delivery` | `DeliveryReceiptEvent` | delivery receipt (`sendId` / `deliveredAt` / `from`); host marks its own bubble as delivered |
 | `presence` | `PresenceEvent` | `online: Record<addr, boolean>`, reliable results only |
-| `status` | `StatusEvent` | `idle`/`connecting`/`listening`/`reconnecting`/`paused`/`error`; `listening` fires on each heartbeat to refresh main-thread staleness |
+| `status` | `StatusEvent` | `idle`/`connecting`/`listening`/`reconnecting`/`paused`/`error`; the first `listening` fires only after the mailbox's sealed handshake frame (not on the entry's HTTP 200), then again on each heartbeat to refresh main-thread staleness |
 | `log` | `ChatLogEvent` | structured log (never contains private keys / plaintext / full ciphertext) |
 | `historyBuffer` | `HistoryBufferEvent` | incremental batches during history restore/append, fed to the UI incrementally |
 
@@ -189,18 +189,37 @@ Host bridges should expose `read` as `readDecryptedChatHistory` and `searchDecry
 
 ---
 
+## ChatDaemon protocol v1 (spec)
+
+This package holds the one spec for the chat daemon that the TS Worker,
+[`chat-sdk-ios`](https://github.com/CoNET-project/chat-sdk-ios) and
+[`chat-sdk-android`](https://github.com/CoNET-project/chat-sdk-android) implement.
+
+| File | What it is |
+|---|---|
+| `src/protocol.ts` | The source: every command and event, the capability list, and `COMMAND_PRIVACY` (wallet signature, entry, what nodes see; checked against rules 13–23). |
+| `spec/chat-daemon-protocol.v1.schema.json` | JSON Schema generated from it (`npm run spec:schema`); commands carry `x-privacy`. |
+| `spec/chat-daemon-vectors.v1.json` | Shared conformance vectors: EIP-191 signing with a fixed test key, PGP envelope structure, ACK hash, call-signal classification, `hello` negotiation. Native repos keep a byte-identical copy. |
+
+- `hello` is the first command: the answer is `{ protocolVersion, minProtocolVersion, sdkVersion, implementation, capabilities[] }`. Hosts decide by capability (`negotiateChatDaemon` / `hasCapability`), never by whether a method exists. Daemons older than v1 do not answer; keep the pre-v1 behaviour for them.
+- A daemon answers an unknown command that carries a positive `reqId` with `ack { ok: false, error: 'unknown_command' }`.
+- Changing the protocol: edit `src/protocol.ts`, run `npm run spec:schema`, update the vectors (`scripts/genDaemonVectors.ts --force` regenerates every armor), then run `scripts/sync-protocol-vectors.sh` in both native repos.
+- `npm run test:conformance` builds the package and runs the vectors against `dist/` (including the worker entry).
+
 ## Zero-trust routing (built into the SDK)
 
 Follows `src/docs/gitbook/l0/si-developer-guide.md`, `conet-p2p-mailbox-routing-protocol`, and `beamio-conet-chat-protocol`:
 
 - **POST `/post`**: body is **only** `{ data: "<OpenPGP armor>" }`. Never add sibling fields.
-- **Send business messages**: encrypt to the recipient's **EOA user PGP**, POST to a healthy **entry A ≠ mailbox B**.
-- **Mailbox work / `NoPush`**: if mailbox B must skip APNs, wrap `{ data: <user-PGP armor>, NoPush: true }` to **B route PGP**, then POST that armor as `{ data }` (optional entry wrap). Do not put `NoPush` on the HTTP JSON.
-- **Recipient listen**: encrypt `{ command:'mining', listenKind:'chat', algorithm:'aes-256-cbc', Securitykey }` to the **mailbox B route key**, SSE-connect via **entry C ≠ B**. Omitting `listenKind` is treated as mining.
+- **Send business messages**: encrypt to the recipient's **EOA user PGP**, then always wrap `{ data: <user-PGP armor>, NoPush? }` to the recipient's **mailbox B route PGP** (no route key → `recipient_mailbox_unknown`, nothing sent). POST to **one** random entry that is neither the recipient's nor the sender's mailbox; switch entry only after a clear failure (connection error, non-2xx, `{ok:false}` body such as the rollout SI's `no_route`, or about 8 s without a response). Entries come from a background-warmed pool (about 8 healthy nodes, refreshed every 20 s while the Worker runs).
+- **Mailbox work / `NoPush`**: `NoPush: true` inside that wrap tells B to skip APNs (sender receipts). Do not put `NoPush` on the HTTP JSON. Released mailboxes ignore the flag; the rollout SI honours it and stores one copy per armor hash.
+- **Recipient listen**: encrypt `{ command:'mailbox_listen', walletAddress, instanceId, streamKey }` (signed; `streamKey` = 32 fresh random bytes, base64, memory only) to the **mailbox B route key**, SSE-connect via **entry C ≠ B**. Each SSE `data:` line is `base64(iv[12] ‖ AES-256-GCM ciphertext ‖ tag[16])` over the frame JSON padded with spaces to a multiple of 256 bytes; open it with `streamKey` before parsing. Rollout mailboxes refuse a listen without `streamKey` and deliver no Chat to the legacy `mining` + `listenKind:'chat'` pool.
 - **Delivery ACK / presence**: encrypt the SI command to the **mailbox B route key**, POST via **entry C ≠ B**.
 - **Outer wrap (default `runtime.outerWrap: true`)**: after the inner armor is built, encrypt that **raw armor string** again to **this POST's entry** route public key. Each fan-out entry is wrapped separately. Skip wrap when the entry key equals the inner encryption key (SI same-node peel → `end`).
 - **Hop-sigs**: clients **must not** set `X-CoNET-Hop-Sigs`. Only SI→SI HTTP `:80` appends it (max 3 hops).
-- **SSE inbound**: live SI still writes plaintext JSON `{ data: pgpMessage }`. Keep sending `Securitykey` on listen; do not assume AES-CBC frames yet.
+- **SSE inbound**: released SI (`cd35794`) ignores `streamKey` and writes plaintext JSON `{ data: pgpMessage }`; the rollout SI seals every frame, and this SDK drops any frame that does not open (not backward compatible). After a stream that heard from the mailbox drops, the Worker signs a new listen (new `instanceId` and `streamKey`) instead of reusing the old command. Old `algorithm` / `Securitykey` listen fields are not used for Chat.
+- **Calls**: offers go only to the callee's mailbox as `voice_offer_store` with `push: 1`; media uses `CVC2` chunks (write-key HMAC, 256-byte padding). In the rollout this SDK speaks only voice channel v3: four payer-signed temporary channels per call, each side on relays it chooses, `voice_listen` `v: 3` with temporary-wallet and payer signatures (v2 listens, v1 frames and the legacy `voice_listen` wake fields are gone). The wake receipt `voice_call_ringing_v1` is a call signal. See the [CoNET Chat whitepaper](https://gitbook.conet.network/applications/depin-chat-whitepaper.html).
+- **Known limitation**: `wallet_online_query` / `wallet_native_wake_query` carry and are signed by the querier's wallet (to be solved with `web3://`).
 - Never connect directly to mailbox B; never target the recipient's AA (must be EOA user PGP).
 - Client → entry may use HTTPS (PWA default). SI→SI is HTTP `:80` only.
 
@@ -250,7 +269,7 @@ The host bridge (`readDecryptedChatHistory` / `searchDecryptedChatHistory` / `on
 
 - Private keys / plaintext / full ciphertext **must never be logged**; `log` events emit structured summaries only.
 - The history `master` lives only in Worker memory; consumers/POS may store keys locally, bizSite keeps session memory only (policy owned by the host; the SDK never self-persists).
-- Always send `listenKind:'chat'` + `Securitykey`; never connect directly to mailbox B.
+- Listen with `mailbox_listen` and a fresh `streamKey`; never log the key; never connect directly to mailbox B.
 - Never set `X-CoNET-Hop-Sigs` on client `POST /post`.
 - Sender receipts should use `sendMessage(..., { beamioNoPush: true })` (mailbox work wrap; requires the sender mailbox route key).
 - `point-` has CoNET-private semantics; public-gateway retrieval relies on CIDv1 mapping and must be documented.

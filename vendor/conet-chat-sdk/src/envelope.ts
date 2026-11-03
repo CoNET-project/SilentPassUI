@@ -20,6 +20,7 @@ import {
 import type { Wallet } from 'ethers'
 
 import { utf8ToBase64 } from './crypto.js'
+import { mailboxWork, routeCommandLiteral } from './wire.js'
 import { normalizeArmoredKey } from './nodes.js'
 
 async function readMaybeText(value: unknown): Promise<string> {
@@ -79,8 +80,7 @@ export async function wrapArmorToMailboxWork(
 	if (!mailboxKey || !innerArmor.includes('BEGIN PGP')) {
 		throw new Error('wrapArmorToMailboxWork: missing mailbox route key or inner armor')
 	}
-	const payload: MailboxWorkEnvelope = { data: innerArmor }
-	if (work?.NoPush) payload.NoPush = true
+	const payload: MailboxWorkEnvelope = mailboxWork(innerArmor, work?.NoPush === true)
 	const encryptionKeys = await readKey({ armoredKey: mailboxRoutePublicKeyArmored })
 	const pgpMsg = await createMessage({ text: JSON.stringify(payload) })
 	return armorToString(
@@ -155,7 +155,7 @@ export async function encryptRouteCommand(
 	const message = JSON.stringify(command)
 	const signMessage = await wallet.signMessage(message)
 	const pgpMsg = await createMessage({
-		text: utf8ToBase64(JSON.stringify({ message, signMessage })),
+		text: utf8ToBase64(JSON.stringify(routeCommandLiteral(message, signMessage))),
 	})
 	const encryptionKeys = await readKey({ armoredKey: routePublicKeyArmored })
 	return armorToString(

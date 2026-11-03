@@ -20,13 +20,16 @@
   "files": [
     "dist",
     "src",
+    "spec",
     "README.md"
   ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "clean": "rm -rf dist",
     "prepare": "npm run build",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "spec:schema": "node scripts/genDaemonSchema.ts",
+    "test:conformance": "tsc -p tsconfig.json && node scripts/genDaemonSchema.ts --check && node scripts/testDaemonConformance.ts"
   },
   "peerDependencies": {
     "ethers": "^6.0.0",
@@ -49,6 +52,7 @@
     "access": "public"
   },
   "devDependencies": {
+    "ts-json-schema-generator": "^2.9.0",
     "typescript": "^5.4.5"
   }
 }

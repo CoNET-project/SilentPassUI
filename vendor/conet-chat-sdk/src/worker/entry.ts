@@ -9,6 +9,7 @@
 
 import type { WorkerInbound, WorkerInitPayload, WorkerOutbound } from '../protocol.js'
 import type { HistoryEntry, PresenceEvent, StatusEvent } from '../types.js'
+import { tsWorkerHello } from '../daemon.js'
 import { GossipCore } from './gossip-core.js'
 import { HistoryStore } from './history.js'
 
@@ -145,6 +146,18 @@ function createWorkerPersistence() {
 
 async function handle(cmd: WorkerInbound): Promise<void> {
 	switch (cmd.type) {
+		case 'hello':
+			post({ type: 'ack', reqId: cmd.reqId, ok: true, result: tsWorkerHello() })
+			return
+		case 'provisionIdentity':
+		case 'clearIdentity':
+			// Browser keys live only in this worker's memory (via `init`); no
+			// `identity.provision` capability, so nothing is stored or cleared.
+			if (cmd.reqId > 0) post({ type: 'ack', reqId: cmd.reqId, ok: false, error: 'unsupported_command' })
+			return
+		case 'ackInbound':
+			// No `inbound.deferAck` capability: the page ACKs itself.
+			return
 		case 'init': {
 			try {
 				gossip = makeGossip()
@@ -273,8 +286,17 @@ async function handle(cmd: WorkerInbound): Promise<void> {
 		}
 		case 'voiceListen': {
 			try {
-				const ok = await gossip!.startVoiceListen(cmd.sessionId, cmd.pushWakeup, cmd.channelKey)
+				const ok = await gossip!.startVoiceListen(cmd.sessionId, cmd.call)
 				post({ type: 'ack', reqId: cmd.reqId, ok: true, result: { started: ok } })
+			} catch (ex) {
+				post({ type: 'ack', reqId: cmd.reqId, ok: false, error: (ex as Error)?.message ?? String(ex) })
+			}
+			return
+		}
+		case 'voiceOffer': {
+			try {
+				const result = await gossip!.sendVoiceOffer(cmd.offer)
+				post({ type: 'ack', reqId: cmd.reqId, ok: true, result })
 			} catch (ex) {
 				post({ type: 'ack', reqId: cmd.reqId, ok: false, error: (ex as Error)?.message ?? String(ex) })
 			}
@@ -305,8 +327,13 @@ async function handle(cmd: WorkerInbound): Promise<void> {
 		case 'nodesResponse':
 			if (cmd.nodes?.length) gossip?.setNodes(cmd.nodes)
 			return
-		default:
+		default: {
+			const unknown = cmd as { reqId?: unknown }
+			if (typeof unknown.reqId === 'number' && unknown.reqId > 0) {
+				post({ type: 'ack', reqId: unknown.reqId, ok: false, error: 'unknown_command' })
+			}
 			return
+		}
 	}
 }
 

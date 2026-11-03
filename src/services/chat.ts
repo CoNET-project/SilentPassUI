@@ -14,7 +14,7 @@ import { publishNativePwaLog } from '@/utils/cashTreesNativePwaLog'
 import { sendChatViaNativeDaemon, getWorkerGossipListenParams, getWorkerGossipRouteArmor, isWorkerGossipActive, isWorkerGossipBusy, isNativeChatListenOwner, pauseNativeChatListen, resumeNativeChatListen, retargetWorkerGossipRoute, startWorkerGossipListen, stopWorkerGossip } from '@/services/chatWorkerBridge'
 import { isCashTreesAndroidChatModuleAvailable, isCashTreesAndroidChatModuleRunning } from '@/utils/cashTreesAndroidConetChat'
 import { wrapArmorToMailboxWork } from '@conet.project/chat-sdk'
-import { pickRecordedMailbox, planOwnChatRoute, readOwnChainState, recheckListenRoute, resolveCurrentMailbox } from '@/services/chatOwnRoutePlan'
+import { createOwnRegisterBackoff, pickRecordedMailbox, planOwnChatRoute, readOwnChainState, recheckListenRoute, resolveCurrentMailbox } from '@/services/chatOwnRoutePlan'
 import type { OwnPrivateBlob } from '@/services/chatOwnRoutePlan'
 
 function chatBootLog(message: string, level: 'info' | 'warn' | 'error' = 'info'): void {
@@ -256,6 +256,8 @@ let initChatInProgress = false
  * listening. Each retry is a normal initChat (random entry, no wallet sent).
  */
 const CHAT_RETRY_DELAYS_MS = [2_000, 4_000, 8_000, 16_000, 30_000]
+/** Own-mailbox registrations that failed in a row; spaces out the next one (chatOwnRoutePlan.ts). */
+const ownRegisterBackoff = createOwnRegisterBackoff()
 let chatRetryTimer: ReturnType<typeof setTimeout> | undefined
 let chatRetryAttempt = 0
 let chatRetryArgs: Parameters<typeof initChat> | null = null
@@ -266,10 +268,10 @@ const clearChatRetry = (resetBackoff: boolean) => {
 	if (resetBackoff) chatRetryAttempt = 0
 }
 
-const scheduleChatRetry = (reason: string, args: Parameters<typeof initChat>) => {
+const scheduleChatRetry = (reason: string, args: Parameters<typeof initChat>, delayMs?: number) => {
 	chatRetryArgs = args
 	if (chatRetryTimer !== undefined) return
-	const delay = CHAT_RETRY_DELAYS_MS[Math.min(chatRetryAttempt, CHAT_RETRY_DELAYS_MS.length - 1)]
+	const delay = delayMs ?? CHAT_RETRY_DELAYS_MS[Math.min(chatRetryAttempt, CHAT_RETRY_DELAYS_MS.length - 1)]
 	chatRetryAttempt += 1
 	chatBootLog(`initChat retry #${chatRetryAttempt} in ${delay / 1000}s (${reason})`, 'warn')
 	chatRetryTimer = setTimeout(() => {
@@ -375,6 +377,7 @@ export const initChat = async (setProfiles: (val: profile[]) => void, setAllNode
 		let routeConfirmed = false
 		const ownWallet = new ethers.Wallet(profile.privateKeyArmor).address
 		if (plan.action === 'use-chain') {
+			ownRegisterBackoff.reset()
 			noteOwnMailboxVerified(ownWallet, plan.mailbox.routeKeyID, plan.mailbox.routeArmor)
 		} else {
 			forgetOwnMailboxVerified(ownWallet)
@@ -409,7 +412,18 @@ export const initChat = async (setProfiles: (val: profile[]) => void, setAllNode
 			const target = plan.target !== 'random'
 				? plan.target
 				: randomNode ? { routeKeyID: randomNode.domain, routeArmor: randomNode.armoredPublicKey } : null
-			if (target) {
+			const registerWaitMs = target ? ownRegisterBackoff.remainingMs(Date.now()) : 0
+			if (target && registerWaitMs > 0) {
+				// The last registration failed: wait it out, never register again at once.
+				chatBootLog(`own mailbox: registration failed ${ownRegisterBackoff.failures()}x; next try in ${Math.ceil(registerWaitMs / 1000)}s`, 'warn')
+				if (plan.target === 'random') {
+					setGossip(false)
+					scheduleChatRetry('mailbox registration backoff', ownRouteRetryArgs, registerWaitMs)
+					return
+				}
+				// An existing mailbox: keep listening on it; the recheck waits too.
+				routes = target.routeArmor
+			} else if (target) {
 				routes = target.routeArmor
 				const registered = await regiestChatRoute(
 					profile.privateKeyArmor,
@@ -438,10 +452,16 @@ export const initChat = async (setProfiles: (val: profile[]) => void, setAllNode
 						)
 					}
 				}
+				if (routeConfirmed) {
+					ownRegisterBackoff.reset()
+				} else {
+					const waitMs = ownRegisterBackoff.fail(Date.now())
+					chatBootLog(`own mailbox: registration failed ${ownRegisterBackoff.failures()}x; next try in ${waitMs / 1000}s`, 'warn')
+				}
 				if (!registered && plan.target === 'random') {
 					// A new account whose registration failed has no mailbox yet.
 					setGossip(false)
-					scheduleChatRetry('mailbox registration failed', ownRouteRetryArgs)
+					scheduleChatRetry('mailbox registration failed', ownRouteRetryArgs, ownRegisterBackoff.remainingMs(Date.now()))
 					return
 				}
 			} else {
@@ -682,17 +702,21 @@ const startOwnRouteRecheck = (
 		localKeyID,
 		sleep: (ms) => waitForOwnRouteRecheck(ms, gen),
 		onRetry: (why, ms) => chatBootLog(`own mailbox recheck: chain read failed (${why}); keeping route=${listenId}; retry in ${ms / 1000}s`, 'warn'),
-	}).then(({ result, read }) => {
+	}).then(async ({ result, read }) => {
 		if (gen !== ownRouteRecheckGen || result === 'gone') return
 		const ownWallet = new ethers.Wallet(privateKeyArmor).address
 		if (result === 'match') {
+			ownRegisterBackoff.reset()
 			if (read?.status === 'ok') noteOwnMailboxVerified(ownWallet, read.routeKeyID, read.routeArmor)
 			chatBootLog(`own mailbox recheck: route=${listenId} matches chain`)
 			return
 		}
 		forgetOwnMailboxVerified(ownWallet)
 		const chainId = read?.status === 'ok' ? (read.routeKeyID || 'none') : 'none'
-		chatBootLog(`own mailbox recheck: route=${listenId} chain=${chainId}; reconnecting per the chain record`, 'warn')
+		const waitMs = ownRegisterBackoff.remainingMs(Date.now())
+		chatBootLog(`own mailbox recheck: route=${listenId} chain=${chainId}; reconnecting per the chain record${waitMs > 0 ? ` in ${Math.ceil(waitMs / 1000)}s` : ''}`, 'warn')
+		// A registration just failed: wait before chat starts again (and registers).
+		if (waitMs > 0 && !(await waitForOwnRouteRecheck(waitMs, gen))) return
 		if (gen !== ownRouteRecheckGen || initChatInProgress) return
 		clearGossipListenSession('own_route_mismatch')
 		const [setProfiles, setAllNodes, setGossip, , newMessage] = args

@@ -1,4 +1,4 @@
-import { pickRecordedMailbox, planOwnChatRoute, readOwnChainState, recheckListenRoute, resolveCurrentMailbox } from './chatOwnRoutePlan'
+import { createOwnRegisterBackoff, OWN_ROUTE_RECHECK_DELAYS_MS, pickRecordedMailbox, planOwnChatRoute, readOwnChainState, recheckListenRoute, resolveCurrentMailbox } from './chatOwnRoutePlan'
 import type { OwnChainRead } from './chatOwnRoutePlan'
 import type { OwnChainRecord, OwnMailbox, OwnPrivateBlob } from './chatOwnRoutePlan'
 
@@ -271,3 +271,63 @@ describe('pickRecordedMailbox (new mailbox only on a node AddressPGP recorded)',
 		expect(asked).toEqual(['60f7767d9f2174ca', 'B6FF020087998A06'])
 	})
 })
+
+describe('createOwnRegisterBackoff', () => {
+	it('starts open, then waits 5/15/30/60/120/300 s after each failure, capped', () => {
+		const b = createOwnRegisterBackoff()
+		expect(b.remainingMs(0)).toBe(0)
+		let now = 0
+		const waits: number[] = []
+		for (let i = 0; i < 8; i++) {
+			waits.push(b.fail(now))
+			expect(b.remainingMs(now)).toBe(waits[i])
+			expect(b.remainingMs(now + waits[i] - 1)).toBe(1)
+			now += waits[i]
+			expect(b.remainingMs(now)).toBe(0)
+		}
+		expect(waits).toEqual([...OWN_ROUTE_RECHECK_DELAYS_MS, 300_000, 300_000])
+		expect(b.failures()).toBe(8)
+	})
+
+	it('reset after a confirmed record opens it again and restarts at 5 s', () => {
+		const b = createOwnRegisterBackoff()
+		b.fail(0)
+		b.fail(5_000)
+		b.reset()
+		expect(b.failures()).toBe(0)
+		expect(b.remainingMs(5_001)).toBe(0)
+		expect(b.fail(10_000)).toBe(5_000)
+	})
+
+	it('no chain record + API refusing: registrations are spaced out, not back to back (R7 loop)', () => {
+		// Model of initChat -> register fails -> recheck reads "no record" -> start chat again.
+		// Each round takes ~0.65 s of work, as seen in the browser (26 registrations in 25 s before).
+		const b = createOwnRegisterBackoff()
+		const ROUND_MS = 650
+		const attempts: number[] = []
+		let now = 0
+		while (now < 25_000) {
+			const wait = b.remainingMs(now)
+			if (wait > 0) {
+				now += wait // the recheck / initChat gate waits instead of registering
+				continue
+			}
+			attempts.push(now)
+			b.fail(now) // registration refused, chain still empty
+			now += ROUND_MS
+		}
+		expect(attempts).toEqual([0, 5_000, 20_000])
+		// Over an hour it settles at one try every 5 minutes.
+		while (now < 3_600_000) {
+			const wait = b.remainingMs(now)
+			if (wait > 0) { now += wait; continue }
+			attempts.push(now)
+			b.fail(now)
+			now += ROUND_MS
+		}
+		expect(attempts.length).toBeLessThanOrEqual(17)
+		const gaps = attempts.slice(1).map((t, i) => t - attempts[i])
+		expect(Math.min(...gaps)).toBeGreaterThanOrEqual(5_000)
+	})
+})
+

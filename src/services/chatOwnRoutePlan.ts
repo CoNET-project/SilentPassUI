@@ -187,6 +187,42 @@ export async function readOwnChainState(deps: {
 /** Waits between chain reads while they fail (ms); the last one repeats. */
 export const OWN_ROUTE_RECHECK_DELAYS_MS: readonly number[] = [5_000, 15_000, 30_000, 60_000, 120_000, 300_000]
 
+export type OwnRegisterBackoff = {
+	/** Registrations in a row that did not end on a confirmed chain record. */
+	failures: () => number
+	/** How long to wait before the next registration (0: go ahead). */
+	remainingMs: (now: number) => number
+	/** Count a failed or unconfirmed registration; returns the wait it starts. */
+	fail: (now: number) => number
+	/** A working chain read confirmed the mailbox. */
+	reset: () => void
+}
+
+/**
+ * Waits between own-mailbox registrations that fail, same steps as a failed
+ * chain read. 2026-11-02 RC3c R7: with no chain record and the API refusing,
+ * initChat registered, the listen recheck read "no record" and started chat
+ * again at once: 26 registrations in 25 s, down to 0.65 s apart.
+ */
+export function createOwnRegisterBackoff(delaysMs: readonly number[] = OWN_ROUTE_RECHECK_DELAYS_MS): OwnRegisterBackoff {
+	let failures = 0
+	let nextAt = 0
+	return {
+		failures: () => failures,
+		remainingMs: (now) => (failures === 0 ? 0 : Math.max(0, nextAt - now)),
+		fail: (now) => {
+			const wait = delaysMs[Math.min(failures, delaysMs.length - 1)]
+			failures += 1
+			nextAt = now + wait
+			return wait
+		},
+		reset: () => {
+			failures = 0
+			nextAt = 0
+		},
+	}
+}
+
 /**
  * After a listen started on a mailbox no working chain read confirmed
  * (`keep-current`, or a registration that could not be verified): read the

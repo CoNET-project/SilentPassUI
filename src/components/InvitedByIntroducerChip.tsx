@@ -8,6 +8,7 @@ import {
 	readAgentInviteIntroducer,
 } from '@/utils/agentInviteIntroducerStash'
 import { fetchIntroducerOf } from '@/utils/agentReferrerRegistryClient'
+import { lookupReferrerTag, referrerAvatarDataUri } from '@/utils/referrerTagLookup'
 
 /**
  * In-app “Invited by” chip for the referee (consumer who opened `?invite=0x…`).
@@ -27,6 +28,8 @@ export function InvitedByIntroducerChip({
 	const [introducer, setIntroducer] = useState<string | null>(null)
 	const [source, setSource] = useState<'chain' | 'stash' | null>(null)
 	const [copied, setCopied] = useState(false)
+	/** Tag from the public search API: the welcome page has no wallet, so the tag database is empty. */
+	const [fetchedTag, setFetchedTag] = useState<{ address: string; tag: string } | null>(null)
 
 	useEffect(() => {
 		let cancelled = false
@@ -78,6 +81,19 @@ export function InvitedByIntroducerChip({
 		void ensureProfilesForAddresses([introducer])
 	}, [introducer, ensureProfilesForAddresses])
 
+	const localTag = introducer ? resolveTag(introducer) : ''
+	useEffect(() => {
+		if (!introducer || localTag) return
+		let cancelled = false
+		// Not found, timeout or offline resolve to '': the short address stays.
+		void lookupReferrerTag(introducer).then((tag) => {
+			if (!cancelled && tag) setFetchedTag({ address: introducer.toLowerCase(), tag })
+		})
+		return () => {
+			cancelled = true
+		}
+	}, [introducer, localTag])
+
 	const copy = useCallback(async () => {
 		if (!introducer) return
 		try {
@@ -95,8 +111,11 @@ export function InvitedByIntroducerChip({
 		introducer.length > 10
 			? `${introducer.slice(0, 6)}…${introducer.slice(-4)}`
 			: introducer
-	const tagRaw = resolveTag(introducer)
+	const tagRaw =
+		localTag || (fetchedTag?.address === introducer.toLowerCase() ? fetchedTag.tag : '')
 	const tagLine = tagRaw ? formatBeamioTagDisplayLine(tagRaw) : ''
+	// Chat-list rule, drawn on this device: tag seed, or the default avatar without a tag.
+	const avatarUri = referrerAvatarDataUri(tagRaw)
 	const pendingHint = source === 'stash' ? ' · pending bind' : ''
 
 	return (
@@ -106,9 +125,18 @@ export function InvitedByIntroducerChip({
 			data-introducer={introducer}
 			data-source={source ?? ''}
 		>
-			<span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#e9edff] text-[#0051d1]">
-				<UserRound className="h-5 w-5" strokeWidth={2} aria-hidden />
-			</span>
+			{avatarUri ? (
+				<img
+					src={avatarUri}
+					alt=""
+					className="h-10 w-10 shrink-0 rounded-full bg-[#e9edff]"
+					data-testid="invited-by-avatar"
+				/>
+			) : (
+				<span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#e9edff] text-[#0051d1]">
+					<UserRound className="h-5 w-5" strokeWidth={2} aria-hidden />
+				</span>
+			)}
 			<div className="min-w-0 flex-1">
 				<p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
 					Invited by{pendingHint}

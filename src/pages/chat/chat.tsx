@@ -90,7 +90,7 @@ import { storeSystemData, AuthorizationSign } from '@/services/beamio'
 import { useBeamioTagDatabase } from '@/providers/BeamioTagDatabaseProvider'
 import { fiatPrefix } from '@/services/currency'
 import { beginCallTiming, markCallTiming, timeCallStep } from '@/utils/callTiming'
-import { newVoiceLinkState, noteVoiceLinkRx, tickVoiceLink, type VoiceLinkState } from '@/utils/voiceLinkPolicy'
+import { VOICE_LINK, newVoiceLinkState, noteVoiceLinkRx, tickVoiceLink, type VoiceLinkState } from '@/utils/voiceLinkPolicy'
 import { dispatchNativeSystemCallAction, getCashTreesNativeNfcBridge, getCashTreesNativeNfcHost, isCashTreesNativeWebView, nativeShellAcksDialer, notifyNativeVoiceMicReady, openExternalUrl, requestNativeCameraCapture, requestNativePhotoPicker, saveFileToNative } from '@/utils/cashTreesNativeNfc'
 import { NATIVE_DIALER_ACK_MS, nativeDialerAckOverdue } from '@/utils/nativeDialerAck'
 import { MessageSendReceiveCard } from "./components/messageSendReceiveCard"
@@ -205,6 +205,8 @@ import {
 	uploadEncryptedChatFileDataUrl,
 	type ChatFileMessageManifest,
 } from '@/utils/chatFileMessage'
+
+const VOICE_RELAY_UNAVAILABLE = 'Voice audio relay is unavailable. Please try the call again.'
 
 const aptEndpoint = 'https://api.settleonbase.xyz'
 const baseExplorerTxUrl = (hash: string) => `https://basescan.org/tx/${hash}`
@@ -2740,10 +2742,20 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 					timestamp: Math.floor(Date.now() / 1000),
 					payload,
 				})
-				if (!sent && voiceFrameSendFailuresRef.current < 3) {
-					voiceFrameSendFailuresRef.current += 1
-					setVoiceError('Voice audio relay is unavailable. Please try the call again.')
-				} else if (sent) {
+				if (!sent) {
+					// Not accepted: before the peer's relay is known, or while its channel
+					// reopens. Warn only once nothing has gone through for a while; the
+					// link watchdog ends the call after 25 s without frames either way.
+					const link = voiceLinkRef.current
+					const since = Math.max(link.lastTxOkAt, link.mediaStartedAt)
+					if (voiceFrameSendFailuresRef.current < 3 && since > 0 && Date.now() - since >= VOICE_LINK.rxStaleMs) {
+						voiceFrameSendFailuresRef.current += 1
+						setVoiceError(VOICE_RELAY_UNAVAILABLE)
+					}
+				} else {
+					if (voiceFrameSendFailuresRef.current > 0) {
+						setVoiceError((prev) => (prev === VOICE_RELAY_UNAVAILABLE ? null : prev))
+					}
 					voiceFrameSendFailuresRef.current = 0
 					voiceLinkRef.current.lastTxOkAt = Date.now()
 					if (!loggedSentFrame) {

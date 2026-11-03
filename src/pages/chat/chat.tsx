@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState, useLayoutEffect, useCallback } from "react"
+import React, { useEffect, useMemo, useRef, useState, useLayoutEffect, useCallback, startTransition } from "react"
 import { flushSync } from "react-dom"
 import { BeamioAddressCapsule } from '@/components/BeamioAddressCapsule'
 import { localCallerAvatarDataUri } from '@/utils/callerAvatar'
@@ -91,6 +91,7 @@ import { storeSystemData, AuthorizationSign } from '@/services/beamio'
 import { useBeamioTagDatabase } from '@/providers/BeamioTagDatabaseProvider'
 import { fiatPrefix } from '@/services/currency'
 import { beginCallTiming, markCallTiming, timeCallStep } from '@/utils/callTiming'
+import { cachedWallet, prewarmDialKeys } from '@/utils/dialKeyCache'
 import { VOICE_LINK, newVoiceLinkState, noteVoiceLinkRx, tickVoiceLink, type VoiceLinkState } from '@/utils/voiceLinkPolicy'
 import { dispatchNativeSystemCallAction, getCashTreesNativeNfcBridge, getCashTreesNativeNfcHost, isCashTreesNativeWebView, nativeShellAcksDialer, notifyNativeVoiceMicReady, openExternalUrl, requestNativeCameraCapture, requestNativePhotoPicker, saveFileToNative } from '@/utils/cashTreesNativeNfc'
 import { NATIVE_DIALER_ACK_MS, nativeDialerAckOverdue } from '@/utils/nativeDialerAck'
@@ -2946,8 +2947,10 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 			: false
 		markCallTiming('prepare-dispatched', `native=${nativePrepared ? 1 : 0}`)
 		voiceCallLiveRef.current = true
+		let audioPrewarmed = false
 		const prewarmAudio = () => {
-			if (!voiceCallLiveRef.current) return
+			if (audioPrewarmed || !voiceCallLiveRef.current) return
+			audioPrewarmed = true
 			armVoicePlayback()
 			if (getCashTreesNativeNfcHost() !== 'android' && navigator.mediaDevices?.getUserMedia) {
 				void navigator.mediaDevices.getUserMedia({ audio: true }).then((stream) => {
@@ -2965,8 +2968,9 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 			// The shell plays and records the dialed call natively. In WKWebView
 			// the audio context and mic request switch the app's audio session
 			// on the shell's main thread, which held the call screen's first
-			// frame back; run them once the screen has slid in.
-			window.setTimeout(prewarmAudio, 450)
+			// frame back; run them once the offer is with the shell (or after
+			// 1.5 s), so they stay off the tap-to-offer path.
+			window.setTimeout(prewarmAudio, 1500)
 		} else {
 			// Must run before any await so the browser unlocks the speaker.
 			if (!isCashTreesNativeWebView()) ensureCallTones().unlock()
@@ -3005,13 +3009,20 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 				setVoiceDialFailed(true)
 			}
 		}
-		setVoiceDialFailed(false)
-		setVoiceError(null)
-		setVoiceVideoNote(null)
-		setVoiceCallMinimized(false)
-		setVoiceSpeakerOn(true)
-		setVoiceCallConnecting(true)
-		setVoiceCallState('outgoing')
+		const applyDialState = () => {
+			setVoiceDialFailed(false)
+			setVoiceError(null)
+			setVoiceVideoNote(null)
+			setVoiceCallMinimized(false)
+			setVoiceSpeakerOn(true)
+			setVoiceCallConnecting(true)
+			setVoiceCallState('outgoing')
+		}
+		// The native screen already shows the call; re-rendering the chat page
+		// here ran inside the awaits below and held the offer back. A transition
+		// lets React render it in small slices around the dial work.
+		if (nativePrepared) startTransition(applyDialState)
+		else applyDialState()
 		let route = chatData.chatData?.routersArmoreds?.trim() || ''
 		let recipientPgp = chatData.chatData?.publicArmored?.trim() || ''
 		// ChatList refreshes peer routes in the background. A call can be
@@ -3053,7 +3064,7 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 				failDial(mailboxAlignErrorMessage())
 				return
 			}
-			const callerWallet = new ethers.Wallet(privateKey).address
+			const callerWallet = cachedWallet(privateKey).address
 			const callerCallId = String(
 				CoNET_Data?.beamio?.accountName ||
 				callerWallet,
@@ -3067,6 +3078,7 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 				allNodes,
 			})
 			const channel = await timeCallStep('offer-ready', () => controller.startOutgoing())
+			if (nativePrepared) window.setTimeout(prewarmAudio, 0)
 			if (cancelledWhileStarting()) {
 				// Cancel was pressed while the offer was being posted. The callee's
 				// phone may already be ringing, so end the call properly: it tells
@@ -5450,6 +5462,15 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 			setPeerNativeWakeable(current => (current === peerTag.nativeWakeable ? current : !!peerTag.nativeWakeable))
 		}
 	}, [peerTag?.online, peerTag?.nativeWakeable, peerTag?.onlineAt, peerTag?.nativeWakeAt])
+
+	// Parse the wallet and the peer's two keys once the chat is open, so a dial
+	// does not pay for them after the native call screen covers the page.
+	useEffect(() => {
+		const peerPgp = chatData.chatData?.publicArmored
+		const peerRoute = chatData.chatData?.routersArmoreds
+		const timer = window.setTimeout(() => prewarmDialKeys(privateKey, [peerPgp, peerRoute]), 300)
+		return () => window.clearTimeout(timer)
+	}, [privateKey, chatData.chatData?.publicArmored, chatData.chatData?.routersArmoreds])
 
 	// History restore / skipKeyFetch can open a thread with empty route armor even when
 	// the peer is registered on AddressPGP. Hydrate once on open (same as voice-call path).

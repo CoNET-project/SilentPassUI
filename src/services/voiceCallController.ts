@@ -1,6 +1,6 @@
 import { markCallTiming, timeCallStep } from '@/utils/callTiming'
-import { ethers } from 'ethers'
-import { createMessage, encrypt, enums, readKey } from 'openpgp'
+import { cachedReadKey, cachedWallet } from '@/utils/dialKeyCache'
+import { createMessage, encrypt, enums } from 'openpgp'
 import {
 	createVoiceSessionKey,
 	INCOMING_CALL_RING_TIMEOUT_MS,
@@ -83,7 +83,7 @@ async function encryptOpaqueVoiceCommandToRoute(command: Record<string, unknown>
 	const opaque = Buffer.from(JSON.stringify(command), 'utf8').toString('base64')
 	const out = await encrypt({
 		message: await createMessage({ text: opaque }),
-		encryptionKeys: await readKey({ armoredKey: routeArmor }),
+		encryptionKeys: await cachedReadKey(routeArmor),
 	})
 	return typeof out === 'string' ? out : String((out as { data?: unknown })?.data ?? out)
 }
@@ -148,7 +148,7 @@ async function encryptVoiceOfferArmorToCallee(
 	recipientPgp: string,
 	privateKey: string,
 ): Promise<string> {
-	const wallet = new ethers.Wallet(privateKey)
+	const wallet = cachedWallet(privateKey)
 	const signMessage = await wallet.signMessage(offerText)
 	const envelope = {
 		timestamp: Date.now(),
@@ -159,7 +159,7 @@ async function encryptVoiceOfferArmorToCallee(
 	const opaque = Buffer.from(JSON.stringify(envelope), 'utf8').toString('base64')
 	const postData = await encrypt({
 		message: await createMessage({ text: opaque }),
-		encryptionKeys: await readKey({ armoredKey: recipientPgp }),
+		encryptionKeys: await cachedReadKey(recipientPgp),
 		config: { preferredCompressionAlgorithm: enums.compression.zlib },
 	})
 	const armored =
@@ -313,7 +313,7 @@ export function createVoiceCallController(options: VoiceCallControllerOptions) {
 			proto: 3,
 			callId: randomMailboxVoiceSessionId(),
 			sessionId: ringId,
-			from: new ethers.Wallet(options.privateKey).address,
+			from: cachedWallet(options.privateKey).address,
 			to: options.peerEoa,
 			codec: 'audio/pcm;rate=16000',
 			callerPgp: armorToB64(ownPgp),
@@ -435,7 +435,7 @@ export function createVoiceCallController(options: VoiceCallControllerOptions) {
 		const callerPgp = voiceOfferB64Armor(offer.callerPgp) || options.peerPgp
 		const callerRoute = voiceOfferB64Armor(offer.callerRoute) || options.peerRoute
 		if (!callerEoa || !callerPgp || !callerRoute) return null
-		const payer = new ethers.Wallet(options.privateKey)
+		const payer = cachedWallet(options.privateKey)
 		const ownRoute = getOwnMailboxRouteArmor()
 		const voiceRelay = pickVoiceRelayNode(options.allNodes, ownRoute, callerRoute)
 		const videoRelay = pickVoiceRelayNode(options.allNodes, ownRoute, callerRoute)
@@ -517,7 +517,7 @@ export function createVoiceCallController(options: VoiceCallControllerOptions) {
 			type: 'voice_call_reject_v1',
 			callId: offer.callId,
 			sessionId: offer.sessionId,
-			from: new ethers.Wallet(options.privateKey).address,
+			from: cachedWallet(options.privateKey).address,
 			to: offer.from,
 			reason,
 		})
@@ -545,7 +545,7 @@ export function createVoiceCallController(options: VoiceCallControllerOptions) {
 			type: 'voice_call_ringing_v1',
 			callId: offer.callId,
 			sessionId: offer.sessionId,
-			from: new ethers.Wallet(options.privateKey).address,
+			from: cachedWallet(options.privateKey).address,
 			to: offer.from,
 		})
 		return sendMessage(
@@ -562,7 +562,7 @@ export function createVoiceCallController(options: VoiceCallControllerOptions) {
 			type: 'voice_call_timeout_v1',
 			callId: offer.callId,
 			sessionId: offer.sessionId,
-			from: new ethers.Wallet(options.privateKey).address,
+			from: cachedWallet(options.privateKey).address,
 			to: offer.from,
 			reason: 'timeout',
 		})
@@ -587,7 +587,7 @@ export function createVoiceCallController(options: VoiceCallControllerOptions) {
 			type: 'voice_call_timeout_v1',
 			callId: activeSignal.callId,
 			sessionId: activeSignal.sessionId,
-			from: new ethers.Wallet(options.privateKey).address,
+			from: cachedWallet(options.privateKey).address,
 			to: options.peerEoa,
 			reason: 'timeout',
 		})
@@ -601,7 +601,7 @@ export function createVoiceCallController(options: VoiceCallControllerOptions) {
 
 	const end = async (notifyPeer = true): Promise<void> => {
 		if (notifyPeer && activeSignal && (activeSessionId || activeSignal.type === 'voice_call_offer_v1')) {
-			const selfAddress = new ethers.Wallet(options.privateKey).address
+			const selfAddress = cachedWallet(options.privateKey).address
 			const signal = makeVoiceCallSignal({
 				type: 'voice_end_v1',
 				callId: activeSignal.callId,

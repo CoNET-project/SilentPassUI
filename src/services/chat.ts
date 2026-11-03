@@ -5,6 +5,7 @@ import {
 } from '@/utils/cashTreesPushBind'
 import { isCashTreesNativeWebView, postNativePgpCiphertext, setNativeVoiceRelayNodes } from '@/utils/cashTreesNativeNfc'
 import { CoNET_Data, setCoNET_Data } from "@/utils/globals"
+import { cachedWallet } from '@/utils/dialWalletCache'
 
 import {GuardianNodesMainnet, conetDepinProvider, beamioApi} from '@/utils/constants'
 import contracts from '@/utils/contracts'
@@ -1254,7 +1255,7 @@ export async function alignLiveGossipRouteToChain(
 	const normalizeRouteArmor = (value?: string) => (value || '').replace(/\r/g, '').trim()
 	lastMailboxAlignFailure = null
 	const live = mailboxKeyId(gossipDeliveryAckContext?.mailboxDomains?.[0] || '')
-	const wallet = new ethers.Wallet(privateKeyArmor).address.toLowerCase()
+	const wallet = cachedWallet(privateKeyArmor).address.toLowerCase()
 	const workerArmor = normalizeRouteArmor(getWorkerGossipRouteArmor())
 	// Mailbox we already know: the last good chain read, else the one the live listen is on.
 	const cached = cachedOwnMailbox(wallet)
@@ -1268,7 +1269,7 @@ export async function alignLiveGossipRouteToChain(
 	const verified = verifiedRec && mailboxKeyId(verifiedRec.routeKeyID) && verifiedRec.routeArmor
 		? { chainId: mailboxKeyId(verifiedRec.routeKeyID), armor: verifiedRec.routeArmor }
 		: null
-	const reading = readOwnMailboxFromChain(wallet).then((r) => {
+	const startReading = () => readOwnMailboxFromChain(wallet).then((r) => {
 		// A read that finishes after the dial went on still refreshes the cache.
 		if (typeof r === 'object' && r.armor) {
 			const before = getVerifiedOwnMailbox(wallet)
@@ -1285,12 +1286,14 @@ export async function alignLiveGossipRouteToChain(
 	// read refreshes in the background. Otherwise, with a known mailbox the dial
 	// waits at most 1.5 s for the chain (a slow RPC after a foreground return took
 	// 5 s and failed the call); without one it waits.
-	let read: Awaited<typeof reading> | 'slow'
+	let read: Awaited<ReturnType<typeof startReading>> | 'slow'
 	if (verified) {
 		read = { chainId: verified.chainId, armor: verified.armor }
-		void reading.catch(() => undefined)
+		// Started after the offer is out, so its RPC work stays off the dial path.
+		setTimeout(() => { void startReading().catch(() => undefined) }, 3_000)
 		chatBootLog(`voice route mailbox ${verified.chainId} verified this run; chain read in the background`)
 	} else {
+		const reading = startReading()
 		read = known
 			? await Promise.race([reading, new Promise<'slow'>((r) => setTimeout(() => r('slow'), 1_500))])
 			: await reading

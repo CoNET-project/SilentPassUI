@@ -1,4 +1,5 @@
-import { Wallet, verifyMessage } from 'ethers'
+import { verifyMessage } from 'ethers'
+import { cachedWallet } from './dialWalletCache'
 import {
 	ensureBeamioTagProfiles,
 	lookupBeamioTagProfile,
@@ -194,7 +195,7 @@ export function voiceCallOfferSignText(signal: Pick<
 }
 
 export async function signVoiceCallOffer(signal: VoiceCallSignal, privateKey: string): Promise<VoiceCallSignal> {
-	const callerSignature = await new Wallet(privateKey).signMessage(voiceCallOfferSignText(signal))
+	const callerSignature = await cachedWallet(privateKey).signMessage(voiceCallOfferSignText(signal))
 	return { ...signal, callerSignature }
 }
 

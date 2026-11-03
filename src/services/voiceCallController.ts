@@ -261,6 +261,29 @@ export async function timeoutIncomingVoiceOffer(
 	return sent
 }
 
+const ringingSentVoiceOfferKeys = new Set<string>()
+
+/**
+ * Wake receipt (`voice_call_ringing_v1`): tell the caller this device is ringing.
+ * Browser callee only — inside a native shell the shell sends it, because the
+ * shell can ring while this page is not running. Same path as Decline: caller
+ * user-PGP, caller mailbox route layer, random entry; NoPush (the caller is
+ * dialing in the foreground).
+ */
+export async function notifyIncomingVoiceRinging(
+	options: VoiceCallControllerOptions,
+	offer: VoiceCallSignal,
+): Promise<boolean> {
+	if (!offer.callId || !offer.sessionId || isCashTreesNativeWebView()) return false
+	const key = `${offer.callId}:${offer.sessionId}`
+	if (ringingSentVoiceOfferKeys.has(key)) return true
+	ringingSentVoiceOfferKeys.add(key)
+	const controller = createVoiceCallController(options)
+	const sent = await controller.ringingIncoming(offer)
+	if (!sent) ringingSentVoiceOfferKeys.delete(key)
+	return sent
+}
+
 export function createVoiceCallController(options: VoiceCallControllerOptions) {
 	let activeSessionId: string | null = null
 	let activeSessionKey: Uint8Array | null = null
@@ -511,6 +534,26 @@ export function createVoiceCallController(options: VoiceCallControllerOptions) {
 		return sentToCaller || isCashTreesNativeWebView()
 	}
 
+	const ringingIncoming = async (offer: VoiceCallSignal): Promise<boolean> => {
+		const callerPgp = voiceOfferB64Armor(offer.callerPgp) || options.peerPgp
+		const callerRoute = voiceOfferB64Armor(offer.callerRoute) || options.peerRoute
+		if (!callerPgp || !callerRoute) return false
+		const ringing = makeVoiceCallSignal({
+			type: 'voice_call_ringing_v1',
+			callId: offer.callId,
+			sessionId: offer.sessionId,
+			from: new ethers.Wallet(options.privateKey).address,
+			to: offer.from,
+		})
+		return sendMessage(
+			callerPgp,
+			JSON.stringify(ringing),
+			options.privateKey,
+			selectedEntries.length ? selectedEntries : options.allNodes,
+			{ beamioNoPush: true, recipientRouteArmored: callerRoute },
+		)
+	}
+
 	const timeoutIncoming = async (offer: VoiceCallSignal): Promise<boolean> => {
 		const timeout = makeVoiceCallSignal({
 			type: 'voice_call_timeout_v1',
@@ -585,6 +628,7 @@ export function createVoiceCallController(options: VoiceCallControllerOptions) {
 		acceptIncoming,
 		applyAccept,
 		rejectIncoming,
+		ringingIncoming,
 		timeoutIncoming,
 		notifyRingTimeout,
 		end,

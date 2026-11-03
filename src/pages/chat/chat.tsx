@@ -137,6 +137,12 @@ import {
 	recoverVoiceCallOfferSigner,
 	lookupIncomingVoiceOffer,
 	INCOMING_CALL_RING_TIMEOUT_MS,
+	VOICE_PEER_WAKE_TIMEOUT_MS,
+	VOICE_PEER_UNREACHABLE_MS,
+	VOICE_PEER_UNREACHABLE_NOTICE_MS,
+	type VoicePeerWake,
+	voicePeerWakeAfterReceipt,
+	voicePeerWakeAfterTimer,
 	mergePhoneCallRecord,
 	isPhoneCallTerminalStatus,
 	phoneCallStampMs,
@@ -152,6 +158,8 @@ import {
 	voiceCallClaimMismatchesKey,
 	makeVoiceCallSignal,
 	type VoiceCallSignal,
+	voicePeerRingingMatches,
+	wasVoicePeerRinging,
 } from '@/utils/voiceCallSession'
 import {
 	decodeBjpgFrame,
@@ -4234,6 +4242,81 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 		return () => window.clearTimeout(timer)
 	}, [voiceCallState])
 
+	/**
+	 * Browser dialer wake receipt. The callee's device sends `voice_call_ringing_v1`
+	 * as soon as it rings: "Ringing…", then the normal accept / decline / 60 s
+	 * timeout. Nothing within 8 s: the push may not have woken their phone
+	 * (Samsung deep sleep, force stop), say so and keep ringing. Nothing after
+	 * five rings (`VOICE_PEER_UNREACHABLE_MS`): "Unreachable", the ringback stops,
+	 * the call is recorded `unreachable` and ends with the cancel (`voice_end_v1`).
+	 * A receipt after that is ignored. Inside the iOS / Android shell the shell
+	 * runs this itself and tells the page `callUnreachable`.
+	 */
+	const [voicePeerWake, setVoicePeerWake] = useState<VoicePeerWake>('waiting')
+	const voicePeerWakeCallRef = useRef('')
+	const upsertPhoneCallRecordRef = useRef(upsertPhoneCallRecord)
+	upsertPhoneCallRecordRef.current = upsertPhoneCallRecord
+	// Runs again when the dial's session id is set: the offer (callId) only exists
+	// after startOutgoing() returns, well after the state turned 'outgoing'.
+	useEffect(() => {
+		if (voiceCallState !== 'outgoing' || voiceCallAnswered) {
+			if (voiceCallState !== 'outgoing') {
+				voicePeerWakeCallRef.current = ''
+				setVoicePeerWake('waiting')
+			}
+			return
+		}
+		const offer = voiceCallOfferRef.current
+		if (!offer?.callId) {
+			voicePeerWakeCallRef.current = ''
+			setVoicePeerWake('waiting')
+			return
+		}
+		if (voicePeerWakeCallRef.current !== offer.callId) {
+			voicePeerWakeCallRef.current = offer.callId
+			setVoicePeerWake('waiting')
+		}
+		// The receipt may have come before this effect subscribed.
+		if (wasVoicePeerRinging(offer)) setVoicePeerWake(voicePeerWakeAfterReceipt)
+		const onRinging = (event: Event) => {
+			const detail = (event as CustomEvent<{ callId?: string; sessionId?: string }>).detail
+			if (voicePeerRingingMatches(detail, offer)) setVoicePeerWake(voicePeerWakeAfterReceipt)
+		}
+		window.addEventListener('beamio-voice-peer-ringing', onRinging)
+		const started = Number(offer.timestamp || Date.now())
+		const restrictedTimer = window.setTimeout(() => {
+			setVoicePeerWake((current) => voicePeerWakeAfterTimer(current, 'restricted'))
+		}, Math.max(0, started + VOICE_PEER_WAKE_TIMEOUT_MS - Date.now()))
+		const timers = [restrictedTimer]
+		if (!isCashTreesNativeWebView()) {
+			timers.push(window.setTimeout(() => {
+				const current = voiceCallOfferRef.current
+				if (current?.callId !== offer.callId) return
+				// Read the receipt map too: a receipt in the same tick has not rendered yet.
+				if (wasVoicePeerRinging(offer)) return
+				setVoicePeerWake((wake) => voicePeerWakeAfterTimer(wake, 'unreachable'))
+				// Record now (stops the ringback, survives a hang-up during the notice).
+				upsertPhoneCallRecordRef.current({
+					callId: offer.callId,
+					sessionId: offer.sessionId,
+					peerAddress: toAddress,
+					direction: 'outgoing',
+					status: 'unreachable',
+					createdAt: started,
+					endedAt: Date.now(),
+				})
+				timers.push(window.setTimeout(() => {
+					if (voiceCallOfferRef.current?.callId !== offer.callId) return
+					void endVoiceCallRef.current('unreachable', true)
+				}, VOICE_PEER_UNREACHABLE_NOTICE_MS))
+			}, Math.max(0, started + VOICE_PEER_UNREACHABLE_MS - Date.now())))
+		}
+		return () => {
+			window.removeEventListener('beamio-voice-peer-ringing', onRinging)
+			timers.forEach((timer) => window.clearTimeout(timer))
+		}
+	}, [voiceCallState, voiceCallAnswered, liveVoiceSessionId])
+
 	useEffect(() => {
 		const currentProfiles = Array.isArray(profiles) ? profiles : []
 		if (!currentProfiles.length) return
@@ -4540,6 +4623,14 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 				setIncomingVoiceOffer(null)
 			} else if (detail.action === 'callTimedOut' && (matchesOutgoing || voiceCallState === 'outgoing')) {
 				void endVoiceCall('timed_out', false)
+			} else if (detail.action === 'callUnreachable' && (matchesOutgoing || voiceCallState === 'outgoing')) {
+				// No ringing receipt after five rings: the shell shows "Unreachable" and
+				// posts its ready cancel (`dialerCancelPosting` came first). The page
+				// sends its own cancel only when no shell took it.
+				void endVoiceCall('unreachable', true, {
+					callId: String(detail.callId || '').trim() || voiceCallOfferRef.current?.callId,
+					sessionId: String(detail.sessionId || '').trim() || voiceCallOfferRef.current?.sessionId,
+				})
 			} else if (detail.action === 'callEnded') {
 				const endCallId = String(detail.callId || '').trim()
 				const endSessionId = String(detail.sessionId || '').trim()
@@ -6982,7 +7073,9 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 			? 'Voice call'
 			: activeVoiceCallRecord?.status === 'timed_out'
 				? 'Timed out'
-				: 'Ringing'
+				: activeVoiceCallRecord?.status === 'unreachable'
+					? 'Unreachable'
+					: 'Ringing'
 	// Browser dialer: ringback from the moment the offer is out (record 'ringing')
 	// until Accept, decline, timeout, hang-up or failure changes any of these.
 	const voiceRingbackActive = !isCashTreesNativeWebView()
@@ -7224,10 +7317,19 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 									<p className="mt-1.5 font-mono text-[18px] tracking-wide text-white/70">
 										{voiceCallAnswered || activeVoiceCallRecord?.status === 'answered'
 											? (voiceReconnecting ? 'Reconnecting…' : voiceInCallClockLabel)
-											: voiceCallStatusLabel === 'Connecting' || voiceCallStatusLabel === 'Ringing'
-												? 'Calling…'
-												: voiceCallStatusLabel}
+											: voiceCallStatusLabel === 'Ringing' && voicePeerWake === 'ringing'
+												? 'Ringing…'
+												: voiceCallStatusLabel === 'Ringing' && voicePeerWake === 'restricted'
+													? 'Their phone may be restricting Beamio'
+													: voiceCallStatusLabel === 'Connecting' || voiceCallStatusLabel === 'Ringing'
+														? 'Calling…'
+														: voiceCallStatusLabel}
 									</p>
+									{voiceCallStatusLabel === 'Ringing' && voicePeerWake === 'restricted' ? (
+										<p className="mt-1 max-w-[18rem] text-center text-[13px] text-white/60">
+											They'll see a missed call when they open Beamio.
+										</p>
+									) : null}
 									{voicePeerAddressShort ? (
 										<div
 											className="mt-1.5 inline-flex items-center gap-1.5 rounded-full border border-[#dce2f7] bg-[#e9edff] px-3 py-1.5 text-[13px] font-medium text-[#424655]"
@@ -7635,6 +7737,8 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 																	? 'Recipient declined'
 																	: record.status === 'timed_out'
 																		? 'Timed out'
+																	: record.status === 'unreachable'
+																		? 'Unreachable'
 																		: record.status === 'cancelled'
 																		? 'Call cancelled'
 																		: record.status === 'failed'
@@ -7643,7 +7747,7 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 																				? record.durationMs ? `Voice call · ${formatVoiceDuration(record.durationMs)}` : 'Voice call'
 																				: record.durationMs ? `Call ended · ${formatVoiceDuration(record.durationMs)}` : 'Call ended'
 													const statusClass =
-														record.status === 'missed' || record.status === 'declined' || record.status === 'timed_out' || record.status === 'failed'
+														record.status === 'missed' || record.status === 'declined' || record.status === 'timed_out' || record.status === 'unreachable' || record.status === 'failed'
 															? 'text-rose-600'
 															: record.status === 'ringing'
 																? 'text-[#1652f0]'
@@ -7651,7 +7755,7 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 													return (
 														<div className="flex min-w-[190px] items-center gap-3 rounded-2xl bg-white/90 px-4 py-3 shadow-[0_4px_16px_rgba(15,23,42,0.08)] ring-1 ring-black/5">
 															<div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${
-																record.status === 'missed' || record.status === 'declined' || record.status === 'timed_out'
+																record.status === 'missed' || record.status === 'declined' || record.status === 'timed_out' || record.status === 'unreachable'
 																	? 'bg-rose-50'
 																	: 'bg-[#e9edff]'
 															}`}>

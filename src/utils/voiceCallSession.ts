@@ -10,8 +10,102 @@ import { publishNativePwaLog } from './cashTreesNativePwaLog'
 /** Unanswered incoming-call window. The Android shell closes at this mark and tells the caller. */
 export const INCOMING_CALL_RING_TIMEOUT_MS = 180_000
 
+/**
+ * Wake receipt window. The callee's device sends `voice_call_ringing_v1` as soon
+ * as it rings; without one in this time the dialer says the callee's phone may
+ * be blocking the wake-up push (Samsung deep sleep, force stop). The call keeps
+ * ringing until the normal timeout.
+ */
+export const VOICE_PEER_WAKE_TIMEOUT_MS = 8_000
+
+/**
+ * No wake receipt after five ringback rings: the callee's phone never got the
+ * call (force stopped, switched off, push blocked). The dialer says
+ * "Unreachable", sends the cancel and records the call as `unreachable`, so a
+ * late push cannot ring the callee for a call that is over. A receipt that
+ * comes later is ignored.
+ *
+ * Five rings of the 1 s on / 4 s off ringback (browser, iOS) = 25 s from the
+ * offer's timestamp. Android counts five rings of its SIM-country tone and keeps
+ * the result between 20 and 30 s (`BeamioNativeVoiceSignaling.peerUnreachableMs`).
+ */
+export const VOICE_PEER_UNREACHABLE_MS = 25_000
+
+/** How long the dial screen shows "Unreachable" before it closes. */
+export const VOICE_PEER_UNREACHABLE_NOTICE_MS = 2_000
+
+/**
+ * Dialer wake state: `restricted` = no receipt after 8 s (call keeps ringing),
+ * `unreachable` = no receipt after five rings (call is over).
+ */
+export type VoicePeerWake = 'waiting' | 'ringing' | 'restricted' | 'unreachable'
+
+/** A receipt shows "Ringing…", unless the call already ended as unreachable. */
+export function voicePeerWakeAfterReceipt(current: VoicePeerWake): VoicePeerWake {
+	return current === 'unreachable' ? current : 'ringing'
+}
+
+/** The 8 s or five-ring timer fired. A receipt that already came always wins. */
+export function voicePeerWakeAfterTimer(
+	current: VoicePeerWake,
+	timer: 'restricted' | 'unreachable',
+): VoicePeerWake {
+	if (current === 'ringing' || current === 'unreachable') return current
+	if (timer === 'unreachable') return 'unreachable'
+	return current === 'waiting' ? 'restricted' : current
+}
+
+/**
+ * Wake receipts already received (callId / sessionId → time), so a dial screen
+ * that subscribes after the receipt arrived still shows "Ringing…".
+ */
+const peerRingingSeen = new Map<string, number>()
+const PEER_RINGING_KEEP_MS = 10 * 60_000
+
+export function noteVoicePeerRinging(callId?: string, sessionId?: string, now = Date.now()): void {
+	peerRingingSeen.forEach((at, key) => {
+		if (now - at > PEER_RINGING_KEEP_MS) peerRingingSeen.delete(key)
+	})
+	const c = String(callId || '').trim()
+	const s = String(sessionId || '').trim()
+	if (c) peerRingingSeen.set(`c:${c}`, now)
+	if (s) peerRingingSeen.set(`s:${s}`, now)
+}
+
+/** Does this receipt (event detail) belong to our dial? */
+export function voicePeerRingingMatches(
+	detail: { callId?: string; sessionId?: string } | null | undefined,
+	offer: { callId?: string; sessionId?: string } | null | undefined,
+): boolean {
+	const callId = String(detail?.callId || '').trim()
+	const sessionId = String(detail?.sessionId || '').trim()
+	return Boolean(
+		(callId && callId === String(offer?.callId || '').trim()) ||
+			(sessionId && sessionId === String(offer?.sessionId || '').trim()),
+	)
+}
+
+export function wasVoicePeerRinging(
+	offer: { callId?: string; sessionId?: string } | null | undefined,
+	now = Date.now(),
+): boolean {
+	const fresh = (key: string) => {
+		const at = peerRingingSeen.get(key)
+		return at !== undefined && now - at <= PEER_RINGING_KEEP_MS
+	}
+	const c = String(offer?.callId || '').trim()
+	const s = String(offer?.sessionId || '').trim()
+	return Boolean((c && fresh(`c:${c}`)) || (s && fresh(`s:${s}`)))
+}
+
 export type VoiceCallSignal = {
-	type: 'voice_call_offer_v1' | 'voice_call_accept_v1' | 'voice_call_reject_v1' | 'voice_call_timeout_v1' | 'voice_end_v1'
+	type:
+		| 'voice_call_offer_v1'
+		| 'voice_call_accept_v1'
+		| 'voice_call_reject_v1'
+		| 'voice_call_timeout_v1'
+		| 'voice_end_v1'
+		| 'voice_call_ringing_v1'
 	callId: string
 	sessionId: string
 	from: string
@@ -125,7 +219,8 @@ export function parseVoiceCallSignal(raw: unknown): VoiceCallSignal | null {
 				|| candidate.type === 'voice_call_accept_v1'
 				|| candidate.type === 'voice_call_reject_v1'
 				|| candidate.type === 'voice_call_timeout_v1'
-				|| candidate.type === 'voice_end_v1')
+				|| candidate.type === 'voice_end_v1'
+				|| candidate.type === 'voice_call_ringing_v1')
 			&& typeof candidate.callId === 'string'
 			&& typeof candidate.sessionId === 'string'
 		) {
@@ -674,6 +769,9 @@ const PHONE_CALL_STATUS_RANK: Record<PhoneCallRecord['status'], number> = {
 	missed: 3,
 	timed_out: 3,
 	ended: 3,
+	// No ringing receipt after five rings. The cancel and the shell's call end
+	// that follow are read as "cancelled" and must not hide it.
+	unreachable: 4,
 }
 
 const PHONE_CALL_TERMINAL_STATUSES: ReadonlySet<PhoneCallRecord['status']> = new Set([
@@ -683,6 +781,7 @@ const PHONE_CALL_TERMINAL_STATUSES: ReadonlySet<PhoneCallRecord['status']> = new
 	'missed',
 	'timed_out',
 	'ended',
+	'unreachable',
 ])
 
 export const isPhoneCallTerminalStatus = (status: PhoneCallRecord['status'] | undefined): boolean =>
@@ -694,6 +793,7 @@ const PHONE_CALL_UNANSWERED_STATUSES: ReadonlySet<PhoneCallRecord['status']> = n
 	'declined',
 	'missed',
 	'timed_out',
+	'unreachable',
 ])
 
 /**

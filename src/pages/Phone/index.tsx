@@ -17,6 +17,7 @@ const statusLabel = (record: PhoneCallRecord) => {
 	if (record.status === 'declined') return 'Declined'
 	if (record.status === 'cancelled') return 'Cancelled'
 	if (record.status === 'failed') return 'Failed'
+	if (record.status === 'unreachable') return 'Unreachable'
 	if (record.status === 'ringing') return 'Calling'
 	return record.direction === 'incoming' ? 'Incoming call' : 'Outgoing call'
 }

@@ -108,14 +108,14 @@ import { readDiscoverShareReferrer, stashDiscoverShareReferrer } from "@/utils/d
 import { applyPendingConsumerDeepLinkIfNeeded } from "@/utils/pendingConsumerDeepLink"
 import { routeDiscoverMerchantDeepLink } from "@/utils/routeDiscoverMerchantDeepLink"
 import { publishNativePwaLog } from "@/utils/cashTreesNativePwaLog"
-import { declineIncomingVoiceOffer, resolvePeerVoiceMaterialAsync, timeoutIncomingVoiceOffer } from '@/services/voiceCallController'
+import { declineIncomingVoiceOffer, notifyIncomingVoiceRinging, resolvePeerVoiceMaterialAsync, timeoutIncomingVoiceOffer } from '@/services/voiceCallController'
 import { BEAMIO_WALLET_READY_EVENT } from "@/utils/beamioWalletReadyEvent"
 import { ensureConetAaForProfileAndPersist } from "@/utils/ensureConetAa"
 import { ingestAaMultisigFromChat } from '@/utils/aaMultisigIngest'
 import { tu } from '@/locale/beamioLocale'
 import { mapServerError } from '@/locale/mapServerError'
 import { installPwaLifecycleRecovery } from '@/utils/pwaLifecycleRecovery'
-import { applyNativeIncomingVoiceOfferFromLine, closeSettledIncomingCalls, incomingSettledStatusForAction, noteIncomingCallSettled, reportNativeIncomingSystemCall, claimIncomingVoiceCallReport, isPhoneCallTerminalStatus, noteVoiceCallsEnded, voiceCallHandlesEndedInBatch, claimedVoiceCallerAddress, claimedVoiceCallerTag, dismissNativeIncomingVoiceCall, findPhoneCallByIds, forgetIncomingVoiceOffer, formatLookedUpBeamioTag, isVoiceCallOfferActive, isVoiceCallOfferRinging, lookupIncomingVoiceOffer, markVoiceCallTerminal, mergePhoneCallRecord, nativeIncomingSystemCallPayload, noteNativeCallAnswered, parseVoiceCallSignal, phoneCallStatusForPeerHangup, recoverVoiceCallOfferSigner, rememberIncomingVoiceOffer, replacePhoneCallInRows, VOICE_CALL_IDENTITY_WARNING, voiceCallClaimMismatchesKey } from '@/utils/voiceCallSession'
+import { applyNativeIncomingVoiceOfferFromLine, closeSettledIncomingCalls, incomingSettledStatusForAction, noteIncomingCallSettled, reportNativeIncomingSystemCall, claimIncomingVoiceCallReport, isPhoneCallTerminalStatus, noteVoiceCallsEnded, voiceCallHandlesEndedInBatch, claimedVoiceCallerAddress, claimedVoiceCallerTag, dismissNativeIncomingVoiceCall, findPhoneCallByIds, forgetIncomingVoiceOffer, formatLookedUpBeamioTag, isVoiceCallOfferActive, isVoiceCallOfferRinging, lookupIncomingVoiceOffer, markVoiceCallTerminal, mergePhoneCallRecord, nativeIncomingSystemCallPayload, noteNativeCallAnswered, parseVoiceCallSignal, phoneCallStatusForPeerHangup, recoverVoiceCallOfferSigner, rememberIncomingVoiceOffer, replacePhoneCallInRows, VOICE_CALL_IDENTITY_WARNING, voiceCallClaimMismatchesKey, noteVoicePeerRinging } from '@/utils/voiceCallSession'
 
 global.Buffer = require("buffer").Buffer
 
@@ -1173,8 +1173,15 @@ function AppShell() {
 				callId?: string
 				sessionId?: string
 			}>).detail
-			if (detail?.action !== 'callRejected' && detail?.action !== 'callTimedOut') return
-			const terminalStatus = detail.action === 'callTimedOut' ? 'timed_out' : 'declined'
+			// callUnreachable: our dial got no ringing receipt; the shell sent the cancel; record only.
+			if (
+				detail?.action !== 'callRejected'
+				&& detail?.action !== 'callTimedOut'
+				&& detail?.action !== 'callUnreachable'
+			) return
+			const terminalStatus = detail.action === 'callRejected'
+				? 'declined'
+				: detail.action === 'callUnreachable' ? 'unreachable' : 'timed_out'
 			const sessionId = String(detail.sessionId || '').trim()
 			const callId = String(detail.callId || '').trim()
 			if (!sessionId && !callId) return
@@ -1230,6 +1237,12 @@ function AppShell() {
 					if (CoNET_Data) CoNET_Data.profiles = next
 					void storeSystemData()
 				}
+			}
+
+			// Our own dial with no ringing receipt: the shell's dialer already sent the cancel.
+			if (detail.action === 'callUnreachable') {
+				inFlightKey = null
+				return
 			}
 
 			const tryNotifyPeer = async () => {
@@ -2018,6 +2031,18 @@ function AppShell() {
 									...claim,
 								})
 								setGlobalIncomingVoiceMuted(false)
+								// Wake receipt: this browser is ringing (the shells send their own).
+								const ringKey = resolveSigningPrivateKeyArmor(profile)
+								if (ringKey && provenAddress) {
+									void notifyIncomingVoiceRinging({
+										privateKey: ringKey,
+										localCallId: new ethers.Wallet(ringKey).address,
+										peerEoa: provenAddress,
+										peerPgp: '',
+										peerRoute: '',
+										allNodes: allNodesForVoiceDeclineRef.current || [],
+									}, signal)
+								}
 							}
 							const callRows = Array.isArray(profile.phoneCalls) ? profile.phoneCalls : []
 							if (!callRows.some((item: PhoneCallRecord) => item.sessionId === signal.sessionId)) {
@@ -2037,6 +2062,15 @@ function AppShell() {
 							}
 						}
 					}
+				} else if (signal?.type === 'voice_call_ringing_v1' && (signal.callId || signal.sessionId)) {
+					// Wake receipt from the callee's device: the dialer shows "Ringing…".
+					// Never a chat bubble. The secret callId ties it to our dial.
+					// Remembered too: the dial screen may subscribe after it arrives.
+					noteVoicePeerRinging(signal.callId, signal.sessionId)
+					window.dispatchEvent(new CustomEvent('beamio-voice-peer-ringing', {
+						detail: { callId: signal.callId, sessionId: signal.sessionId },
+					}))
+					voiceControlConsumed = true
 				} else if (
 					(signal?.type === 'voice_call_reject_v1' || signal?.type === 'voice_call_timeout_v1') &&
 					signal.callId &&

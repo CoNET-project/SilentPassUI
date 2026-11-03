@@ -831,20 +831,66 @@ export const callWindowHoldMs = (status: PhoneCallRecord['status'] | undefined, 
 /**
  * Calls the native shell answered (CallKit / Telecom), by callId and sessionId.
  * The shell can answer before the PWA has the offer (FCM / VoIP wake), so the
- * page never runs its own accept and the record stays "ringing". Kept in memory
- * for the life of the page.
+ * page never runs its own accept and the record stays "ringing". Also saved in
+ * localStorage (ids and times only, 100 newest, 3 days): when the app is killed
+ * during the call, the peer's later hang-up must still read "Call ended", not
+ * "Call cancelled" (RC3b B2).
  */
-const nativeAnsweredAt = new Map<string, number>()
+export const NATIVE_ANSWERED_STORAGE_KEY = 'beamio.voice.nativeAnswered.v1'
+const NATIVE_ANSWERED_MAX = 100
+const NATIVE_ANSWERED_MAX_AGE_MS = 3 * 24 * 60 * 60_000
+
+const nativeAnsweredStorage = (): Storage | null => {
+	try {
+		return typeof localStorage === 'undefined' ? null : localStorage
+	} catch {
+		return null
+	}
+}
+
+const loadNativeAnswered = (now = Date.now()): Map<string, number> => {
+	const out = new Map<string, number>()
+	try {
+		const raw = nativeAnsweredStorage()?.getItem(NATIVE_ANSWERED_STORAGE_KEY)
+		const rows = raw ? JSON.parse(raw) : []
+		if (Array.isArray(rows)) {
+			for (const row of rows) {
+				if (!Array.isArray(row) || typeof row[0] !== 'string' || typeof row[1] !== 'number') continue
+				if (row[0] && now - row[1] <= NATIVE_ANSWERED_MAX_AGE_MS) out.set(row[0], row[1])
+			}
+		}
+	} catch {
+		// Unreadable: start empty.
+	}
+	return out
+}
+
+const nativeAnsweredAt = loadNativeAnswered()
+
+const saveNativeAnswered = (): void => {
+	try {
+		nativeAnsweredStorage()?.setItem(NATIVE_ANSWERED_STORAGE_KEY, JSON.stringify([...nativeAnsweredAt.entries()]))
+	} catch {
+		// Storage full or blocked: the in-memory copy still serves this page.
+	}
+}
+
+/** Tests only: re-read the saved marks as a freshly launched page would. */
+export const reloadNativeAnsweredForTests = (now = Date.now()): void => {
+	nativeAnsweredAt.clear()
+	for (const [id, at] of loadNativeAnswered(now)) nativeAnsweredAt.set(id, at)
+}
 
 export const noteNativeCallAnswered = (callId: string, sessionId: string, at = Date.now()): void => {
 	for (const id of [nonBlank(callId), nonBlank(sessionId)]) {
 		if (id && !nativeAnsweredAt.has(id)) nativeAnsweredAt.set(id, at)
 	}
-	while (nativeAnsweredAt.size > 100) {
+	while (nativeAnsweredAt.size > NATIVE_ANSWERED_MAX) {
 		const oldest = nativeAnsweredAt.keys().next().value
 		if (oldest === undefined) break
 		nativeAnsweredAt.delete(oldest)
 	}
+	saveNativeAnswered()
 	publishNativePwaLog('info', `[voice] call record answered by shell callId=${Boolean(nonBlank(callId))} sessionId=${Boolean(nonBlank(sessionId))}`)
 }
 

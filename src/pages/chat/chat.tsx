@@ -108,6 +108,7 @@ import {
 	isPrimarilyHttpUrlMessage,
 } from '@/utils/chatGenericLinkPreview'
 import { ingestAaMultisigFromChat } from '@/utils/aaMultisigIngest'
+import { noteNativeCallAnswered as noteCallAnsweredHere } from '@/utils/voiceCallSession'
 import { getAaMultisigTaskAny } from '@/utils/aaMultisigLocalStore'
 import {
 	formatMultisigSignatureProgress,
@@ -2351,6 +2352,9 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 	const [chatError, setChatError] = useState<string | null>(null)
 
 	const upsertPhoneCallRecord = useCallback((patch: PhoneCallRecord) => {
+		// Also remember the answer in memory: an older copy of the profile can still be
+		// written over this row, and the hang-up must then read "Call ended", not "Call cancelled".
+		if (patch.status === 'answered') noteCallAnsweredHere(patch.callId, patch.sessionId, Number(patch.answeredAt) || Date.now())
 		// Prefer CoNET_Data — React `profiles` can be stale when reject lands after quiet disconnect.
 		const dataProfiles = CoNET_Data?.profiles
 		const currentProfiles = Array.isArray(dataProfiles) && dataProfiles.length

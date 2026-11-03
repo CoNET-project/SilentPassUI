@@ -2,7 +2,13 @@
 jest.mock('@/services/beamioTagWorkerBridge', () => ({}), { virtual: true })
 jest.mock('./cashTreesNativePwaLog', () => ({ publishNativePwaLog: () => {} }))
 
-import { mergePhoneCallRecord, noteNativeCallAnswered, phoneCallStatusForPeerHangup } from './voiceCallSession'
+import {
+	mergePhoneCallRecord,
+	NATIVE_ANSWERED_STORAGE_KEY,
+	noteNativeCallAnswered,
+	phoneCallStatusForPeerHangup,
+	reloadNativeAnsweredForTests,
+} from './voiceCallSession'
 
 const T = 1_793_513_000_000
 
@@ -64,4 +70,25 @@ test('shell answered before the page had the offer: peer hangup is ended', () =>
 	expect(merged?.durationMs).toBe(30_000)
 	// The late offer row shows the call as live, not "Incoming call".
 	expect(mergePhoneCallRecord(ringing, { ...ringing })?.status).toBe('answered')
+})
+
+test('answered by the shell, app killed mid-call: after relaunch the peer hangup is ended (RC3b B2)', () => {
+	const ringing = { ...base, callId: 'c-killed', sessionId: 's-killed' }
+	noteNativeCallAnswered('c-killed', 's-killed', Date.now() - 45_000)
+	// Only ids and times are saved.
+	const saved = JSON.parse(localStorage.getItem(NATIVE_ANSWERED_STORAGE_KEY) || '[]') as Array<[string, number]>
+	expect(saved.map(([id]) => id)).toEqual(expect.arrayContaining(['c-killed', 's-killed']))
+	// Relaunch: memory is gone, the saved mark is read back.
+	reloadNativeAnsweredForTests()
+	expect(phoneCallStatusForPeerHangup(ringing)).toBe('ended')
+	expect(mergePhoneCallRecord(ringing, { ...ringing, status: 'cancelled', endedAt: Date.now() })?.status).toBe('ended')
+})
+
+test('saved shell answers older than 3 days or unreadable are dropped on relaunch', () => {
+	localStorage.setItem(NATIVE_ANSWERED_STORAGE_KEY, JSON.stringify([['c-old', Date.now() - 4 * 24 * 60 * 60_000], ['bad'], 7]))
+	reloadNativeAnsweredForTests()
+	expect(phoneCallStatusForPeerHangup({ ...base, callId: 'c-old', sessionId: '' })).toBe('cancelled')
+	localStorage.setItem(NATIVE_ANSWERED_STORAGE_KEY, '{not json')
+	reloadNativeAnsweredForTests()
+	expect(phoneCallStatusForPeerHangup({ ...base, callId: 'c-old', sessionId: '' })).toBe('cancelled')
 })

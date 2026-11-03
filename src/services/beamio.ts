@@ -52,6 +52,7 @@ import {
 	hasLocalPlaintextMnemonic,
 	isTrustedEmptyWalletBlob,
 } from '@/utils/consumerWalletGate'
+import { stripPeerChatPrivateArmored } from '@/utils/peerChatPrivateArmored'
 
 export type x402Response = {
 	timestamp: string
@@ -1366,13 +1367,17 @@ const readStorageWithStatus = async (): Promise<CheckStorageResult> => {
       setCoNET_Data(null)
       return { status: 'empty' }
     }
-    setCoNET_Data(hydrated)
-    const storedLang = hydrated?.beamio?.language
+    // Drop our own PGP private key that old builds copied into peer chats,
+    // and write the cleaned data back once.
+    const { data: cleaned, changed: hadPeerPrivateArmored } = stripPeerChatPrivateArmored(hydrated)
+    setCoNET_Data(cleaned)
+    if (hadPeerPrivateArmored) void storeSystemData()
+    const storedLang = cleaned?.beamio?.language
     if (storedLang) {
       writeBeamioUiLanguageBootstrap(normalizeBeamioUiLocale(storedLang))
       await applyBeamioUiLanguageFromProfile(storedLang)
     }
-    return { status: 'loaded', data: hydrated }
+    return { status: 'loaded', data: cleaned }
   } catch {
     return { status: 'unavailable', reason: 'indexeddb' }
   }

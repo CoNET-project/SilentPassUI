@@ -2914,7 +2914,7 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 		if (!route || !recipientPgp) {
 			try {
 				markCallTiming('route-refresh-start')
-				const refreshed = await getKeysFromCoNETPGPSC(chatData.address, privateKey)
+				const refreshed = await getKeysFromCoNETPGPSC(chatData.address)
 				route = refreshed?.routersArmoreds?.trim() || route
 				recipientPgp = refreshed?.publicArmored?.trim() || recipientPgp
 			} catch {
@@ -3658,7 +3658,7 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 		// peer AddressPGP mirror when Answer is tapped.
 		if (!route || !recipientPgp) {
 			try {
-				const refreshed = await getKeysFromCoNETPGPSC(callerEoa, privateKey)
+				const refreshed = await getKeysFromCoNETPGPSC(callerEoa)
 				route = refreshed?.routersArmoreds?.trim() || route
 				recipientPgp = refreshed?.publicArmored?.trim() || recipientPgp
 			} catch {
@@ -5280,14 +5280,13 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 		let cancelled = false
 		void (async () => {
 			try {
-				const refreshed = await getKeysFromCoNETPGPSC(addr, key)
+				const refreshed = await getKeysFromCoNETPGPSC(addr)
 				if (cancelled || !refreshed) return
 				const route = refreshed.routersArmoreds?.trim() || ''
 				const pub = refreshed.publicArmored?.trim() || ''
 				if (!route && !pub) return
 				if (!chatData.chatData) {
 					chatData.chatData = {
-						privateArmored: '',
 						publicArmored: '',
 						routersArmoreds: '',
 						online: false,
@@ -5298,7 +5297,6 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 				if (route) cd.routersArmoreds = route
 				if (pub) cd.publicArmored = pub
 				if (refreshed.routePgpKeyID) cd.routePgpKeyID = refreshed.routePgpKeyID
-				if (refreshed.privateArmored) cd.privateArmored = refreshed.privateArmored
 				setRouteHydrateGen(g => g + 1)
 
 				const addrLower = addr.toLowerCase()
@@ -5319,7 +5317,6 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 							...row,
 							chatData: {
 								...(old || {
-									privateArmored: '',
 									publicArmored: '',
 									routersArmoreds: '',
 									online: false,
@@ -5328,7 +5325,6 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 								routersArmoreds: cd.routersArmoreds,
 								publicArmored: cd.publicArmored,
 								routePgpKeyID: cd.routePgpKeyID || old?.routePgpKeyID || '',
-								privateArmored: cd.privateArmored || old?.privateArmored || '',
 							},
 						}
 					})

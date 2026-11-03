@@ -91,32 +91,27 @@ const isValidEthersPrivateKey = (pk: unknown): pk is string => {
 }
 
 /** 按钱包地址从 AddressPGP 获取 PGP（searchKey 接受 address） */
-export const getKeysFromCoNETPGPSCByAddress = async (walletAddress: string, privateKeyArmor: string) => {
-	return getKeysFromCoNETPGPSC(walletAddress, privateKeyArmor)
+export const getKeysFromCoNETPGPSCByAddress = async (walletAddress: string) => {
+	return getKeysFromCoNETPGPSC(walletAddress)
 }
 
-export const getKeysFromCoNETPGPSC = async (keyIDOrAddress: string, privateKeyArmor: string) => {
-	if (!isValidEthersPrivateKey(privateKeyArmor)) {
-		console.warn('[getKeysFromCoNETPGPSC] invalid privateKeyArmor format, skipping')
-		return null
-	}
-	let Wallet: ethers.Wallet
-	try {
-		Wallet = new ethers.Wallet(privateKeyArmor, conetDepinProvider)
-	} catch (ex: any) {
-		console.warn('[getKeysFromCoNETPGPSC] Wallet creation failed:', ex?.message || ex)
+/**
+ * Public PGP key and mailbox route of any wallet, from AddressPGP `searchKey`.
+ *
+ * The contract runner is the provider, not a Wallet, so the eth_call carries no
+ * `from`. With a Wallet runner ethers fills `from` with our own address, and the
+ * RPC operator could link our wallet and IP to the peer we look up.
+ * `searchKey(to)` reads only `to`, so the answer is the same.
+ */
+export const getKeysFromCoNETPGPSC = async (walletAddress: string) => {
+	if (!ethers.isAddress(walletAddress)) {
+		console.warn('[getKeysFromCoNETPGPSC] not a wallet address, skipping')
 		return null
 	}
 	const contract = contracts.constPgpManager
-	const SC = new ethers.Contract(contract.address, contract.abi, Wallet)
-	// searchKey 接受 address；若传入 keyID，可用 pgpKeyIDHash2Wallet 查 address，此处简化为：若为有效 address 则用，否则用 Wallet.address
-	const lookupAddr = ethers.isAddress(keyIDOrAddress) ? keyIDOrAddress : Wallet.address
+	const SC = new ethers.Contract(contract.address, contract.abi, conetDepinProvider)
 	try {
-		// Peer public + mailbox route come only from searchKey. getEncryptedPrivateKey
-		// is the *viewer* AES blob and is optional — decrypt failure must never wipe
-		// peer keys (that produced Chat "No route" for on-chain registered peers).
-		const info: searchKeyPGP = await SC.searchKey(lookupAddr)
-		let privateArmored = ''
+		const info: searchKeyPGP = await SC.searchKey(walletAddress)
 		let publicArmored = ''
 		if (info.userPublicKeyArmored) {
 			publicArmored = fromBase64(info.userPublicKeyArmored)
@@ -125,24 +120,11 @@ export const getKeysFromCoNETPGPSC = async (keyIDOrAddress: string, privateKeyAr
 		if (!publicArmored && !routersArmoreds) {
 			return null
 		}
-		try {
-			const privateKey: string = await SC.getEncryptedPrivateKey()
-			if (privateKey) {
-				try {
-					privateArmored = await aesGcmDecrypt(privateKey, privateKeyArmor)
-				} catch {
-					// Viewer cannot decrypt own blob — keep peer public/route from searchKey.
-				}
-			}
-		} catch {
-			// Optional viewer private fetch failed — keep peer keys.
-		}
 
 		rememberRecipientRoute(publicArmored, routersArmoreds)
 		// Presence is NOT chain routeOnline (SI abandoned setUserOnlineOnMe).
 		// UI online comes from mailbox `wallet_online_query` — see refreshChatMailboxPresence.
 		return {
-			privateArmored,
 			publicArmored,
 			routersArmoreds,
 			online: false,
@@ -152,6 +134,46 @@ export const getKeysFromCoNETPGPSC = async (keyIDOrAddress: string, privateKeyAr
 	} catch (ex) {
 		return null
 	}
+}
+
+/**
+ * Our own AddressPGP record plus our PGP private key. Only for loading our own
+ * profile; never call it for a peer.
+ *
+ * The public part comes from `getKeysFromCoNETPGPSC` (no `from`).
+ * `getEncryptedPrivateKey()` reads msg.sender, so that one call has to carry our
+ * own address. A decrypt failure keeps the public part.
+ */
+export const getOwnKeysFromCoNETPGPSC = async (privateKeyArmor: string) => {
+	if (!isValidEthersPrivateKey(privateKeyArmor)) {
+		console.warn('[getOwnKeysFromCoNETPGPSC] invalid privateKeyArmor format, skipping')
+		return null
+	}
+	let Wallet: ethers.Wallet
+	try {
+		Wallet = new ethers.Wallet(privateKeyArmor, conetDepinProvider)
+	} catch (ex: any) {
+		console.warn('[getOwnKeysFromCoNETPGPSC] Wallet creation failed:', ex?.message || ex)
+		return null
+	}
+	const keys = await getKeysFromCoNETPGPSC(Wallet.address)
+	if (!keys) return null
+	let privateArmored = ''
+	try {
+		const contract = contracts.constPgpManager
+		const SC = new ethers.Contract(contract.address, contract.abi, Wallet)
+		const encrypted: string = await SC.getEncryptedPrivateKey()
+		if (encrypted) {
+			try {
+				privateArmored = await aesGcmDecrypt(encrypted, privateKeyArmor)
+			} catch {
+				// Cannot decrypt our own blob — keep the public part.
+			}
+		}
+	} catch {
+		// Private fetch failed — keep the public part.
+	}
+	return { ...keys, privateArmored }
 }
 
 
@@ -325,7 +347,7 @@ export const initChat = async (setProfiles: (val: profile[]) => void, setAllNode
 
 		// ✅ 如果没有 routes，从链上/SC 找；再不行就随机注册一个
 		//	寻找链上信息
-		const rr = await getKeysFromCoNETPGPSC(profile.keyID, profile.privateKeyArmor)
+		const rr = await getOwnKeysFromCoNETPGPSC(profile.privateKeyArmor)
 		routes = rr?.routersArmoreds||''
 		// The chain record is the recipient key used by the mailbox.  If reading
 		// it failed (or the encrypted private key could not be recovered), do not
@@ -356,10 +378,7 @@ export const initChat = async (setProfiles: (val: profile[]) => void, setAllNode
 				)
 				if (registered) {
 					await new Promise(resolve => setTimeout(resolve, 1500))
-					const verified = await getKeysFromCoNETPGPSC(
-						profile.keyID,
-						profile.privateKeyArmor,
-					)
+					const verified = await getOwnKeysFromCoNETPGPSC(profile.privateKeyArmor)
 					const verifiedKeyID = (verified?.userPgpKeyID || '').toUpperCase()
 					if (
 						verified?.privateArmored?.trim() &&
@@ -450,7 +469,7 @@ export const initChat = async (setProfiles: (val: profile[]) => void, setAllNode
 
 export const initBeamioPGPKeys = async (profile: profile): Promise<initBeamioPGPKeysRet|null> => {
 	
-	const keyInfo = await getKeysFromCoNETPGPSC(profile.keyID, profile.privateKeyArmor)
+	const keyInfo = await getOwnKeysFromCoNETPGPSC(profile.privateKeyArmor)
 	if (keyInfo?.privateArmored) {
 		return {
 			privateKey: keyInfo.privateArmored,
@@ -889,10 +908,7 @@ export async function alignLiveGossipRouteToChain(
 ): Promise<boolean> {
 	const normalizeRouteArmor = (value?: string) => (value || '').replace(/\r/g, '').trim()
 	const live = mailboxKeyId(gossipDeliveryAckContext?.mailboxDomains?.[0] || '')
-	const chain = await getKeysFromCoNETPGPSC(
-		new ethers.Wallet(privateKeyArmor).address,
-		privateKeyArmor,
-	)
+	const chain = await getKeysFromCoNETPGPSC(new ethers.Wallet(privateKeyArmor).address)
 	const chainId = mailboxKeyId(String(chain?.routePgpKeyID || ''))
 	const workerArmor = normalizeRouteArmor(getWorkerGossipRouteArmor())
 	chatBootLog(`voice route live=${live || 'none'} chain=${chainId || 'none'} worker=${workerArmor ? 'set' : 'none'}`)
@@ -1392,7 +1408,6 @@ export const createInboundChatSession = async (
 			pin: false,
 			hide: false,
 			chatData: {
-				privateArmored: '',
 				publicArmored: '',
 				routersArmoreds: '',
 				online: false,
@@ -1403,7 +1418,7 @@ export const createInboundChatSession = async (
 			muted: false,
 		}
 	}
-	const kk = await getKeysFromCoNETPGPSC(addr, privateKeyArmor)
+	const kk = await getKeysFromCoNETPGPSC(addr)
 	if (!kk?.publicArmored) {
 		console.warn(
 			`[chat inbound] sender ${addr} has no on-chain PGP publicArmored — can display inbound, reply may fail until they register Chat`,
@@ -1416,7 +1431,6 @@ export const createInboundChatSession = async (
 		pin: false,
 		hide: false,
 		chatData: {
-			privateArmored: kk?.privateArmored ?? '',
 			publicArmored: kk?.publicArmored ?? '',
 			routersArmoreds: kk?.routersArmoreds ?? '',
 			online: !!kk?.online,
@@ -1860,7 +1874,7 @@ export const refreshChatRoutes = async (profile: profile): Promise<profile> => {
 		const addr = (c.address ?? '').trim()
 		if (!addr || !ethers.isAddress(addr)) continue
 		try {
-			const kk = await getKeysFromCoNETPGPSC(addr, profile.privateKeyArmor)
+			const kk = await getKeysFromCoNETPGPSC(addr)
 			if (!kk) continue
 			const cd = c.chatData
 			const nextRouters = kk.routersArmoreds || cd?.routersArmoreds || ''
@@ -1874,7 +1888,6 @@ export const refreshChatRoutes = async (profile: profile): Promise<profile> => {
 				chats[i] = {
 					...c,
 					chatData: {
-						privateArmored: cd?.privateArmored ?? '',
 						publicArmored: nextPublic,
 						routersArmoreds: nextRouters,
 						routePgpKeyID: nextRouteKeyID,
@@ -2216,7 +2229,7 @@ export const initMessage = async (profile: profile, beamioer: searchResult): Pro
 	}
 
 	// 不存在则创建新 chat，放入 profile.chats 并返回
-	const kk = await getKeysFromCoNETPGPSC(beamioer.address, profile.privateKeyArmor)
+	const kk = await getKeysFromCoNETPGPSC(beamioer.address)
 	if (!kk?.publicArmored) {
 		return null
 	}

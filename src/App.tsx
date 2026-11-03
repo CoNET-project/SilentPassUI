@@ -2151,7 +2151,7 @@ function AppShell() {
 						let senderMailboxRoute = nextChat.chatData?.routersArmoreds || ''
 						if (!senderPgp.trim() || !senderMailboxRoute.trim()) {
 							try {
-								const keys = await getKeysFromCoNETPGPSC(signAddr, pk)
+								const keys = await getKeysFromCoNETPGPSC(signAddr)
 								senderPgp = senderPgp || keys?.publicArmored || ''
 								senderMailboxRoute = senderMailboxRoute || keys?.routersArmoreds || ''
 								if ((senderPgp || senderMailboxRoute) && nextChat.chatData) {

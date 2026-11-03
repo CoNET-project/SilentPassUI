@@ -15,7 +15,7 @@ async function sendMultisigInnerToRecipient(params: {
 	privateKeyArmor: string
 	allNodes: nodeInfo[]
 }): Promise<boolean> {
-	const keys = await getKeysFromCoNETPGPSC(params.recipientEoa, params.privateKeyArmor)
+	const keys = await getKeysFromCoNETPGPSC(params.recipientEoa)
 	if (!keys?.publicArmored) return false
 	const outerLine = buildAaMultisigChatOuterLine(params.inner)
 	if (!params.allNodes?.length) return false

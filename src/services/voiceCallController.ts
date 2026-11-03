@@ -293,7 +293,7 @@ export async function resolvePeerVoiceMaterialAsync(
 	if (!addr || !privateKey) return local
 	try {
 		const { getKeysFromCoNETPGPSCByAddress } = await import('@/services/chat')
-		const kk = await getKeysFromCoNETPGPSCByAddress(addr, privateKey)
+		const kk = await getKeysFromCoNETPGPSCByAddress(addr)
 		if (!kk) return local
 		return {
 			peerPgp: local.peerPgp || String(kk.publicArmored || '').trim(),

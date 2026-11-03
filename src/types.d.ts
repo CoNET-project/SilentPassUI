@@ -77,7 +77,6 @@ interface Region {
 		messages: ChatMessage[]
 		beamio: searchResult
 		chatData: {
-			privateArmored: string;
 			publicArmored: string;
 			routersArmoreds: string;
 			online: boolean;

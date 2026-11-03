@@ -192,7 +192,7 @@ export default function BeamioAccountScreen({ colse }: prof) {
     if ((!pgpPublicKeyID || !pgpPublicKeyArmor) && profile.privateKeyArmor) {
       try {
         const walletAddr = new ethers.Wallet(profile.privateKeyArmor).address
-        const keyInfo = await getKeysFromCoNETPGPSCByAddress(walletAddr, profile.privateKeyArmor)
+        const keyInfo = await getKeysFromCoNETPGPSCByAddress(walletAddr)
         if (keyInfo?.userPgpKeyID) pgpPublicKeyID = pgpPublicKeyID || keyInfo.userPgpKeyID
         if (keyInfo?.publicArmored) pgpPublicKeyArmor = pgpPublicKeyArmor || keyInfo.publicArmored
       } catch (_) { /* 链上无则保持空 */ }

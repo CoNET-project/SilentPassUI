@@ -1162,6 +1162,83 @@ const mailboxKeyId = (domain: string): string =>
 /** Own mailbox route key from the last chain read in {@link alignLiveGossipRouteToChain}. */
 let lastChainMailboxRouteArmor = ''
 
+/** Why the last {@link alignLiveGossipRouteToChain} returned false (for the dial error text). */
+export type MailboxAlignFailure = 'chain_unreachable' | 'not_registered' | 'not_in_node_list' | 'listen_down'
+let lastMailboxAlignFailure: MailboxAlignFailure | null = null
+
+/** Error text for a failed {@link alignLiveGossipRouteToChain}: the cause and what to do. */
+export function mailboxAlignErrorMessage(): string {
+	switch (lastMailboxAlignFailure) {
+		case 'chain_unreachable':
+			return 'Could not reach the CoNET network to check your Chat mailbox. Check your connection, then call again.'
+		case 'not_registered':
+			return 'Your Chat mailbox is not set up yet. Open Chat and wait until it is connected, then call again.'
+		case 'not_in_node_list':
+			return 'Your Chat mailbox node is missing from the node list. Close and reopen Chat, then call again.'
+		case 'listen_down':
+			return 'Chat is reconnecting. Wait a few seconds, then call again.'
+		default:
+			return 'Voice call could not use your Chat mailbox. Call again.'
+	}
+}
+
+/**
+ * Last own mailbox read from the chain (public route key only), per wallet.
+ * A dial right after a foreground return often hits one failed RPC read; the
+ * mailbox rarely changes, so the last good read is used then.
+ */
+const OWN_MAILBOX_CACHE_KEY = 'beamio.ownChatMailbox.v1'
+type OwnMailboxRecord = { wallet: string; chainId: string; armor: string; at: number }
+let ownMailboxMemo: OwnMailboxRecord | null = null
+
+const rememberOwnMailbox = (rec: OwnMailboxRecord) => {
+	ownMailboxMemo = rec
+	try {
+		localStorage.setItem(OWN_MAILBOX_CACHE_KEY, JSON.stringify(rec))
+	} catch {
+		/* storage unavailable */
+	}
+}
+
+const cachedOwnMailbox = (wallet: string): OwnMailboxRecord | null => {
+	let rec = ownMailboxMemo
+	if (!rec) {
+		try {
+			rec = JSON.parse(localStorage.getItem(OWN_MAILBOX_CACHE_KEY) || 'null') as OwnMailboxRecord | null
+		} catch {
+			rec = null
+		}
+	}
+	return rec && rec.wallet === wallet.toLowerCase() && rec.chainId && rec.armor ? rec : null
+}
+
+
+/** Own AddressPGP route, read with retries. 'unreachable' = every read failed (RPC, network). */
+const readOwnMailboxFromChain = async (
+	wallet: string,
+): Promise<{ chainId: string; armor: string } | 'unreachable' | 'unregistered'> => {
+	const contract = contracts.constPgpManager
+	const SC = new ethers.Contract(contract.address, contract.abi, conetDepinProvider)
+	for (let attempt = 0; attempt < 3; attempt++) {
+		const started = Date.now()
+		try {
+			const info: searchKeyPGP = await Promise.race([
+				SC.searchKey(wallet) as Promise<searchKeyPGP>,
+				new Promise<never>((_, reject) => setTimeout(() => reject(new Error('searchKey timeout')), 6_000)),
+			])
+			const chainId = mailboxKeyId(String(info?.routePgpKeyID || ''))
+			const armor = (info?.routePublicKeyArmored ? fromBase64(info.routePublicKeyArmored) : '').replace(/\r/g, '').trim()
+			return chainId ? { chainId, armor } : 'unregistered'
+		} catch (ex) {
+			// RPC error text only (no wallet, no key): tells a timeout from a refused call.
+			const why = String((ex as Error)?.message || ex).replace(/0x[0-9a-fA-F]{16,}/g, '0x…').slice(0, 120)
+			chatBootLog(`voice route chain read attempt=${attempt + 1} failed ms=${Date.now() - started}: ${why}`, 'warn')
+			if (attempt < 2) await new Promise((r) => setTimeout(r, 400 * (attempt + 1)))
+		}
+	}
+	return 'unreachable'
+}
+
 /**
  * Own mailbox route key for excluding it from voice relay / entry choices:
  * the live listen's key, else the chain mailbox read before the dial.
@@ -1175,20 +1252,81 @@ export async function alignLiveGossipRouteToChain(
 	nodes: nodeInfo[],
 ): Promise<boolean> {
 	const normalizeRouteArmor = (value?: string) => (value || '').replace(/\r/g, '').trim()
+	lastMailboxAlignFailure = null
 	const live = mailboxKeyId(gossipDeliveryAckContext?.mailboxDomains?.[0] || '')
-	const chain = await getKeysFromCoNETPGPSC(new ethers.Wallet(privateKeyArmor).address)
-	const chainId = mailboxKeyId(String(chain?.routePgpKeyID || ''))
+	const wallet = new ethers.Wallet(privateKeyArmor).address.toLowerCase()
 	const workerArmor = normalizeRouteArmor(getWorkerGossipRouteArmor())
+	// Mailbox we already know: the last good chain read, else the one the live listen is on.
+	const cached = cachedOwnMailbox(wallet)
+	const known = cached
+		? { chainId: cached.chainId, armor: cached.armor }
+		: live && workerArmor ? { chainId: live, armor: workerArmor } : null
+	// Verified against the chain during this run (state owned by initChat's route
+	// check: getVerifiedOwnMailbox / noteOwnMailboxVerified). A cache from an
+	// earlier run is only a fallback: it may name a mailbox we no longer listen on.
+	const verifiedRec = getVerifiedOwnMailbox(wallet)
+	const verified = verifiedRec && mailboxKeyId(verifiedRec.routeKeyID) && verifiedRec.routeArmor
+		? { chainId: mailboxKeyId(verifiedRec.routeKeyID), armor: verifiedRec.routeArmor }
+		: null
+	const reading = readOwnMailboxFromChain(wallet).then((r) => {
+		// A read that finishes after the dial went on still refreshes the cache.
+		if (typeof r === 'object' && r.armor) {
+			const before = getVerifiedOwnMailbox(wallet)
+			if (before && mailboxKeyId(before.routeKeyID) !== r.chainId) {
+				chatBootLog(`own mailbox changed on chain ${mailboxKeyId(before.routeKeyID)} -> ${r.chainId}; using the chain from now on`, 'warn')
+			}
+			rememberOwnMailbox({ wallet, chainId: r.chainId, armor: r.armor, at: Date.now() })
+			noteOwnMailboxVerified(wallet, r.chainId, r.armor)
+		}
+		return r
+	})
+	// Verified against the chain this run: no wait (the dial's work then finishes
+	// before the native call screen covers the page, which slows its JS); the
+	// read refreshes in the background. Otherwise, with a known mailbox the dial
+	// waits at most 1.5 s for the chain (a slow RPC after a foreground return took
+	// 5 s and failed the call); without one it waits.
+	let read: Awaited<typeof reading> | 'slow'
+	if (verified) {
+		read = { chainId: verified.chainId, armor: verified.armor }
+		void reading.catch(() => undefined)
+		chatBootLog(`voice route mailbox ${verified.chainId} verified this run; chain read in the background`)
+	} else {
+		read = known
+			? await Promise.race([reading, new Promise<'slow'>((r) => setTimeout(() => r('slow'), 1_500))])
+			: await reading
+	}
+	let chainId = ''
+	let chainArmor = ''
+	if (typeof read === 'object') {
+		chainId = read.chainId
+		chainArmor = read.armor
+	} else if (known && read !== 'unregistered') {
+		chainId = known.chainId
+		chainArmor = known.armor
+		chatBootLog(`voice route chain read ${read}; using known mailbox ${chainId} (${cached ? 'last read' : 'live listen'})`, 'warn')
+	} else {
+		chatBootLog(`voice route chain read ${read}; no known mailbox`, 'warn')
+	}
 	chatBootLog(`voice route live=${live || 'none'} chain=${chainId || 'none'} worker=${workerArmor ? 'set' : 'none'}`)
 	if (!chainId) {
 		chatBootLog('voice route chain mailbox unavailable', 'warn')
+		lastMailboxAlignFailure = read === 'unregistered' ? 'not_registered' : 'chain_unreachable'
 		return false
 	}
 	const mailbox = nodes.find((node) => mailboxKeyId(node.domain || '') === chainId)
-	const targetArmor = normalizeRouteArmor(mailbox?.armoredPublicKey)
-	if (!mailbox?.domain || !targetArmor) {
+	// The chain record carries the mailbox node's route key too: a stale or empty
+	// node list must not block the call.
+	const targetArmor = normalizeRouteArmor(mailbox?.armoredPublicKey) || chainArmor
+	const mailboxDomain = mailbox?.domain || chainId
+	if (!targetArmor) {
 		chatBootLog(`voice route chain mailbox ${chainId} is not in the node list`, 'warn')
+		lastMailboxAlignFailure = 'not_in_node_list'
 		return false
+	}
+	if (!mailbox) chatBootLog(`voice route chain mailbox ${chainId} not in the node list; using its chain route key`, 'warn')
+	if (typeof read === 'object' && !chainArmor) {
+		rememberOwnMailbox({ wallet, chainId, armor: targetArmor, at: Date.now() })
+		noteOwnMailboxVerified(wallet, chainId, targetArmor)
 	}
 	lastChainMailboxRouteArmor = targetArmor
 	if (isCashTreesNativeWebView()) {
@@ -1209,6 +1347,7 @@ export async function alignLiveGossipRouteToChain(
 		const prev = getWorkerGossipListenParams()
 		if (!prev) {
 			chatBootLog('voice route listen is not running', 'warn')
+			lastMailboxAlignFailure = 'listen_down'
 			return false
 		}
 		const controller = new AbortController()
@@ -1229,6 +1368,7 @@ export async function alignLiveGossipRouteToChain(
 		}
 		if (!started || !isWorkerGossipActive()) {
 			chatBootLog('voice route gossip restart failed', 'warn')
+			lastMailboxAlignFailure = 'listen_down'
 			return false
 		}
 	}
@@ -1238,30 +1378,35 @@ export async function alignLiveGossipRouteToChain(
 	if (workerMatches && gossipDeliveryAckContext) {
 		gossipDeliveryAckContext = {
 			...gossipDeliveryAckContext,
-			routerArmoredPublicKey: mailbox.armoredPublicKey,
-			mailboxDomains: [mailbox.domain],
+			routerArmoredPublicKey: targetArmor,
+			mailboxDomains: [mailboxDomain],
 		}
 		return true
 	}
 	if (!getWorkerGossipRouteArmor()) {
 		chatBootLog('voice route listen is not running', 'warn')
+		lastMailboxAlignFailure = 'listen_down'
 		return false
 	}
 	chatBootLog(`voice route retarget ${live || 'none'} -> ${chainId}`)
-	const ok = await retargetWorkerGossipRoute(mailbox.armoredPublicKey, nodes)
+	const ok = await retargetWorkerGossipRoute(targetArmor, nodes)
 	if (!ok) {
 		chatBootLog('voice route retarget failed', 'warn')
+		lastMailboxAlignFailure = 'listen_down'
 		return false
 	}
 	if (gossipDeliveryAckContext) {
 		gossipDeliveryAckContext = {
 			...gossipDeliveryAckContext,
-			routerArmoredPublicKey: mailbox.armoredPublicKey,
-			mailboxDomains: [mailbox.domain],
+			routerArmoredPublicKey: targetArmor,
+			mailboxDomains: [mailboxDomain],
 		}
 	}
 	const aligned = normalizeRouteArmor(getWorkerGossipRouteArmor()) === targetArmor
-	if (!aligned) chatBootLog('voice route worker still on the previous mailbox', 'warn')
+	if (!aligned) {
+		chatBootLog('voice route worker still on the previous mailbox', 'warn')
+		lastMailboxAlignFailure = 'listen_down'
+	}
 	return aligned
 }
 

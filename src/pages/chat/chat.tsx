@@ -70,6 +70,7 @@ import {
 	refreshChatMailboxPresence,
 	refreshPeerNativeWakeable,
 	alignLiveGossipRouteToChain,
+	mailboxAlignErrorMessage,
 } from '@/services/chat'
 import { nativeDialerCancelOutcome } from '@/utils/dialerCancelHandoff'
 import {
@@ -3049,7 +3050,7 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 				alignLiveGossipRouteToChain(privateKey, allNodes))
 			if (cancelledWhileStarting()) return
 			if (!mailboxAligned) {
-				failDial('Voice call could not use your current Chat mailbox. Try again.')
+				failDial(mailboxAlignErrorMessage())
 				return
 			}
 			const callerWallet = new ethers.Wallet(privateKey).address
@@ -3790,7 +3791,7 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 			const mailboxAligned = await alignLiveGossipRouteToChain(privateKey, allNodes)
 			if (!mailboxAligned) {
 				earlyMicStream?.getTracks().forEach((track) => track.stop())
-				setVoiceError('Voice call could not use your current Chat mailbox. Try again.')
+				setVoiceError(mailboxAlignErrorMessage())
 				setVoiceCallConnecting(false)
 				setVoiceCallState('idle')
 				return

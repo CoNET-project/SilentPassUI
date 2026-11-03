@@ -18,6 +18,7 @@
  */
 import { type ChatRoute, type GroupInboundEvent, type GroupIssueRosterRequest, type GroupIssueRosterResult, type GroupIssueTombstoneRequest, type GroupIssueTombstoneResult, type GroupSendRequest, type GroupSendResult, type NodeInfo, type PresenceEvent, type StatusEvent, type VoiceFrame } from '../types.js';
 import type { WorkerInitPayload } from '../protocol.js';
+import { type VoiceCallV3Config } from '../voice-v3.js';
 import { type VoiceConflictEvent, type VoiceGapEvent } from '../voice-reorder.js';
 /** Callbacks the worker entry wires to `postMessage`. */
 export interface GossipEmit {
@@ -30,6 +31,7 @@ export interface GossipEmit {
     log(level: 'info' | 'warn' | 'error', message: string): void;
     presence(payload: PresenceEvent): void;
 }
+export declare function findInboundArmor(value: unknown, depth?: number): string;
 export declare class GossipCore {
     private readonly emit;
     private cfg;
@@ -39,21 +41,17 @@ export declare class GossipCore {
     private pgpPrivateKey;
     private userPgpKeyID;
     private listenController;
-    private voiceListenController;
+    /** This listen's mailbox stream key (memory only, never logged). */
+    private listenStreamKey;
+    private listenStreamFailures;
     /**
-     * Voice channel v2 for the current listen (CoNET Chat rule 23). The UI hands
-     * over the call's AES session key; the worker registers a write key, puts it
-     * into the caps frame, turns outgoing frames into metadata-free chunks once
-     * the peer's caps carry `chan: 2`, and turns incoming chunks back into
-     * ordinary frames for the UI.
+     * Voice protocol v3 call (paid channels): this side's voice and video SSEs on
+     * relays it picked, and the peer's two channels it sends to. Incoming
+     * chunks are re-keyed to the page's own AES key, so the page code stays as is.
      */
-    private voiceV2;
-    /**
-     * v2 state of a listen that was stopped. A reconnect reopens the same session
-     * and must register the same write key (the peer already has it) and keep
-     * the peer's key, so v2 survives the drop.
-     */
-    private voiceV2Retained;
+    private voiceV3;
+    /** v3 state after a stop: a reconnect reopens the same channels. */
+    private voiceV3Retained;
     private readonly voiceReorder;
     private lastActivityAt;
     private paused;
@@ -71,6 +69,12 @@ export declare class GossipCore {
     private startListen;
     private spawnGossip;
     private resolveAbortReason;
+    /**
+     * Open one mailbox SSE frame with this listen's stream key. Every mailbox
+     * seals every frame; anything else (plain JSON, a frame that does not open)
+     * is dropped. Contents are never logged.
+     */
+    private openListenFrame;
     private handleInbound;
     send(to: ChatRoute, text: string, opts?: {
         beamioNoPush?: boolean;
@@ -88,9 +92,9 @@ export declare class GossipCore {
     /** Drop group objects out of the 1:1 message stream after the outer EIP-191 check. */
     private tryConsumeGroupInbound;
     /**
-     * POST armor to entry nodes. Text gossip may fan out in parallel.
-     * Voice/video media frames must pass `{ fanout: 1 }` so a single seq is
-     * delivered once (any one 2xx succeeds; wave2 is retry only, not a duplicate).
+     * POST armor through one entry at a time (never the same ciphertext to
+     * several entries at once); the next entry only after a clear failure.
+     * Voice/video frames pass `{ fanout: 1 }`: at most two entries.
      */
     private postToEntries;
     queryPresence(contacts: ChatRoute[]): Promise<Record<string, boolean>>;
@@ -106,41 +110,77 @@ export declare class GossipCore {
     postMailboxCommand(routerArmoredPublicKey: string, command: Record<string, unknown>): Promise<boolean>;
     postOwnMailboxCommand(command: Record<string, unknown>): Promise<boolean>;
     /**
-     * `voice_offer_store` to the callee mailbox. The command is opaque (sessionId
-     * is the capability), encrypted to the callee mailbox route key and posted
-     * through entries that are not that mailbox, like every other mailbox command.
-     * The mailbox never decrypts `offerArmor`; it is callee user-PGP ciphertext.
+     * The only way an offer travels: `voice_offer_store` with `push: 1` to the
+     * callee mailbox. The command is opaque (sessionId is the capability),
+     * encrypted to the callee mailbox route key and posted through an entry that
+     * is neither mailbox. That mailbox stores the offer, writes it to the callee's
+     * live sessions and rings the callee (found from the offer's recipient key
+     * ID). It never decrypts `offerArmor`; it is callee user-PGP ciphertext.
      */
-    /**
-     * With `push: 1` a v2 callee mailbox also rings the callee itself (it finds
-     * the callee from the offer's recipient key ID) and answers `pushed: true`,
-     * so our voice_listen need not carry the callee wallet. Resolves to whether
-     * it rang; old mailboxes never say so.
-     */
-    private indexVoiceOfferOnCalleeMailbox;
+    sendVoiceOffer(args: {
+        callId: string;
+        sessionId: string;
+        expiresAt: number;
+        offerArmor: string;
+        calleeRoute: string;
+        pushTimestamp: number;
+    }): Promise<{
+        ok: boolean;
+        pushed: boolean;
+    }>;
     /** One voice command through up to two entries; the node's JSON answer or null. */
     private postVoiceCommandForJson;
-    sendVoiceFrame(routerArmoredPublicKey: string, frame: Record<string, unknown>): Promise<boolean>;
+    sendVoiceFrame(_routerArmoredPublicKey: string, frame: Record<string, unknown>): Promise<boolean>;
+    /** The live call, or one parked by a reconnect, with this callId. */
+    private voiceV3ForCall;
+    /** Seal one chunk for a peer channel and post it through one entry. Resolves true only when the relay accepted it. */
+    private postVoiceV3Chunk;
     /**
      * One entry POST for a v2 chunk (a second entry only on a network failure).
      * Reads the node's JSON so a refused chunk can fall back to v1.
      */
     private postVoiceChunk;
-    /** A v2 chunk on our own channel → the ordinary frame the UI already handles. */
-    private handleVoiceChunk;
-    /** Peer caps with `chan: 2` carry the write key for the peer's channel. */
-    private notePeerVoiceCaps;
-    startVoiceListen(sessionId: string, pushWakeup?: {
-        callId: string;
-        calleeEoa: string;
-        expiresAt: number;
-        timestamp: number;
-        offerText?: string;
-        recipientPgp?: string;
-        calleeRoute?: string;
-    }, 
-    /** Base64 AES session key of the call: enables voice channel v2. */
-    channelKey?: string): Promise<boolean>;
+    /** A chunk on one of our own channels → the ordinary frame the page handles. */
+    private handleVoiceV3Chunk;
+    /** The peer reports (or moves) the relays of its two channels. */
+    private applyPeerVoiceRelays;
+    private voiceNodeByDomain;
+    /** A relay from our node table, else from the armored key the peer sent. */
+    private voiceRelayNode;
+    /** A random relay outside both mailboxes and outside `skip`. */
+    private pickVoiceRelay;
+    private buildVoiceV3State;
+    /**
+     * Voice protocol v3: open this side's two paid channels (voice, video). With
+     * `call` a new call starts; without it, `sessionId` must be the own voice
+     * channel of the current or last call (reconnect). Resolves once the voice
+     * channel's relay answers; the video channel opens beside it (pre-warmed).
+     */
+    startVoiceListen(sessionId: string, call?: VoiceCallV3Config): Promise<boolean>;
+    /**
+     * One own channel: `voice_listen` v3 to its relay through an entry that is
+     * neither the relay nor a mailbox. A relay that refuses or never answers is
+     * replaced by another random relay (twice at most); the peer is told.
+     */
+    private openVoiceV3Channel;
+    /**
+     * Runs one SSE until it closes. Resolves at the relay's first answer:
+     * `ready`, a refusal error from the relay, or `failed`.
+     */
+    private runVoiceV3Sse;
+    private scheduleVideoReopen;
+    /**
+     * `voice_channel_ready_v3` on the peer's voice channel: the relays of our two
+     * channels. The caller sends it once both are open; either side sends it
+     * again after moving a channel to another relay. Retried every 300 ms for
+     * 10 s while the peer's channel is still opening.
+     */
+    private sendVoiceChannelReady;
+    private abortVoiceV3;
+    /** `voice_unlisten` for one own channel, to its relay. */
+    private unlistenVoiceV3Channel;
+    /** Close the call's SSEs but keep its channels, so a later listen reopens them. */
+    private parkVoiceV3;
     stopVoiceListen(sessionId: string): Promise<boolean>;
 }
 //# sourceMappingURL=gossip-core.d.ts.map

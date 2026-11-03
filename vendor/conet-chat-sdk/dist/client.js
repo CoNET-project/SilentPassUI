@@ -7,6 +7,8 @@
  * bundler-agnostic: CRA/Vite/webpack each create the worker their own way, e.g.
  *   new Worker(new URL('@beamio/chat-sdk/worker', import.meta.url), { type: 'module' })
  */
+import { CHAT_DAEMON_PROTOCOL_VERSION } from './protocol.js';
+import { negotiateChatDaemon } from './daemon.js';
 const DEFAULT_RUNTIME = {
     sendFanout: 3,
     reconnectBaseMs: 4000,
@@ -104,6 +106,18 @@ class BeamioChatClientImpl {
         // next voice call with no live listen.
         await this.request({ type: 'init', reqId: 0, payload }, 180000);
     }
+    /** `hello` (protocol v1). Null when the worker is not running or did not answer. */
+    async hello() {
+        if (!this.worker)
+            return null;
+        try {
+            const result = await this.request({ type: 'hello', reqId: 0, protocolVersion: CHAT_DAEMON_PROTOCOL_VERSION }, 5000);
+            return negotiateChatDaemon(result).status === 'negotiated' ? result : null;
+        }
+        catch {
+            return null;
+        }
+    }
     setRoutes(routes) {
         this.routes = routes || [];
         this.postCommand({ type: 'setRoutes', routes: this.routes });
@@ -171,12 +185,14 @@ class BeamioChatClientImpl {
         });
         return !!r?.sent;
     }
-    async startVoiceListen(sessionId, pushWakeup, channelKey) {
-        // Offer encryption plus the 12s mailbox handshake can run past 25s.
-        // Timing out here makes the call screen say the relay failed while
-        // the worker is still opening it.
-        const r = await this.request({ type: 'voiceListen', reqId: 0, sessionId, pushWakeup, channelKey }, 45000);
+    async startVoiceListen(sessionId, call) {
+        // Two relay handshakes (12 s each, a retry on another relay) can run past 25 s.
+        const r = await this.request({ type: 'voiceListen', reqId: 0, sessionId, call }, 45000);
         return !!r?.started;
+    }
+    async sendVoiceOffer(offer) {
+        const r = await this.request({ type: 'voiceOffer', reqId: 0, offer }, 30000);
+        return { ok: !!r?.ok, pushed: !!r?.pushed };
     }
     async stopVoiceListen(sessionId) {
         const r = await this.request({ type: 'voiceUnlisten', reqId: 0, sessionId });

@@ -19,11 +19,15 @@
 import { createMessage, decrypt, decryptKey, encrypt, enums, readKey, readMessage, readPrivateKey, } from 'openpgp';
 import { ethers } from 'ethers';
 import { VOICE_MAX_FRAME_B64, } from '../types.js';
-import { getRandomNode, getRandomNodes, markGossipNodeBad, markGossipNodeHealthy, pickGossipEntryNodesForSend, pickHealthyGossipNodes, pickRouteNodesByArmoredKey, postUrl, postWithTimeout, } from '../nodes.js';
+import { getRandomNode, getRandomNodes, markGossipNodeBad, markGossipNodeHealthy, pickGossipEntryNodesForSend, pickHealthyGossipNodes, pickRouteNodesByArmoredKey, isGossipNodeHealthy, startGossipWarm, stopGossipWarm, mailboxDomainsFor, postArmorOneEntryAtATime, postUrl, postWithTimeout, } from '../nodes.js';
+import { createMailboxStreamKey, isSealedMailboxFrame, openMailboxStreamFrame } from '../mailbox-stream.js';
 import { base64ToUtf8, keccakUtf8, utf8ToBase64 } from '../crypto.js';
+import { chatEnvelope } from '../wire.js';
 import { GROUP_V1_MAX_MEMBERS, assertGroupRosterV1, classifyGroupPlaintext, createGroupMessageV1, createPaddedGroupDeliveryPacket, groupRosterHash, looksLikeGroupText, normalizeGroupAddress, signGroupObject, } from '../group.js';
-import { armorToString, buildPostBody, encryptOpaqueVoiceCommand, encryptRouteCommand, encryptVoiceChunkLiteral, wrapArmorToEntryRoute, wrapArmorToMailboxWork } from '../envelope.js';
-import { VOICE_KIND_AUDIO, VOICE_KIND_CONTROL, VOICE_KIND_VIDEO, aesDecryptV1, aesEncryptV1, base64ToBytes, bytesToBase64, locatorFromSessionId, openVoiceChunk, randomWriteKey, sealVoiceChunk, } from '../voice-channel-v2.js';
+import { buildPostBody, encryptOpaqueVoiceCommand, encryptRouteCommand, encryptVoiceChunkLiteral, wrapArmorToEntryRoute, wrapArmorToMailboxWork } from '../envelope.js';
+import { VOICE_KIND_AUDIO, VOICE_KIND_CONTROL, VOICE_KIND_VIDEO, aesDecryptV1, aesEncryptV1, base64ToBytes, locatorFromSessionId, openVoiceChunk, sealVoiceChunk, } from '../voice-channel-v2.js';
+import { buildVoiceListenV3 } from '../voice-v3.js';
+import { postUntilPeerChannel } from '../voice-peer-wait.js';
 import { DEFAULT_VIDEO_REORDER_DELAY_MS, DEFAULT_VOICE_REORDER_DELAY_MS, VoiceFrameReorderBuffer, } from '../voice-reorder.js';
 const GOSSIP_STOP_REASONS = new Set([
     'root_stop',
@@ -54,13 +58,16 @@ function isGossipListingLivenessFrame(payload) {
     return typeof row.ipaddress === 'string' || 'nodeWallets' in row;
 }
 const INBOUND_WRAPPER_KEYS = ['data', 'message', 'payload', 'body', 'text'];
-function findInboundArmor(value, depth = 0) {
+export function findInboundArmor(value, depth = 0) {
     if (depth > 5)
         return '';
     if (typeof value === 'string') {
         const text = value.trim();
+        // Return the armor exactly as the mailbox stored it: the ACK hash is
+        // keccak256 of that string, and a trimmed copy (e.g. a voice offer that
+        // ends with a newline) never matches, so the mailbox kept replaying it.
         if (/^-----BEGIN PGP MESSAGE-----/i.test(text))
-            return text;
+            return value;
         if (text.startsWith('{') || text.startsWith('[')) {
             try {
                 return findInboundArmor(JSON.parse(text), depth + 1);
@@ -133,21 +140,17 @@ export class GossipCore {
         this.pgpPrivateKey = null;
         this.userPgpKeyID = '';
         this.listenController = null;
-        this.voiceListenController = null;
+        /** This listen's mailbox stream key (memory only, never logged). */
+        this.listenStreamKey = null;
+        this.listenStreamFailures = 0;
         /**
-         * Voice channel v2 for the current listen (CoNET Chat rule 23). The UI hands
-         * over the call's AES session key; the worker registers a write key, puts it
-         * into the caps frame, turns outgoing frames into metadata-free chunks once
-         * the peer's caps carry `chan: 2`, and turns incoming chunks back into
-         * ordinary frames for the UI.
+         * Voice protocol v3 call (paid channels): this side's voice and video SSEs on
+         * relays it picked, and the peer's two channels it sends to. Incoming
+         * chunks are re-keyed to the page's own AES key, so the page code stays as is.
          */
-        this.voiceV2 = null;
-        /**
-         * v2 state of a listen that was stopped. A reconnect reopens the same session
-         * and must register the same write key (the peer already has it) and keep
-         * the peer's key, so v2 survives the drop.
-         */
-        this.voiceV2Retained = null;
+        this.voiceV3 = null;
+        /** v3 state after a stop: a reconnect reopens the same channels. */
+        this.voiceV3Retained = null;
         this.voiceReorder = new VoiceFrameReorderBuffer({
             // Voice jitter ~120ms; video fragment groups ~200ms. Do not skip_ahead
             // immediately when a later seq arrives first — wait then timeout.
@@ -176,6 +179,8 @@ export class GossipCore {
             : `0x${payload.identity.privateKeyHex}`;
         this.wallet = new ethers.Wallet(pkHex);
         this.paused = false;
+        // Keep entries warm while the worker runs, so picks return at once.
+        startGossipWarm(() => this.nodes);
         // Unlocking the PGP key can take longer than the client init budget.
         // Returning here lets the worker stay alive; voice listen waits for
         // the same promise instead of being told the relay could not open.
@@ -217,8 +222,9 @@ export class GossipCore {
     }
     pause() {
         this.paused = true;
+        stopGossipWarm();
         this.clearListen('background_pause');
-        this.voiceListenController?.abort('voice_stop');
+        this.parkVoiceV3();
         this.voiceReorder.clear();
         this.lastActivityAt = 0;
         this.emit.status('paused');
@@ -227,11 +233,14 @@ export class GossipCore {
         if (!this.paused && this.listenController && !this.listenController.signal.aborted)
             return;
         this.paused = false;
+        startGossipWarm(() => this.nodes);
         void this.startListen();
     }
     destroy() {
+        stopGossipWarm();
         this.clearListen('destroy');
-        this.voiceListenController?.abort('voice_stop');
+        this.parkVoiceV3();
+        this.voiceV3Retained = null;
         this.voiceReorder.clear();
         this.wallet = null;
         this.pgpPrivateKey = null;
@@ -278,11 +287,17 @@ export class GossipCore {
             const instanceId = typeof crypto.randomUUID === 'function'
                 ? crypto.randomUUID()
                 : utf8ToBase64(String.fromCharCode(...crypto.getRandomValues(new Uint8Array(16))));
+            // Fresh stream key per listen: B seals every frame with it, so the
+            // entry relaying the SSE cannot read the recipient key ID.
+            const streamKey = await createMailboxStreamKey();
             const innerArmor = await encryptRouteCommand(this.wallet, {
                 command: 'mailbox_listen',
                 walletAddress: this.wallet.address,
                 instanceId,
+                streamKey: streamKey.base64,
             }, ownRouteKey);
+            this.listenStreamKey = streamKey.key;
+            this.listenStreamFailures = 0;
             const entryCandidates = this.nodes.filter((n) => !mailboxDomains.has(n.domain));
             const healthyNodes = await pickHealthyGossipNodes(entryCandidates.length ? entryCandidates : this.nodes);
             if (!healthyNodes.length) {
@@ -326,6 +341,8 @@ export class GossipCore {
         const onRootAbort = () => controller.abort('root_stop');
         rootSignal.addEventListener('abort', onRootAbort);
         let isRelaunching = false;
+        /** Mailbox B spoke on this stream (a frame opened with the stream key). */
+        let heardMailbox = false;
         const triggerRelaunch = (reason) => {
             if (rootSignal.aborted)
                 return;
@@ -338,6 +355,18 @@ export class GossipCore {
             }
             catch {
                 /* ignore */
+            }
+            if (heardMailbox) {
+                // B registered this listen under its instanceId. Reusing the same
+                // command on another entry lets the old socket's late close remove the
+                // new session at B: open a new listen (new instanceId and stream key).
+                this.emit.log('info', `listen dropped after B answered (reason=${reason || 'stream_end'}); new listen`);
+                if (this.listenController?.signal === rootSignal) {
+                    this.listenController.abort('relisten');
+                    this.listenController = null;
+                }
+                setTimeout(() => void this.startListen(), 500);
+                return;
             }
             const nextAttempt = reconnectAttempt + 1;
             const delay = Math.min(30000, Math.round(config.retryDelay * Math.pow(1.6, Math.min(nextAttempt, 8))));
@@ -382,7 +411,8 @@ export class GossipCore {
                 markGossipNodeHealthy(node.domain);
                 this.lastActivityAt = Date.now();
                 reconnectAttempt = 0;
-                this.emit.status('listening');
+                // HTTP 200 only means entry C took the request. 'listening' is reported
+                // when mailbox B's sealed handshake frame arrives (handleInbound).
                 reader = res.body.getReader();
                 const decoder = new TextDecoder('utf-8');
                 let buffer = '';
@@ -438,7 +468,11 @@ export class GossipCore {
                         const payload = (dataLines.length ? dataLines.join('\n') : block).trim();
                         if (!payload)
                             continue;
-                        await this.handleInbound(payload, node.domain, rootSignal);
+                        const frame = await this.openListenFrame(payload);
+                        if (!frame)
+                            continue;
+                        heardMailbox = true;
+                        await this.handleInbound(frame, node.domain, rootSignal);
                     }
                 }
                 triggerRelaunch('server_closed');
@@ -486,6 +520,22 @@ export class GossipCore {
         }
         return 'unknown';
     }
+    /**
+     * Open one mailbox SSE frame with this listen's stream key. Every mailbox
+     * seals every frame; anything else (plain JSON, a frame that does not open)
+     * is dropped. Contents are never logged.
+     */
+    async openListenFrame(payload) {
+        const key = this.listenStreamKey;
+        const opened = key && isSealedMailboxFrame(payload) ? await openMailboxStreamFrame(key, payload) : null;
+        if (opened === null) {
+            this.listenStreamFailures++;
+            this.emit.log('warn', `mailbox frame did not open (${this.listenStreamFailures})`);
+            return null;
+        }
+        this.listenStreamFailures = 0;
+        return opened;
+    }
     async handleInbound(rawData, viaDomain, _rootSignal) {
         const trimmedRaw = rawData.trim();
         let data = null;
@@ -514,6 +564,12 @@ export class GossipCore {
             this.emit.status('listening', 'heartbeat');
             return;
         }
+        // Mailbox B's first frame: `{status:200, kind:'mailbox', instanceId, nodeWallet, …}`.
+        if (data?.kind === 'mailbox') {
+            this.lastActivityAt = Date.now();
+            this.emit.status('listening', 'handshake');
+            return;
+        }
         try {
             if (data?.type === 'voice_frame_v1') {
                 const frame = typeof data.frameTimestamp === 'number' ? { ...data, timestamp: data.frameTimestamp } : data;
@@ -523,7 +579,7 @@ export class GossipCore {
             // Mailbox relays can add several JSON envelopes. Walk only a bounded
             // set of wrapper keys; never log or forward the plaintext/ciphertext.
             const armored = findInboundArmor(data ?? trimmedRaw);
-            if (armored && /^-----BEGIN PGP MESSAGE-----/i.test(armored)) {
+            if (armored && /^-----BEGIN PGP MESSAGE-----/i.test(armored.trimStart())) {
                 this.emit.log('info', `inbound PGP candidate bytes=${armored.length} via=${viaDomain}`);
                 const msg = await readMessage({ armoredMessage: armored });
                 const { data: decrypted } = await decrypt({ message: msg, decryptionKeys: this.pgpPrivateKey });
@@ -577,7 +633,7 @@ export class GossipCore {
             return false;
         }
         const signMessage = await this.wallet.signMessage(text);
-        const message = { timestamp: Date.now(), text, from: this.wallet.address, signMessage };
+        const message = chatEnvelope({ timestamp: Date.now(), text, from: this.wallet.address, signMessage });
         let innerArmor;
         try {
             const encObj = {
@@ -591,21 +647,21 @@ export class GossipCore {
             this.emit.log('error', `send encrypt error: ${ex?.message ?? String(ex)}`);
             return false;
         }
-        if (opts?.beamioNoPush) {
-            const mailboxKey = to.routerArmoredPublicKey?.trim();
-            if (!mailboxKey) {
-                this.emit.log('error', 'send: NoPush requires recipient mailbox routerArmoredPublicKey');
-                return false;
-            }
-            try {
-                innerArmor = await wrapArmorToMailboxWork(innerArmor, mailboxKey, { NoPush: true });
-            }
-            catch (ex) {
-                this.emit.log('error', `send mailbox wrap error: ${ex?.message ?? String(ex)}`);
-                return false;
-            }
+        // Always wrap to the recipient's mailbox B: the entry then sees only B's
+        // route key ID, never the recipient's key ID. No route, no send.
+        const mailboxKey = to.routerArmoredPublicKey?.trim();
+        if (!mailboxKey) {
+            this.emit.log('error', 'send: recipient mailbox unknown (routerArmoredPublicKey); not sent');
+            return false;
         }
-        const mailboxDomains = new Set(pickRouteNodesByArmoredKey(this.nodes, to.routerArmoredPublicKey || '').map((n) => n.domain));
+        try {
+            innerArmor = await wrapArmorToMailboxWork(innerArmor, mailboxKey, opts?.beamioNoPush ? { NoPush: true } : undefined);
+        }
+        catch (ex) {
+            this.emit.log('error', `send mailbox wrap error: ${ex?.message ?? String(ex)}`);
+            return false;
+        }
+        const mailboxDomains = new Set(pickRouteNodesByArmoredKey(this.nodes, mailboxKey).map((n) => n.domain));
         return this.postToEntries(innerArmor, mailboxDomains);
     }
     /**
@@ -773,11 +829,13 @@ export class GossipCore {
         }
         const signMessage = await this.wallet.signMessage(payload);
         const envelope = { timestamp: Date.now(), text: payload, from: this.wallet.address, signMessage };
-        const innerArmor = await encrypt({
+        const userArmor = await encrypt({
             message: await createMessage({ text: utf8ToBase64(JSON.stringify(envelope)) }),
             encryptionKeys: key,
             config: { preferredCompressionAlgorithm: enums.compression.uncompressed },
         });
+        // Wrapped to the member's mailbox: the entry never sees the member's key ID.
+        const innerArmor = await wrapArmorToMailboxWork(userArmor, routeKey);
         const mailboxDomains = new Set(pickRouteNodesByArmoredKey(this.nodes, routeKey).map((n) => n.domain));
         return this.postToEntries(innerArmor, mailboxDomains);
     }
@@ -836,49 +894,30 @@ export class GossipCore {
         return true;
     }
     /**
-     * POST armor to entry nodes. Text gossip may fan out in parallel.
-     * Voice/video media frames must pass `{ fanout: 1 }` so a single seq is
-     * delivered once (any one 2xx succeeds; wave2 is retry only, not a duplicate).
+     * POST armor through one entry at a time (never the same ciphertext to
+     * several entries at once); the next entry only after a clear failure.
+     * Voice/video frames pass `{ fanout: 1 }`: at most two entries.
      */
-    async postToEntries(innerArmor, excludeDomains, options) {
-        const send = async (targets) => {
-            if (!targets.length)
-                return false;
-            const results = await Promise.all(targets.map(async (node) => {
-                const url = postUrl(node.domain);
-                try {
-                    const armored = this.cfg?.runtime.outerWrap === false
-                        ? innerArmor
-                        : await wrapArmorToEntryRoute(innerArmor, node.armoredPublicKey);
-                    const res = await postWithTimeout(url, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(buildPostBody(armored)),
-                        referrerPolicy: 'no-referrer',
-                    }, 12000);
-                    if (!res.ok) {
-                        markGossipNodeBad(node.domain);
-                        return false;
-                    }
-                    markGossipNodeHealthy(node.domain);
-                    return true;
-                }
-                catch {
-                    markGossipNodeBad(node.domain);
-                    return false;
-                }
-            }));
-            return results.some(Boolean);
-        };
-        const fanout = options?.fanout ?? this.cfg?.runtime.sendFanout ?? 3;
-        // Media: exactly one entry per wave. Text: historical fanout+1 parallel picks.
-        const pickCount = fanout <= 1 ? 1 : Math.min(fanout + 1, Math.max(1, this.nodes.length));
-        const wave1 = await pickGossipEntryNodesForSend(this.nodes, pickCount, excludeDomains);
-        if (await send(wave1))
-            return true;
-        const tried = new Set([...excludeDomains, ...wave1.map((n) => n.domain)]);
-        const wave2 = await pickGossipEntryNodesForSend(this.nodes, pickCount, tried);
-        return send(wave2);
+    async postToEntries(innerArmor, recipientMailboxDomains, options) {
+        // Rule 19: never the recipient's mailbox, never our own mailbox.
+        const exclude = new Set([
+            ...recipientMailboxDomains,
+            ...mailboxDomainsFor(this.nodes, this.cfg?.identity.ownRouteArmoredPublicKey),
+        ]);
+        const result = await postArmorOneEntryAtATime({
+            nodes: this.nodes,
+            exclude,
+            maxAttempts: (options?.fanout ?? 2) <= 1 ? 2 : undefined,
+            buildBody: async (node) => {
+                const armored = this.cfg?.runtime.outerWrap === false
+                    ? innerArmor
+                    : await wrapArmorToEntryRoute(innerArmor, node.armoredPublicKey);
+                return JSON.stringify(buildPostBody(armored));
+            },
+        });
+        if (!result.ok)
+            this.emit.log('warn', `post failed after ${result.attempts} entr${result.attempts === 1 ? 'y' : 'ies'}`);
+        return result.ok;
     }
     // ---- Presence (wallet_online_query, encrypt to mailbox B, POST via C ≠ B) --
     async queryPresence(contacts) {
@@ -1053,18 +1092,14 @@ export class GossipCore {
         return this.postMailboxCommand(route, command);
     }
     /**
-     * `voice_offer_store` to the callee mailbox. The command is opaque (sessionId
-     * is the capability), encrypted to the callee mailbox route key and posted
-     * through entries that are not that mailbox, like every other mailbox command.
-     * The mailbox never decrypts `offerArmor`; it is callee user-PGP ciphertext.
+     * The only way an offer travels: `voice_offer_store` with `push: 1` to the
+     * callee mailbox. The command is opaque (sessionId is the capability),
+     * encrypted to the callee mailbox route key and posted through an entry that
+     * is neither mailbox. That mailbox stores the offer, writes it to the callee's
+     * live sessions and rings the callee (found from the offer's recipient key
+     * ID). It never decrypts `offerArmor`; it is callee user-PGP ciphertext.
      */
-    /**
-     * With `push: 1` a v2 callee mailbox also rings the callee itself (it finds
-     * the callee from the offer's recipient key ID) and answers `pushed: true`,
-     * so our voice_listen need not carry the callee wallet. Resolves to whether
-     * it rang; old mailboxes never say so.
-     */
-    async indexVoiceOfferOnCalleeMailbox(args) {
+    async sendVoiceOffer(args) {
         try {
             const inner = await encryptOpaqueVoiceCommand({
                 command: 'voice_offer_store',
@@ -1077,16 +1112,20 @@ export class GossipCore {
                 timestamp: Math.floor(Date.now() / 1000),
             }, args.calleeRoute);
             if (!inner.includes('-----BEGIN PGP MESSAGE-----'))
-                return false;
-            const mailboxDomains = new Set(pickRouteNodesByArmoredKey(this.nodes, args.calleeRoute).map((n) => n.domain));
+                return { ok: false, pushed: false };
+            const mailboxDomains = new Set([
+                ...pickRouteNodesByArmoredKey(this.nodes, args.calleeRoute).map((n) => n.domain),
+                ...mailboxDomainsFor(this.nodes, this.cfg?.identity.ownRouteArmoredPublicKey),
+            ]);
             const result = await this.postVoiceCommandForJson(inner, mailboxDomains);
-            const rang = result?.pushed === true;
-            this.emit.log(result?.ok ? 'info' : 'warn', `voice offer index ${result?.ok ? 'stored' : 'failed'} pushed=${rang} callId=${args.callId.slice(0, 8)}`);
-            return rang;
+            const ok = result?.ok === true;
+            const pushed = result?.pushed === true;
+            this.emit.log(ok ? 'info' : 'warn', `voice offer ${ok ? 'stored' : 'failed'} delivered=${result?.delivered === true} pushed=${pushed} callId=${args.callId.slice(0, 8)}`);
+            return { ok, pushed };
         }
         catch (ex) {
-            this.emit.log('warn', `voice offer index error: ${ex?.message ?? String(ex)}`);
-            return false;
+            this.emit.log('warn', `voice offer error: ${ex?.message ?? String(ex)}`);
+            return { ok: false, pushed: false };
         }
     }
     /** One voice command through up to two entries; the node's JSON answer or null. */
@@ -1126,105 +1165,94 @@ export class GossipCore {
         }
         return null;
     }
-    async sendVoiceFrame(routerArmoredPublicKey, frame) {
+    async sendVoiceFrame(_routerArmoredPublicKey, frame) {
         const candidate = frame;
-        // Accept legacy UI alias `targetWallet` → canonical VoiceFrame.`to`.
-        const to = (typeof candidate.to === 'string' && candidate.to.trim()) ||
-            (typeof candidate.targetWallet === 'string' && candidate.targetWallet.trim()) ||
-            '';
-        // Mailbox delivers only when targetSessionId matches the peer voice_listen.
-        const targetSessionId = typeof candidate.targetSessionId === 'string' ? candidate.targetSessionId.trim() : '';
-        const targetSessionOk = /^[0-9a-fA-F-]{16,64}$/.test(targetSessionId);
         if (typeof candidate.callId !== 'string' || !candidate.callId ||
-            typeof candidate.sessionId !== 'string' || !candidate.sessionId ||
-            !targetSessionOk ||
             !Number.isSafeInteger(candidate.seq) || candidate.seq < 0 ||
-            typeof candidate.timestamp !== 'number' || !Number.isFinite(candidate.timestamp) ||
             typeof candidate.payload !== 'string' || !candidate.payload ||
             candidate.payload.length > VOICE_MAX_FRAME_B64) {
-            this.emit.log('warn', `sendVoiceFrame rejected: callId=${!!candidate.callId} session=${!!candidate.sessionId} to=${!!to} targetSession=${targetSessionOk} seq=${candidate.seq} payload=${typeof candidate.payload === 'string' ? candidate.payload.length : 0}`);
+            this.emit.log('warn', `sendVoiceFrame rejected: callId=${!!candidate.callId} seq=${candidate.seq} payload=${typeof candidate.payload === 'string' ? candidate.payload.length : 0}`);
             return false;
         }
-        let payload = candidate.payload;
-        const mailboxDomains = new Set(pickRouteNodesByArmoredKey(this.nodes, routerArmoredPublicKey).map((n) => n.domain));
-        const v2 = this.voiceV2;
-        if (v2 && candidate.sessionId === v2.sessionId) {
-            v2.peerSessionId = targetSessionId;
-            v2.callId = candidate.callId;
-            try {
-                let plain = await aesDecryptV1(v2.key, payload);
-                const control = parseVoiceControl(plain);
-                // Our node holds a v2 channel: the caps frame tells the peer its write key.
-                if (control && v2.ownV2 && (control.type === 'voice_media_caps_v1' || control.type === 'voice_video_enable_v1')) {
-                    control.chan = 2;
-                    control.wk = bytesToBase64(v2.writeKey);
-                    plain = new TextEncoder().encode(JSON.stringify(control));
-                    payload = await aesEncryptV1(v2.key, plain);
-                }
-                const locator = locatorFromSessionId(targetSessionId);
-                if (v2.peerWriteKey && !v2.disabled && locator) {
-                    const kind = candidate.mediaKind === 'video'
-                        ? VOICE_KIND_VIDEO
-                        : control ? VOICE_KIND_CONTROL : VOICE_KIND_AUDIO;
-                    const literal = await sealVoiceChunk({
-                        sessionKey: v2.key,
-                        locator,
-                        writeKey: v2.peerWriteKey,
-                        kind,
-                        seq: candidate.seq,
-                        captureMs: Date.now(),
-                        data: plain,
-                    });
-                    const inner = await encryptVoiceChunkLiteral(literal, routerArmoredPublicKey);
-                    const result = await this.postVoiceChunk(inner, mailboxDomains);
-                    if (result.ok) {
-                        if (++v2.txOk === 1)
-                            this.emit.log('info', 'voice v2 first chunk accepted');
-                        v2.chunkMiss = 0;
-                        return true;
-                    }
-                    if (result.error === 'voice_chunk_auth' || result.error === 'invalid_voice_chunk') {
-                        v2.disabled = true;
-                        this.emit.log('warn', `voice v2 chunk refused (${result.error}); v1 for the rest of the call`);
-                    }
-                    else if (result.error === 'target_voice_session_not_found') {
-                        // The peer's listen is down (reconnecting) or reopened without v2.
-                        // Send this frame as v1 and keep v2: the peer re-listens with the
-                        // same write key, and the next chunk goes through again.
-                        if (++v2.chunkMiss === 1 || v2.chunkMiss % 50 === 0) {
-                            this.emit.log('warn', `voice v2 chunk target missing x${v2.chunkMiss}; this frame as v1`);
-                        }
-                    }
-                    else {
-                        return false;
-                    }
-                }
-            }
-            catch (ex) {
-                this.emit.log('warn', `voice v2 send error: ${ex?.message ?? String(ex)}`);
-            }
+        // v3 only: every frame is a metadata-free chunk on the peer's paid channel.
+        // Sending needs only the peer's channel, so a call whose own listens are
+        // being reopened (parked by a reconnect) still sends.
+        const st = this.voiceV3ForCall(candidate.callId);
+        if (!st) {
+            this.emit.log('warn', 'sendVoiceFrame: no v3 call for this frame');
+            return false;
         }
-        // The peer's mailbox decrypts this command, so it carries only what the
-        // relay needs (CoNET Chat protocol): no sender or recipient wallet. The
-        // sessionId is the capability; identity stays inside the AES payload.
-        const command = {
-            command: 'voice_uplink',
-            type: 'voice_frame_v1',
-            callId: candidate.callId,
-            sessionId: candidate.sessionId,
-            targetSessionId,
-            direction: candidate.direction || 'uplink',
-            seq: candidate.seq,
-            frameTimestamp: candidate.timestamp,
-            payload,
-            ...(candidate.frameId ? { frameId: candidate.frameId } : {}),
-            ...(candidate.chunkIndex !== undefined ? { chunkIndex: candidate.chunkIndex } : {}),
-            ...(candidate.chunkCount !== undefined ? { chunkCount: candidate.chunkCount } : {}),
-            timestamp: Math.floor(Date.now() / 1000),
-        };
-        const innerArmor = await encryptOpaqueVoiceCommand(command, routerArmoredPublicKey);
-        // One successful entry POST per frame — never parallel fanout of the same seq.
-        return this.postToEntries(innerArmor, mailboxDomains, { fanout: 1 });
+        try {
+            const plain = await aesDecryptV1(st.uiKey, candidate.payload);
+            const video = candidate.mediaKind === 'video';
+            const target = video ? st.peer.video : st.peer.voice;
+            // The callee learns the caller's relays from voice_channel_ready_v3.
+            // Until then there is nowhere to send: not accepted (the page's link
+            // watchdog counts only accepted frames), and the page keeps going.
+            if (!target.relay)
+                return false;
+            const kind = video ? VOICE_KIND_VIDEO : parseVoiceControl(plain) ? VOICE_KIND_CONTROL : VOICE_KIND_AUDIO;
+            const ok = await this.postVoiceV3Chunk(st, target, kind, candidate.seq, plain);
+            return ok;
+        }
+        catch (ex) {
+            this.emit.log('warn', `voice v3 send error: ${ex?.message ?? String(ex)}`);
+            return false;
+        }
+    }
+    /** The live call, or one parked by a reconnect, with this callId. */
+    voiceV3ForCall(callId) {
+        const live = this.voiceV3;
+        if (live && !live.stopped && live.cfg.callId === callId)
+            return live;
+        const parked = this.voiceV3Retained;
+        if (parked && parked.cfg.callId === callId)
+            return parked;
+        return null;
+    }
+    /** Seal one chunk for a peer channel and post it through one entry. Resolves true only when the relay accepted it. */
+    async postVoiceV3Chunk(st, target, kind, seq, plain) {
+        const relay = target.relay;
+        if (!relay)
+            return false;
+        const literal = await sealVoiceChunk({
+            sessionKey: target.key,
+            locator: target.locator,
+            writeKey: target.wk,
+            kind,
+            seq,
+            captureMs: Date.now(),
+            data: plain,
+        });
+        const inner = await encryptVoiceChunkLiteral(literal, relay.armoredPublicKey);
+        const exclude = new Set([relay.domain, ...st.avoidDomains]);
+        // Before the first accepted chunk a missing channel means the caller's listen is
+        // still opening (it announces its relays first): post the chunk again.
+        const result = await postUntilPeerChannel({
+            seenBefore: st.txOk > 0,
+            post: () => this.postVoiceChunk(inner, exclude),
+            sleep: (ms) => new Promise((done) => setTimeout(done, ms)),
+            now: () => Date.now(),
+            alive: () => this.voiceV3ForCall(st.cfg.callId) === st,
+        });
+        if (result.ok) {
+            if (result.tries > 1 && st.txOk === 0)
+                this.emit.log('info', `voice v3 peer channel up after tries=${result.tries}`);
+            if (++st.txOk === 1)
+                this.emit.log('info', 'voice v3 first chunk accepted');
+            st.miss = 0;
+            return true;
+        }
+        if (result.error === 'target_voice_session_not_found') {
+            // The peer's channel is reconnecting (or gone). The frame is lost, the call
+            // is not; it is reported as not accepted, so the page's 25 s watchdog
+            // still ends a call whose peer stays gone.
+            if (++st.miss === 1 || st.miss % 50 === 0)
+                this.emit.log('warn', `voice v3 peer channel missing x${st.miss}`);
+            return false;
+        }
+        this.emit.log('warn', `voice v3 chunk refused ${result.error ?? ''}`);
+        return false;
     }
     /**
      * One entry POST for a v2 chunk (a second entry only on a network failure).
@@ -1267,224 +1295,255 @@ export class GossipCore {
         }
         return { ok: false, error: 'network' };
     }
-    /** A v2 chunk on our own channel → the ordinary frame the UI already handles. */
-    async handleVoiceChunk(blobB64) {
-        const v2 = this.voiceV2;
-        if (!v2 || !blobB64)
+    /** A chunk on one of our own channels → the ordinary frame the page handles. */
+    async handleVoiceV3Chunk(st, which, blobB64) {
+        if (st !== this.voiceV3 || !blobB64)
             return;
+        const own = st.own[which];
         try {
-            const opened = await openVoiceChunk(v2.key, v2.locator, base64ToBytes(blobB64));
-            if (++v2.rx === 1)
-                this.emit.log('info', `voice v2 first chunk rx kind=${opened.kind}`);
-            this.notePeerVoiceCaps(opened.data);
+            const opened = await openVoiceChunk(own.key, own.locator, base64ToBytes(blobB64));
+            if (++st.rx === 1)
+                this.emit.log('info', `voice v3 first chunk rx ${which} kind=${opened.kind}`);
+            if (opened.kind === VOICE_KIND_CONTROL) {
+                const control = parseVoiceControl(opened.data);
+                if (control?.type === 'voice_channel_ready_v3') {
+                    this.applyPeerVoiceRelays(st, control);
+                    return;
+                }
+            }
             this.voiceReorder.push({
                 type: 'voice_frame_v1',
-                callId: v2.callId,
-                sessionId: v2.peerSessionId,
+                callId: st.cfg.callId,
+                sessionId: st.peer.voice.sid,
                 seq: opened.seq,
                 timestamp: opened.captureMs,
-                payload: await aesEncryptV1(v2.key, opened.data),
+                payload: await aesEncryptV1(st.uiKey, opened.data),
                 ...(opened.kind === VOICE_KIND_VIDEO ? { mediaKind: 'video' } : {}),
             });
         }
         catch (ex) {
-            this.emit.log('warn', `voice v2 chunk open failed: ${ex?.message ?? String(ex)}`);
+            this.emit.log('warn', `voice v3 chunk open failed (${which}): ${ex?.message ?? String(ex)}`);
         }
     }
-    /** Peer caps with `chan: 2` carry the write key for the peer's channel. */
-    notePeerVoiceCaps(plain) {
-        const v2 = this.voiceV2;
-        if (!v2 || v2.peerWriteKey)
+    /** The peer reports (or moves) the relays of its two channels. */
+    applyPeerVoiceRelays(st, control) {
+        if (String(control.callId || '') !== st.cfg.callId)
             return;
-        const control = parseVoiceControl(plain);
-        if (!control || Number(control.chan) !== 2 || typeof control.wk !== 'string')
-            return;
-        try {
-            const wk = base64ToBytes(control.wk);
-            if (wk.length === 32) {
-                v2.peerWriteKey = wk;
-                this.emit.log('info', 'voice v2 peer channel');
-            }
+        const firstVoice = !st.peer.voice.relay;
+        for (const which of ['voice', 'video']) {
+            const node = this.voiceRelayNode(String(control[which] || ''), String(control[`${which}Ip`] || ''), String(control[`${which}Key`] || ''));
+            if (node && !st.avoidDomains.has(node.domain))
+                st.peer[which].relay = node;
         }
-        catch { /* ignore */ }
+        this.emit.log('info', `voice v3 peer relays voice=${!!st.peer.voice.relay} video=${!!st.peer.video.relay}`);
+        // Our own relays moved before the peer could hear about it: tell it now.
+        if (firstVoice && st.peer.voice.relay && !st.relaysAnnounced)
+            void this.sendVoiceChannelReady(st);
     }
-    async startVoiceListen(sessionId, pushWakeup, 
-    /** Base64 AES session key of the call: enables voice channel v2. */
-    channelKey) {
-        const wallet = this.wallet;
-        if (this.paused || !this.cfg || !wallet || !sessionId) {
-            this.emit.log('warn', `voice listen refused early: paused=${this.paused} cfg=${!!this.cfg} wallet=${!!wallet} session=${!!sessionId}`);
-            return false;
-        }
+    voiceNodeByDomain(domain) {
+        const want = domain.trim().toUpperCase();
+        if (!want)
+            return null;
+        return this.nodes.find((n) => String(n.domain || '').toUpperCase() === want) ?? null;
+    }
+    /** A relay from our node table, else from the armored key the peer sent. */
+    voiceRelayNode(domain, ip, keyB64) {
+        const known = this.voiceNodeByDomain(domain);
+        if (known)
+            return known;
+        if (!domain.trim() || !keyB64)
+            return null;
         try {
-            await this.pgpReady;
+            const armor = base64ToUtf8(keyB64);
+            if (!armor.includes('BEGIN PGP PUBLIC KEY'))
+                return null;
+            return { region: '', ip_addr: ip, armoredPublicKey: armor, nftNumber: 0, domain: domain.trim().toUpperCase() };
         }
-        catch (ex) {
-            this.emit.log('warn', `voice listen refused: pgp key did not open (${ex?.message ?? String(ex)})`);
-            return false;
+        catch {
+            return null;
         }
-        this.voiceListenController?.abort('voice_replace');
-        // Drop pending reorder state from the previous listen so a new session
-        // cannot stall behind an old nextSeq / overflowed buffer.
-        this.voiceReorder.clear();
-        const previous = [this.voiceV2, this.voiceV2Retained].find((v) => v?.sessionId === sessionId) ?? null;
-        this.voiceV2 = null;
-        this.voiceV2Retained = null;
-        const locator = locatorFromSessionId(sessionId);
-        const sameKey = (raw) => {
-            if (!previous || !raw)
-                return !!previous && !raw;
+    }
+    /** A random relay outside both mailboxes and outside `skip`. */
+    pickVoiceRelay(avoid, skip = []) {
+        const pool = this.nodes.filter((n) => n.domain && n.armoredPublicKey && !avoid.has(n.domain) && !skip.includes(n.domain));
+        // Prefer a relay that answered a warm-up probe lately (alive now); still random.
+        const warm = pool.filter((n) => isGossipNodeHealthy(n.domain));
+        const from = warm.length ? warm : pool;
+        return from.length ? from[Math.floor(Math.random() * from.length)] : null;
+    }
+    buildVoiceV3State(call) {
+        const avoidDomains = new Set();
+        for (const route of call.avoidRoutes || []) {
+            for (const n of pickRouteNodesByArmoredKey(this.nodes, route))
+                if (n.domain)
+                    avoidDomains.add(n.domain);
+        }
+        for (const d of mailboxDomainsFor(this.nodes, this.cfg?.identity.ownRouteArmoredPublicKey))
+            avoidDomains.add(d);
+        const chan = (c) => {
+            const locator = locatorFromSessionId(c.sid);
             try {
-                const key = base64ToBytes(raw);
-                return key.length === previous.key.length && key.every((b, i) => b === previous.key[i]);
+                const key = base64ToBytes(c.key);
+                const wk = base64ToBytes(c.wk);
+                if (!locator || key.length !== 32 || wk.length !== 32)
+                    return null;
+                return { sid: c.sid, locator, key, wk };
             }
             catch {
-                return false;
+                return null;
             }
         };
-        if (previous && sameKey(channelKey)) {
-            // Reconnect: same write key and peer key; the handshake re-confirms ownV2.
-            this.voiceV2 = { ...previous, ownV2: false };
-        }
-        else if (channelKey && locator) {
-            try {
-                const key = base64ToBytes(channelKey);
-                if (key.length === 32) {
-                    this.voiceV2 = {
-                        sessionId, locator, key, writeKey: randomWriteKey(), ownV2: false,
-                        peerWriteKey: null, peerSessionId: '', callId: '', disabled: false, txOk: 0, rx: 0, chunkMiss: 0,
-                    };
-                }
+        const own = {};
+        const peer = {};
+        for (const which of ['voice', 'video']) {
+            const o = chan(call.own[which]);
+            const p = chan(call.peer[which]);
+            const relay = this.voiceNodeByDomain(call.own[which].relay || '') ?? this.pickVoiceRelay(avoidDomains);
+            if (!o || !p || !relay) {
+                this.emit.log('warn', `voice v3 config refused (${which}) own=${!!o} peer=${!!p} relay=${!!relay}`);
+                return null;
             }
-            catch { /* v1 only */ }
+            own[which] = { ...o, wire: call.own[which], relay, controller: null, ready: false, reopenTimer: null, reopenAttempt: 0 };
+            const peerRelay = this.voiceRelayNode(call.peer[which].relay || '', call.peer[which].relayIp || '', call.peer[which].relayKey || '');
+            peer[which] = { ...p, relay: peerRelay && !avoidDomains.has(peerRelay.domain) ? peerRelay : null };
         }
-        const v2Setup = this.voiceV2
-            ? { v: 2, wk: bytesToBase64(this.voiceV2.writeKey) }
-            : {};
-        const route = this.cfg.identity.ownRouteArmoredPublicKey || '';
-        const routeNodes = pickRouteNodesByArmoredKey(this.nodes, route);
-        const mailboxDomains = new Set(routeNodes.map((n) => n.domain));
-        const pool = this.nodes.filter((n) => !mailboxDomains.has(n.domain));
-        const candidates = pool.length ? pool : this.nodes;
-        const healthy = await pickHealthyGossipNodes(candidates);
-        const entries = healthy.length ? healthy : candidates;
-        if (!route || !routeNodes.length || !entries.length) {
-            this.emit.log('warn', `voice listen refused: route=${!!route} mailbox=${routeNodes.length} entries=${entries.length}`);
+        let uiKey;
+        try {
+            uiKey = base64ToBytes(call.uiKey);
+        }
+        catch {
+            return null;
+        }
+        if (uiKey.length !== 32)
+            return null;
+        return {
+            cfg: call, uiKey, avoidDomains, own, peer,
+            relaysAnnounced: call.role === 'callee',
+            announcing: false, txOk: 0, rx: 0, miss: 0, stopped: false,
+        };
+    }
+    /**
+     * Voice protocol v3: open this side's two paid channels (voice, video). With
+     * `call` a new call starts; without it, `sessionId` must be the own voice
+     * channel of the current or last call (reconnect). Resolves once the voice
+     * channel's relay answers; the video channel opens beside it (pre-warmed).
+     */
+    async startVoiceListen(sessionId, call) {
+        if (this.paused || !this.cfg || !sessionId) {
+            this.emit.log('warn', `voice listen refused early: paused=${this.paused} cfg=${!!this.cfg} session=${!!sessionId}`);
             return false;
         }
-        let offerArmor = '';
-        const offerText = pushWakeup?.offerText?.trim() || '';
-        const recipientPgp = pushWakeup?.recipientPgp?.trim() || '';
-        if (offerText && recipientPgp) {
-            try {
-                const signMessage = await wallet.signMessage(offerText);
-                const envelope = {
-                    timestamp: Date.now(),
-                    text: offerText,
-                    from: wallet.address,
-                    signMessage,
-                };
-                offerArmor = await armorToString(await encrypt({
-                    message: await createMessage({ text: utf8ToBase64(JSON.stringify(envelope)) }),
-                    encryptionKeys: await readKey({ armoredKey: recipientPgp }),
-                    config: { preferredCompressionAlgorithm: enums.compression.zlib },
-                }));
-                if (!offerArmor.includes('-----BEGIN PGP MESSAGE-----') || offerArmor.length > 48000) {
-                    this.emit.log('warn', 'voice offer armor missing or too large; continuing listen for VoIP push');
-                    offerArmor = '';
-                }
-            }
-            catch (ex) {
-                // Do not abort voice_listen: mailbox still needs the SSE attach
-                // so notifyVoiceCallPush can wake a force-quit iOS CallKit UI.
-                this.emit.log('warn', `voice offer encrypt failed; continuing listen for VoIP push: ${ex?.message ?? String(ex)}`);
-                offerArmor = '';
-            }
+        let st = null;
+        const known = [this.voiceV3, this.voiceV3Retained].find((v) => v?.own.voice.sid === sessionId) ?? null;
+        if (known)
+            st = known;
+        else if (call)
+            st = this.buildVoiceV3State(call);
+        if (!st || st.own.voice.sid !== sessionId) {
+            this.emit.log('warn', 'voice listen refused: no v3 call for this session');
+            return false;
         }
-        // Index the encrypted offer on the callee mailbox ourselves. The caller
-        // mailbox forwards the same armor and indexes it, but that remote leg is
-        // best effort and is missing on mailboxes that predate it. A killed iOS app
-        // reads the caller identity from this index (`voice_offer_fetch`), so
-        // without it the incoming call has no name. Same armor, same ids: storing
-        // twice is harmless. It runs beside the listen encrypt below and is awaited
-        // (capped) before the listen POST, because the ring push follows that POST.
-        const offerIndexed = offerArmor && pushWakeup?.callId && pushWakeup.calleeRoute
-            ? this.indexVoiceOfferOnCalleeMailbox({
-                callId: pushWakeup.callId,
-                sessionId,
-                expiresAt: pushWakeup.expiresAt,
-                offerArmor,
-                calleeRoute: pushWakeup.calleeRoute,
-                pushTimestamp: pushWakeup.timestamp,
-            })
-            : Promise.resolve(false);
-        // Both listen variants now; pick after the offer store answers. The
-        // legacy one makes our own node ring the callee, so that node learns the
-        // callee wallet: only when the callee mailbox did not ring it.
-        const [innerBase, innerWake] = await Promise.all([
-            encryptOpaqueVoiceCommand({
-                command: 'voice_listen',
-                sessionId,
-                timestamp: Math.floor(Date.now() / 1000),
-                ...v2Setup,
-            }, route),
-            pushWakeup
-                ? encryptOpaqueVoiceCommand({
-                    command: 'voice_listen',
-                    sessionId,
-                    timestamp: Math.floor(Date.now() / 1000),
-                    ...v2Setup,
-                    callId: pushWakeup.callId,
-                    targetWallet: pushWakeup.calleeEoa,
-                    expiresAt: pushWakeup.expiresAt,
-                    pushTimestamp: pushWakeup.timestamp,
-                    ...(offerArmor ? { offerArmor } : {}),
-                }, route)
-                : Promise.resolve(''),
+        if (this.voiceV3 && this.voiceV3 !== st)
+            this.abortVoiceV3(this.voiceV3);
+        this.voiceV3Retained = null;
+        this.voiceV3 = st;
+        st.stopped = false;
+        this.voiceReorder.clear();
+        const opening = Promise.all([
+            this.openVoiceV3Channel(st, 'voice'),
+            this.openVoiceV3Channel(st, 'video'),
         ]);
-        let inner = innerBase;
-        if (!inner.includes('-----BEGIN PGP MESSAGE-----')) {
-            this.emit.log('warn', 'voice listen armor missing');
+        // Caller: our relays are chosen; tell the callee now, beside the listens. Its
+        // chunks that arrive before our channel exists are posted again (voice-peer-wait).
+        if (st.cfg.role === 'caller' && !st.relaysAnnounced)
+            void this.sendVoiceChannelReady(st);
+        const [voiceOk, videoOk] = await opening;
+        this.emit.log(voiceOk ? 'info' : 'warn', `voice v3 listen role=${st.cfg.role} voice=${voiceOk} video=${videoOk}`);
+        if (voiceOk && !st.relaysAnnounced)
+            void this.sendVoiceChannelReady(st);
+        return voiceOk && this.voiceV3 === st;
+    }
+    /**
+     * One own channel: `voice_listen` v3 to its relay through an entry that is
+     * neither the relay nor a mailbox. A relay that refuses or never answers is
+     * replaced by another random relay (twice at most); the peer is told.
+     */
+    async openVoiceV3Channel(st, which, attempt = 0) {
+        const own = st.own[which];
+        own.controller?.abort('voice_replace');
+        own.ready = false;
+        if (own.reopenTimer) {
+            clearTimeout(own.reopenTimer);
+            own.reopenTimer = null;
+        }
+        const relay = own.relay;
+        let inner;
+        try {
+            inner = await encryptOpaqueVoiceCommand(await buildVoiceListenV3(own.wire, relay.domain), relay.armoredPublicKey);
+        }
+        catch (ex) {
+            this.emit.log('warn', `voice v3 listen build failed: ${ex?.message ?? String(ex)}`);
             return false;
         }
+        if (st.stopped || st !== this.voiceV3)
+            return false;
+        const exclude = new Set([relay.domain, ...st.avoidDomains]);
+        const pool = this.nodes.filter((n) => !exclude.has(n.domain));
+        const healthy = await pickHealthyGossipNodes(pool);
+        const entry = getRandomNode(healthy.length ? healthy : pool);
+        if (!entry)
+            return false;
         const controller = new AbortController();
-        this.voiceListenController = controller;
-        const node = getRandomNode(entries);
-        this.emit.log('info', `voice listen entry=${node.domain} mailbox=${routeNodes[0]?.domain ?? ''}`);
-        let handshakeSettled = false;
-        const handshake = new Promise((resolve) => {
-            const timer = setTimeout(() => {
-                if (handshakeSettled)
+        own.controller = controller;
+        const outcome = await this.runVoiceV3Sse(st, which, entry, inner, controller);
+        if (outcome === 'ready') {
+            own.ready = true;
+            own.reopenAttempt = 0;
+            return true;
+        }
+        if (st.stopped || st !== this.voiceV3 || controller.signal.aborted)
+            return false;
+        if (outcome === 'session_conflict' && attempt === 0) {
+            // The relay still holds our last SSE: close it, then reopen the same session.
+            await this.unlistenVoiceV3Channel(st, which);
+            return this.openVoiceV3Channel(st, which, attempt + 1);
+        }
+        if (attempt >= 2)
+            return false;
+        const next = this.pickVoiceRelay(st.avoidDomains, [relay.domain]);
+        if (!next)
+            return false;
+        this.emit.log('warn', `voice v3 ${which} relay failed (${outcome}); another relay`);
+        own.relay = next;
+        const ok = await this.openVoiceV3Channel(st, which, attempt + 1);
+        if (ok && st.relaysAnnounced) {
+            st.relaysAnnounced = false;
+            void this.sendVoiceChannelReady(st);
+        }
+        return ok;
+    }
+    /**
+     * Runs one SSE until it closes. Resolves at the relay's first answer:
+     * `ready`, a refusal error from the relay, or `failed`.
+     */
+    runVoiceV3Sse(st, which, entry, inner, controller) {
+        const sessionId = st.own[which].sid;
+        return new Promise((resolve) => {
+            let settled = false;
+            const settle = (v) => {
+                if (settled)
                     return;
-                handshakeSettled = true;
-                this.emit.log('warn', 'voice relay handshake timed out');
-                resolve(false);
-            }, 12000);
-            controller.signal.addEventListener('abort', () => {
-                if (handshakeSettled)
-                    return;
-                handshakeSettled = true;
+                settled = true;
                 clearTimeout(timer);
-                resolve(false);
-            }, { once: true });
-            const markReady = () => {
-                if (handshakeSettled)
-                    return;
-                handshakeSettled = true;
-                clearTimeout(timer);
-                resolve(true);
+                resolve(v);
             };
+            const timer = setTimeout(() => settle('timeout'), 12000);
+            controller.signal.addEventListener('abort', () => settle('aborted'), { once: true });
             void (async () => {
+                let opened = false;
                 try {
-                    // The listen POST is what rings the callee. Let the offer index land
-                    // first, but never hold the call for more than 3 s.
-                    const rang = await Promise.race([offerIndexed, new Promise((done) => setTimeout(() => done(false), 3000))]);
-                    if (pushWakeup && !rang && innerWake.includes('-----BEGIN PGP MESSAGE-----'))
-                        inner = innerWake;
-                    if (pushWakeup)
-                        this.emit.log('info', `voice callee wake by ${rang ? 'callee-mailbox' : 'legacy-listen'}`);
-                    const armored = this.cfg?.runtime.outerWrap === false ? inner : await wrapArmorToEntryRoute(inner, node.armoredPublicKey);
-                    const res = await fetch(postUrl(node.domain), {
+                    const armored = this.cfg?.runtime.outerWrap === false ? inner : await wrapArmorToEntryRoute(inner, entry.armoredPublicKey);
+                    const res = await fetch(postUrl(entry.domain), {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream', Connection: 'keep-alive' },
                         body: JSON.stringify(buildPostBody(armored)),
@@ -1502,9 +1561,8 @@ export class GossipCore {
                         if (crlf < 0 && lf < 0)
                             return null;
                         const cut = crlf >= 0 && (lf < 0 || crlf <= lf) ? crlf : lf;
-                        const width = cut === crlf ? 4 : 2;
                         const block = buffer.slice(0, cut);
-                        buffer = buffer.slice(cut + width);
+                        buffer = buffer.slice(cut + (cut === crlf ? 4 : 2));
                         return block;
                     };
                     while (!controller.signal.aborted) {
@@ -1514,85 +1572,191 @@ export class GossipCore {
                         buffer += decoder.decode(value, { stream: true });
                         let block;
                         while ((block = takeBlock()) !== null) {
-                            const payload = block.split(/\r?\n/).filter(line => line.startsWith('data:')).map(line => line.slice(5).trimStart()).join('\n').trim();
+                            const payload = block.split(/\r?\n/).filter((l) => l.startsWith('data:')).map((l) => l.slice(5).trimStart()).join('\n').trim();
                             if (!payload)
                                 continue;
                             try {
                                 const frame = JSON.parse(payload);
-                                if (frame.type === 'voice_ready' && frame.ok === true && String(frame.sessionId || '') === sessionId) {
-                                    const chanV2 = Number(frame.v) === 2 && this.voiceV2?.sessionId === sessionId;
-                                    if (chanV2 && this.voiceV2)
-                                        this.voiceV2.ownV2 = true;
-                                    this.emit.log('info', `voice ready wallet=${String(frame.nodeWallet ?? '')} chan=${chanV2 ? 2 : 1}`);
-                                    markReady();
-                                }
-                                else if (frame.type === 'voice_ready') {
-                                    this.emit.log('warn', 'voice ready ignored');
-                                }
                                 if (frame.t === 'c' && typeof frame.d === 'string') {
-                                    void this.handleVoiceChunk(frame.d);
-                                    continue;
+                                    void this.handleVoiceV3Chunk(st, which, frame.d);
                                 }
-                                if (frame.type === 'voice_frame_v1') {
-                                    const normalized = typeof frame.frameTimestamp === 'number' ? { ...frame, timestamp: frame.frameTimestamp } : frame;
-                                    const v2 = this.voiceV2;
-                                    if (v2 && typeof frame.payload === 'string') {
-                                        if (typeof frame.sessionId === 'string')
-                                            v2.peerSessionId = frame.sessionId;
-                                        if (typeof frame.callId === 'string')
-                                            v2.callId = frame.callId;
-                                        if (!v2.peerWriteKey) {
-                                            void aesDecryptV1(v2.key, frame.payload).then((p) => this.notePeerVoiceCaps(p)).catch(() => { });
-                                        }
+                                else if (frame.type === 'voice_ready' && frame.ok === true && String(frame.sessionId || '') === sessionId) {
+                                    if (Number(frame.listen) !== 3) {
+                                        this.emit.log('warn', `voice v3 ${which} relay is not v3`);
+                                        settle('not_v3');
+                                        controller.abort('voice_not_v3');
+                                        break;
                                     }
-                                    this.voiceReorder.push(normalized);
+                                    opened = true;
+                                    this.emit.log('info', `voice v3 ${which} ready`);
+                                    settle('ready');
                                 }
                             }
                             catch { /* malformed frame */ }
                         }
                     }
-                    if (!handshakeSettled) {
-                        handshakeSettled = true;
-                        clearTimeout(timer);
-                        resolve(false);
+                    // A refusal is a plain JSON body, not an SSE event.
+                    if (!opened) {
+                        const rest = buffer.trim();
+                        try {
+                            const body = JSON.parse(rest.slice(rest.indexOf('{')));
+                            if (body.ok === false) {
+                                this.emit.log('warn', `voice v3 ${which} refused: ${body.error ?? ''}`);
+                                settle(String(body.error || 'refused'));
+                            }
+                        }
+                        catch { /* not JSON */ }
                     }
-                    await reader.cancel();
+                    settle('closed');
+                    await reader.cancel().catch(() => { });
                 }
                 catch (ex) {
-                    if (!handshakeSettled) {
-                        handshakeSettled = true;
-                        clearTimeout(timer);
-                        resolve(false);
-                    }
                     if (!controller.signal.aborted)
-                        this.emit.log('warn', `voice SSE failed: ${ex?.message ?? String(ex)}`);
+                        this.emit.log('warn', `voice v3 ${which} SSE failed: ${ex?.message ?? String(ex)}`);
+                    settle('failed');
+                }
+                if (opened && !controller.signal.aborted && st === this.voiceV3 && !st.stopped) {
+                    st.own[which].ready = false;
+                    this.emit.log('warn', `voice v3 ${which} closed`);
+                    // The page reconnects the voice channel; the video channel reopens here.
+                    if (which === 'video')
+                        this.scheduleVideoReopen(st);
                 }
             })();
         });
-        const opened = await handshake;
-        if (!opened && this.voiceListenController === controller) {
-            controller.abort('voice_stop');
-            this.voiceListenController = null;
+    }
+    scheduleVideoReopen(st) {
+        const own = st.own.video;
+        if (own.reopenTimer)
+            return;
+        const delay = Math.min(8000, 1000 * 2 ** own.reopenAttempt);
+        own.reopenAttempt += 1;
+        own.reopenTimer = setTimeout(() => {
+            own.reopenTimer = null;
+            if (st !== this.voiceV3 || st.stopped || own.ready)
+                return;
+            void this.openVoiceV3Channel(st, 'video').then((ok) => {
+                if (!ok && st === this.voiceV3 && !st.stopped)
+                    this.scheduleVideoReopen(st);
+            });
+        }, delay);
+    }
+    /**
+     * `voice_channel_ready_v3` on the peer's voice channel: the relays of our two
+     * channels. The caller sends it once both are open; either side sends it
+     * again after moving a channel to another relay. Retried every 300 ms for
+     * 10 s while the peer's channel is still opening.
+     */
+    async sendVoiceChannelReady(st) {
+        if (st.announcing)
+            return;
+        st.announcing = true;
+        // The caller announces while its listens open; a relay that moves meanwhile
+        // is announced again when this one lands.
+        const sentVoice = st.own.voice.relay.domain;
+        const sentVideo = st.own.video.relay.domain;
+        let stale = false;
+        try {
+            const body = new TextEncoder().encode(JSON.stringify({
+                type: 'voice_channel_ready_v3',
+                callId: st.cfg.callId,
+                voice: st.own.voice.relay.domain,
+                voiceIp: st.own.voice.relay.ip_addr || '',
+                voiceKey: utf8ToBase64(st.own.voice.relay.armoredPublicKey),
+                video: st.own.video.relay.domain,
+                videoIp: st.own.video.relay.ip_addr || '',
+                videoKey: utf8ToBase64(st.own.video.relay.armoredPublicKey),
+            }));
+            const deadline = Date.now() + 10000;
+            while (Date.now() < deadline && st === this.voiceV3 && !st.stopped) {
+                const target = st.peer.voice;
+                if (target.relay) {
+                    const literal = await sealVoiceChunk({
+                        sessionKey: target.key,
+                        locator: target.locator,
+                        writeKey: target.wk,
+                        kind: VOICE_KIND_CONTROL,
+                        seq: 0,
+                        captureMs: Date.now(),
+                        data: body,
+                    });
+                    const inner = await encryptVoiceChunkLiteral(literal, target.relay.armoredPublicKey);
+                    const result = await this.postVoiceChunk(inner, new Set([target.relay.domain, ...st.avoidDomains]));
+                    if (result.ok) {
+                        stale = st.own.voice.relay.domain !== sentVoice || st.own.video.relay.domain !== sentVideo;
+                        st.relaysAnnounced = !stale;
+                        this.emit.log('info', 'voice v3 channel ready sent');
+                        return;
+                    }
+                    if (result.error !== 'target_voice_session_not_found' && result.error !== 'network' && result.error !== 'no_entry') {
+                        this.emit.log('warn', `voice v3 channel ready refused ${result.error ?? ''}`);
+                        return;
+                    }
+                }
+                await new Promise((done) => setTimeout(done, 300));
+            }
+            this.emit.log('warn', 'voice v3 channel ready not delivered');
         }
-        return opened;
+        catch (ex) {
+            this.emit.log('warn', `voice v3 channel ready error: ${ex?.message ?? String(ex)}`);
+        }
+        finally {
+            st.announcing = false;
+            if (stale && st === this.voiceV3 && !st.stopped)
+                void this.sendVoiceChannelReady(st);
+        }
+    }
+    abortVoiceV3(st) {
+        st.stopped = true;
+        for (const which of ['voice', 'video']) {
+            const own = st.own[which];
+            own.controller?.abort('voice_stop');
+            own.controller = null;
+            own.ready = false;
+            if (own.reopenTimer)
+                clearTimeout(own.reopenTimer);
+            own.reopenTimer = null;
+        }
+    }
+    /** `voice_unlisten` for one own channel, to its relay. */
+    async unlistenVoiceV3Channel(st, which) {
+        const own = st.own[which];
+        try {
+            const inner = await encryptOpaqueVoiceCommand({
+                command: 'voice_unlisten',
+                sessionId: own.sid,
+                timestamp: Math.floor(Date.now() / 1000),
+            }, own.relay.armoredPublicKey);
+            const result = await this.postVoiceCommandForJson(inner, new Set([own.relay.domain, ...st.avoidDomains]));
+            return result !== null;
+        }
+        catch {
+            return false;
+        }
+    }
+    /** Close the call's SSEs but keep its channels, so a later listen reopens them. */
+    parkVoiceV3() {
+        const st = this.voiceV3;
+        if (!st)
+            return;
+        this.abortVoiceV3(st);
+        this.voiceV3 = null;
+        this.voiceV3Retained = st;
     }
     async stopVoiceListen(sessionId) {
-        const route = this.cfg?.identity.ownRouteArmoredPublicKey || '';
-        const wallet = this.wallet;
-        this.voiceListenController?.abort('voice_stop');
-        this.voiceListenController = null;
-        if (this.voiceV2?.sessionId === sessionId) {
-            this.voiceV2Retained = this.voiceV2;
-            this.voiceV2 = null;
-        }
-        if (!route || !wallet)
+        const st = [this.voiceV3, this.voiceV3Retained].find((v) => v?.own.voice.sid === sessionId) ?? null;
+        if (!st)
             return true;
-        const innerArmor = await encryptOpaqueVoiceCommand({
-            command: 'voice_unlisten',
-            sessionId,
-            timestamp: Math.floor(Date.now() / 1000),
-        }, route);
-        return this.postToEntries(innerArmor, new Set(pickRouteNodesByArmoredKey(this.nodes, route).map((n) => n.domain)));
+        this.abortVoiceV3(st);
+        if (this.voiceV3 === st) {
+            this.voiceV3 = null;
+            this.voiceV3Retained = st;
+        }
+        const done = await Promise.all([
+            this.unlistenVoiceV3Channel(st, 'voice'),
+            this.unlistenVoiceV3Channel(st, 'video'),
+        ]);
+        return done.every(Boolean);
     }
 }
 /** JSON control frame inside a decrypted voice payload, or null for media. */

@@ -16,6 +16,8 @@
  *  - Each POST wraps that inner armor to **that entry's** route public key (peel at
  *    the entry). Clients never set `X-CoNET-Hop-Sigs`.
  */
+import type { VoiceOfferArgs } from './protocol.js';
+import type { VoiceCallV3Config } from './voice-v3.js';
 /** A CoNET Guardian / entry / mailbox node descriptor. Mirrors the app `nodeInfo`. */
 export interface NodeInfo {
     region: string;
@@ -112,6 +114,7 @@ export interface InboundEnvelope {
 }
 export interface DeliveryReceiptEvent {
     sendId: string;
+    /** Milliseconds since epoch. */
     deliveredAt: number;
     /** Contact EOA that acknowledged. */
     from?: string;
@@ -394,6 +397,13 @@ export interface BeamioChatHistory {
 }
 export interface BeamioChatClient {
     init(): Promise<void>;
+    /**
+     * Protocol v1 `hello`: the daemon's protocol version, SDK version and
+     * capabilities. Null when the daemon predates v1 (no answer) or is not running.
+     * Decide by capability (`negotiateChatDaemon` / `hasCapability`), never by
+     * whether a method exists.
+     */
+    hello(): Promise<import('./protocol.js').ChatDaemonHello | null>;
     /** Encrypt & send a business payload to a contact via entry A ≠ mailbox B. */
     sendMessage(to: ChatRoute, payload: string, opts?: SendMessageOptions): Promise<{
         sendId: string;
@@ -411,17 +421,16 @@ export interface BeamioChatClient {
     postMailboxCommand(routerArmoredPublicKey: string, command: Record<string, unknown>): Promise<boolean>;
     postOwnMailboxCommand(command: Record<string, unknown>): Promise<boolean>;
     sendVoiceFrame(routerArmoredPublicKey: string, frame: Record<string, unknown>): Promise<boolean>;
-    startVoiceListen(sessionId: string, pushWakeup?: {
-        callId: string;
-        calleeEoa: string;
-        expiresAt: number;
-        timestamp: number;
-        offerText?: string;
-        recipientPgp?: string;
-        calleeRoute?: string;
-    }, 
-    /** Base64 AES session key of the call: enables voice channel v2. */
-    channelKey?: string): Promise<boolean>;
+    /**
+     * Voice protocol v3: open this side's paid voice + video channels. With
+     * `call` a new call starts; without it the same call's channels reopen.
+     */
+    startVoiceListen(sessionId: string, call?: VoiceCallV3Config): Promise<boolean>;
+    /** Caller's offer to the callee mailbox (`voice_offer_store`, `push: 1`). Browser worker only. */
+    sendVoiceOffer?(offer: VoiceOfferArgs): Promise<{
+        ok: boolean;
+        pushed: boolean;
+    }>;
     stopVoiceListen(sessionId: string): Promise<boolean>;
     on<K extends ChatEventName>(event: K, cb: ChatEventListener<K>): Unsubscribe;
     /** Probe mailbox listen-pool presence for the given contacts. */

@@ -7922,7 +7922,7 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 														record.status === 'ringing'
 															? record.direction === 'outgoing' ? 'Calling…' : 'Incoming call'
 															: record.status === 'missed'
-																? 'No answer'
+																? record.direction === 'incoming' ? 'Missed call' : 'No answer'
 																: record.status === 'declined'
 																	? 'Recipient declined'
 																	: record.status === 'busy'

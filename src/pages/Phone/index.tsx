@@ -13,7 +13,7 @@ const formatDuration = (ms?: number) => {
 }
 
 const statusLabel = (record: PhoneCallRecord) => {
-	if (record.status === 'missed') return 'Missed'
+	if (record.status === 'missed') return record.direction === 'incoming' ? 'Missed call' : 'Missed'
 	if (record.status === 'declined') return 'Declined'
 	if (record.status === 'cancelled') return 'Cancelled'
 	if (record.status === 'failed') return 'Failed'

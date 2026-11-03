@@ -752,6 +752,7 @@ export function dispatchNativeSystemCallAction(
 		| 'cancelPreparedSystemCall'
 		| 'startSystemCall'
 		| 'reportIncomingSystemCall'
+		| 'queryIncomingCallOutcome'
 		| 'cacheCallerAvatars'
 		| 'endSystemCall',
 	payload: Record<string, unknown>,

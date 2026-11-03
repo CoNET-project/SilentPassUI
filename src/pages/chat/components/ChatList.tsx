@@ -18,7 +18,7 @@ import {storeSystemData} from '@/services/beamio'
 import { tu } from '@/locale/beamioLocale'
 import { chatShareLinkListPreview } from '@/utils/chatShareLinkPreview'
 import { chatGenericLinkListPreview } from '@/utils/chatGenericLinkPreview'
-import { isVoiceCallOfferActive, isVoiceCallTerminal, parseVoiceCallSignal } from '@/utils/voiceCallSession'
+import { findPhoneCallByIds, isVoiceCallOfferActive, isVoiceCallTerminal, parseVoiceCallSignal } from '@/utils/voiceCallSession'
 import { isCashTreesNativeWebView } from '@/utils/cashTreesNativeNfc'
 import { DeliveryHealthBanner } from '@/components/DeliveryHealthBanner'
 
@@ -595,7 +595,13 @@ export default function ChatList({
                       ? 'Call timed out'
                       : voiceSignal.type === 'voice_call_ringing_v1'
                         ? 'Voice call'
-                        : 'Voice call ended'
+                        // An incoming call that never rang here shows as missed (see askShellWhichIncomingCallsRang).
+                        : (() => {
+                            const row = findPhoneCallByIds(profiles?.[0]?.phoneCalls, voiceSignal)
+                            return row?.direction === 'incoming' && row.status === 'missed'
+                          })()
+                          ? 'Missed call'
+                          : 'Voice call ended'
               : null
             const sharePreview = !voicePreview && rawLast ? chatShareLinkListPreview(rawLast) : null
             const genericPreview =

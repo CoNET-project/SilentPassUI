@@ -744,6 +744,8 @@ type PhoneCallRecord = {
 	answeredAt?: number
 	endedAt?: number
 	durationMs?: number
+	/** Local only. The native shell said this incoming call never rang here ("Missed call"). */
+	neverRang?: boolean
 }
 
 type ChatMessage = {

@@ -117,7 +117,7 @@ import { ingestAaMultisigFromChat } from '@/utils/aaMultisigIngest'
 import { tu } from '@/locale/beamioLocale'
 import { mapServerError } from '@/locale/mapServerError'
 import { installPwaLifecycleRecovery } from '@/utils/pwaLifecycleRecovery'
-import { applyNativeIncomingVoiceOfferFromLine, browserVoiceCallBusyFor, closeSettledIncomingCalls, incomingSettledStatusForAction, noteIncomingCallSettled, reportNativeIncomingSystemCall, claimIncomingVoiceCallReport, isPhoneCallTerminalStatus, noteVoiceCallsEnded, voiceCallHandlesEndedInBatch, claimedVoiceCallerAddress, claimedVoiceCallerTag, dismissNativeIncomingVoiceCall, findPhoneCallByIds, forgetIncomingVoiceOffer, formatLookedUpBeamioTag, isVoiceCallOfferActive, isVoiceCallOfferRinging, lookupIncomingVoiceOffer, markVoiceCallTerminal, mergePhoneCallRecord, nativeIncomingSystemCallPayload, noteNativeCallAnswered, parseVoiceCallSignal, phoneCallStatusForPeerHangup, recoverVoiceCallOfferSigner, rememberIncomingVoiceOffer, replacePhoneCallInRows, VOICE_CALL_IDENTITY_WARNING, voiceCallClaimMismatchesKey, noteVoicePeerRinging } from '@/utils/voiceCallSession'
+import { applyNativeIncomingVoiceOfferFromLine, askShellWhichIncomingCallsRang, browserVoiceCallBusyFor, closeSettledIncomingCalls, markIncomingCallNeverRang, missedIncomingCallRow, incomingSettledStatusForAction, noteIncomingCallSettled, reportNativeIncomingSystemCall, claimIncomingVoiceCallReport, isPhoneCallTerminalStatus, noteVoiceCallsEnded, voiceCallHandlesEndedInBatch, claimedVoiceCallerAddress, claimedVoiceCallerTag, dismissNativeIncomingVoiceCall, findPhoneCallByIds, forgetIncomingVoiceOffer, formatLookedUpBeamioTag, isVoiceCallOfferActive, isVoiceCallOfferRinging, lookupIncomingVoiceOffer, markVoiceCallTerminal, mergePhoneCallRecord, nativeIncomingSystemCallPayload, noteNativeCallAnswered, noteVoicePeerRinging, parseVoiceCallSignal, phoneCallStatusForPeerHangup, recoverVoiceCallOfferSigner, rememberIncomingVoiceOffer, replacePhoneCallInRows, VOICE_CALL_IDENTITY_WARNING, voiceCallClaimMismatchesKey } from '@/utils/voiceCallSession'
 
 global.Buffer = require("buffer").Buffer
 
@@ -1381,10 +1381,28 @@ function AppShell() {
 			setProfilesForVoiceRef.current(next)
 			if (CoNET_Data) CoNET_Data.profiles = next
 			void storeSystemData()
+			askShellWhichIncomingCallsRang(next[0].phoneCalls)
 		}
 
 		// Close still-ringing incoming rows the shell already ended (see noteIncomingCallSettled).
 		const closeSettledIncomingRowsNow = () => commitCallRows(closeSettledIncomingCalls)
+
+		// The shell answers whether a cancelled incoming call rang here; never rang = missed.
+		const onIncomingCallOutcome = (event: Event) => {
+			const detail = (event as CustomEvent<{
+				action?: string
+				callId?: string
+				sessionId?: string
+				rang?: boolean
+			}>).detail
+			if (detail?.action !== 'incomingCallOutcome' || detail.rang !== false) return
+			const ids = { callId: String(detail.callId || ''), sessionId: String(detail.sessionId || '') }
+			commitCallRows(rows => {
+				const next = markIncomingCallNeverRang(rows, ids)
+				if (next) publishNativePwaLog('info', '[voice] incoming call never rang here; recorded as missed')
+				return next
+			})
+		}
 
 		const onNativeHangupCancelsLateAccept = (event: Event) => {
 			const detail = (event as CustomEvent<{
@@ -1543,7 +1561,9 @@ function AppShell() {
 		window.addEventListener('cashtreesios', onNativeAnswer)
 		window.addEventListener('cashtreesandroid', onNativeHangupCancelsLateAccept)
 		window.addEventListener('cashtreesios', onNativeHangupCancelsLateAccept)
+		window.addEventListener('cashtreesandroid', onIncomingCallOutcome)
 		return () => {
+			window.removeEventListener('cashtreesandroid', onIncomingCallOutcome)
 			cancelled = true
 			clearLateAccept()
 			window.removeEventListener('cashtreesandroid', onNativeConnected)
@@ -2139,6 +2159,15 @@ function AppShell() {
 							}
 						}
 					}
+				} else if (signal?.type === 'voice_call_offer_v1' && (callerEoa || claimedVoiceCallerAddress(signal))) {
+					// Past its ring window (the call push came too late or never; the
+					// shell did not ring it): record a missed call, never a ring.
+					const callRows = Array.isArray(profile.phoneCalls) ? profile.phoneCalls : []
+					const missed = missedIncomingCallRow(callRows, signal, callerEoa || claimedVoiceCallerAddress(signal), msg.timestamp)
+					if (missed) {
+						publishNativePwaLog('info', '[voice] offer past its ring window; recorded as missed')
+						profile.phoneCalls = [...callRows, missed]
+					}
 				} else if (signal?.type === 'voice_call_ringing_v1' && (signal.callId || signal.sessionId)) {
 					// Wake receipt from the callee's device: the dialer shows "Ringing…".
 					// Never a chat bubble. The secret callId ties it to our dial.
@@ -2428,6 +2457,8 @@ function AppShell() {
 		void storeSystemDataAndWait().then((stored) => {
 			if (stored) confirmInboundLines(lines)
 		})
+		// Calls the caller ended in this batch: did they ring here? (missed vs cancelled)
+		askShellWhichIncomingCallsRang(profile.phoneCalls)
 
 		// ✅ 聆听进入的新 message 后自动回复
 		if (onAutoReply && chatsToAutoReply.length > 0) {

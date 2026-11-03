@@ -861,7 +861,11 @@ export const phoneCallWasAnswered = (record: PhoneCallRecord | null | undefined)
 export const phoneCallStatusForPeerHangup = (
 	existing: PhoneCallRecord | null | undefined,
 ): PhoneCallRecord['status'] =>
-	phoneCallWasAnswered(existing) || existing?.status === 'ended' ? 'ended' : 'cancelled'
+	phoneCallWasAnswered(existing) || existing?.status === 'ended'
+		? 'ended'
+		// The shell said it never rang here: a redelivered caller's end keeps "Missed call".
+		// Other unanswered rows become "cancelled", and the page then asks the shell.
+		: existing?.status === 'missed' && existing.direction === 'incoming' && existing.neverRang ? 'missed' : 'cancelled'
 
 /**
  * Keep the further-along status when two snapshots of the same call arrive out
@@ -1056,6 +1060,89 @@ export const closeSettledIncomingCalls = (
 		return closed
 	})
 	return changed ? next : null
+}
+
+/**
+ * Row for an incoming offer that arrives after its ring window (the call push
+ * came too late, or never): the call was missed. Null when it still rings, when
+ * a terminal mark or a row already records it. A caller's end later turns it
+ * "cancelled", and the shell is then asked whether it rang (it may have rung
+ * while the page was not running).
+ */
+export const missedIncomingCallRow = (
+	rows: readonly PhoneCallRecord[] | null | undefined,
+	signal: VoiceCallSignal,
+	peerAddress: string,
+	fallbackCreatedAt: number,
+): PhoneCallRecord | null => {
+	if (signal.type !== 'voice_call_offer_v1') return null
+	const callId = nonBlank(signal.callId)
+	const sessionId = nonBlank(signal.sessionId)
+	if (!callId || !sessionId) return null
+	if (isVoiceCallOfferRinging(signal) || isVoiceCallTerminal(signal)) return null
+	if (findPhoneCallByIds(rows, { callId, sessionId })) return null
+	const createdAt = Number(signal.createdAt) || fallbackCreatedAt
+	const createdMs = phoneCallStampMs(createdAt)
+	return {
+		callId,
+		sessionId,
+		peerAddress,
+		direction: 'incoming',
+		status: 'missed',
+		createdAt,
+		answeredAt: undefined,
+		endedAt: createdMs ? createdMs + INCOMING_CALL_RING_TIMEOUT_MS : undefined,
+	}
+}
+
+/**
+ * Missed vs cancelled on the callee's side. A call the caller ended is
+ * "Call cancelled" when it rang on this phone, "Missed call" when it never did
+ * (app force stopped, deep sleep, the call push too late). Only the native
+ * shell knows whether it rang, so the page asks it about each incoming
+ * "cancelled" row once per page life (shells without the query, iOS and the
+ * browser, keep "cancelled"). The caller's side is never changed.
+ */
+const INCOMING_RANG_ASK_MAX_AGE_MS = 3 * 24 * 60 * 60_000
+const askedIncomingRang = new Set<string>()
+
+export const takeIncomingCallsToAskRang = (
+	rows: readonly PhoneCallRecord[] | null | undefined,
+	now = Date.now(),
+): Array<{ callId: string; sessionId: string; createdAt: number }> => {
+	const out: Array<{ callId: string; sessionId: string; createdAt: number }> = []
+	for (const row of rows || []) {
+		if (row.direction !== 'incoming' || row.status !== 'cancelled' || phoneCallWasAnswered(row)) continue
+		const callId = nonBlank(row.callId)
+		const sessionId = nonBlank(row.sessionId)
+		const key = sessionId || callId
+		if (!key || askedIncomingRang.has(key)) continue
+		const createdAt = phoneCallStampMs(row.createdAt)
+		if (!createdAt || now - createdAt > INCOMING_RANG_ASK_MAX_AGE_MS) continue
+		askedIncomingRang.add(key)
+		out.push({ callId, sessionId, createdAt })
+	}
+	return out
+}
+
+/** Ask the shell whether these calls rang; answers come back as incomingCallOutcome events. */
+export const askShellWhichIncomingCallsRang = (rows: readonly PhoneCallRecord[] | null | undefined): number => {
+	const calls = takeIncomingCallsToAskRang(rows)
+	if (!calls.length) return 0
+	for (let i = 0; i < calls.length; i += 50) {
+		dispatchNativeSystemCallAction('queryIncomingCallOutcome', { calls: calls.slice(i, i + 50) })
+	}
+	return calls.length
+}
+
+/** The shell says this call never rang: its "cancelled" row becomes "missed". Null when nothing changed. */
+export const markIncomingCallNeverRang = (
+	rows: readonly PhoneCallRecord[] | null | undefined,
+	ids: { callId?: string; sessionId?: string },
+): PhoneCallRecord[] | null => {
+	const row = findPhoneCallByIds(rows, ids)
+	if (!row || row.direction !== 'incoming' || row.status !== 'cancelled' || phoneCallWasAnswered(row)) return null
+	return replacePhoneCallInRows(rows || [], { ...row, status: 'missed', neverRang: true })
 }
 
 export const makeVoiceCallSignal = (

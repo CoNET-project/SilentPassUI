@@ -3107,6 +3107,8 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 				// A dial (not an in-page answer): the shell opens no channel now and
 				// waits for the callee's accept on our mailbox.
 				dialerProto: 3,
+				// The ring window starts here; the shell times the call out natively.
+				offerCreatedAt: Number(signal.createdAt) || Date.now(),
 			})
 			// Native shell owns dialer voice_listen + VoIP wake (offerArmor never
 			// started on the worker — do not stopWorkerVoiceListen / no conflict).
@@ -4328,7 +4330,11 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 		const offer = voiceCallOfferRef.current
 		if (!offer?.sessionId) return
 		const started = Number(offer.timestamp || Date.now())
-		const delay = Math.max(0, started + INCOMING_CALL_RING_TIMEOUT_MS + 15_000 - Date.now())
+		// The caller owns the ring window: time out exactly at its end. Inside the
+		// iOS / Android shell the shell times out first (it sends the timeout and
+		// tells us `callTimedOut`); this page timer is only the fallback there.
+		const shellSlackMs = isCashTreesNativeWebView() ? 10_000 : 0
+		const delay = Math.max(0, started + INCOMING_CALL_RING_TIMEOUT_MS + shellSlackMs - Date.now())
 		const timer = window.setTimeout(() => {
 			if (voiceCallOfferRef.current?.sessionId !== offer.sessionId) return
 			if (remoteRejectHandledRef.current === offer.sessionId) return

@@ -1173,10 +1173,12 @@ function AppShell() {
 				callId?: string
 				sessionId?: string
 			}>).detail
+			// callTimedOutNative: the iOS shell already told the caller; record only.
 			// callUnreachable: our dial got no ringing receipt; the shell sent the cancel; record only.
 			if (
 				detail?.action !== 'callRejected'
 				&& detail?.action !== 'callTimedOut'
+				&& detail?.action !== 'callTimedOutNative'
 				&& detail?.action !== 'callUnreachable'
 			) return
 			const terminalStatus = detail.action === 'callRejected'
@@ -1193,6 +1195,7 @@ function AppShell() {
 			// Snapshot before chat.tsx / other handlers can clear the registry.
 			const offerAtEvent = lookupIncomingVoiceOffer(callId, sessionId)
 
+			let dialerSide = false
 			// Prefer CoNET_Data — React profiles / ref can lag Chat's upsert in the same tick.
 			const dataProfiles = CoNET_Data?.profiles
 			const currentProfiles = Array.isArray(dataProfiles) && dataProfiles.length
@@ -1215,6 +1218,7 @@ function AppShell() {
 				const direction = preferOutgoing
 					? 'outgoing'
 					: (existing?.direction || (offerAtEvent ? 'incoming' : 'outgoing'))
+				dialerSide = direction === 'outgoing'
 				const merged = mergePhoneCallRecord(existing, {
 					callId: callId || existing?.callId || offerAtEvent?.callId || sessionId,
 					sessionId: sessionId || existing?.sessionId || offerAtEvent?.sessionId || callId,
@@ -1239,8 +1243,10 @@ function AppShell() {
 				}
 			}
 
-			// Our own dial with no ringing receipt: the shell's dialer already sent the cancel.
-			if (detail.action === 'callUnreachable') {
+			// Our own dial: the shell's dialer already handled it (the callee's reject
+			// or timeout came in, or the shell sent our timeout). Telling the "peer"
+			// again gave the callee a second timeout.
+			if (detail.action === 'callTimedOutNative' || detail.action === 'callUnreachable' || dialerSide) {
 				inFlightKey = null
 				return
 			}

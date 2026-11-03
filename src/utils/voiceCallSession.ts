@@ -7,8 +7,16 @@ import {
 import { dispatchNativeSystemCallAction } from './cashTreesNativeNfc'
 import { publishNativePwaLog } from './cashTreesNativePwaLog'
 
-/** Unanswered incoming-call window. The Android shell closes at this mark and tells the caller. */
-export const INCOMING_CALL_RING_TIMEOUT_MS = 180_000
+/**
+ * Ring window for every call, all platforms (2026-11-02): 60 s from the offer's
+ * `createdAt`. iOS ends an unanswered CallKit call after about 60 s on its own,
+ * so a longer window cannot hold. The caller decides: at this mark it sends
+ * `voice_call_timeout_v1` and records `timed_out`. A callee shell closes 60 s
+ * after its own ring started (later than the dial) as a backup, and also sends
+ * the timeout. Must match `INCOMING_RING_TIMEOUT_MS` (Android) and
+ * `offerRingWindowOver` (iOS).
+ */
+export const INCOMING_CALL_RING_TIMEOUT_MS = 60_000
 
 /**
  * Wake receipt window. The callee's device sends `voice_call_ringing_v1` as soon

@@ -1539,17 +1539,37 @@ const ensureFlatProfiles = (p: any): profile[] => {
 }
 
 let storeSystemDataTimer: ReturnType<typeof setTimeout> | null = null
+/** Callers of storeSystemDataAndWait whose state the next write will include. */
+let storeSystemDataWaiters: Array<(stored: boolean) => void> = []
+
+const takeStoreSystemDataWaiters = (): Array<(stored: boolean) => void> => {
+  const waiters = storeSystemDataWaiters
+  storeSystemDataWaiters = []
+  return waiters
+}
+
 /**
  * Persist CoNET_Data. Heavy JSON.stringify + base64 MUST run inside the deferred
  * timer — doing it synchronously froze the UI for seconds after chat history
  * restore / large profile writes ("app frozen ~10s after launch").
+ * Resolves at once; the write happens later. Use storeSystemDataAndWait to
+ * know when it has landed.
  */
 export const storeSystemData = async () => {
-  if (!CoNET_Data) return
+  if (!CoNET_Data) {
+    takeStoreSystemDataWaiters().forEach((done) => done(false))
+    return
+  }
   if (storeSystemDataTimer) clearTimeout(storeSystemDataTimer)
   storeSystemDataTimer = setTimeout(async () => {
     storeSystemDataTimer = null
-    if (!CoNET_Data) return
+    // This write includes everything set so far; later callers wait for the next one.
+    const waiters = takeStoreSystemDataWaiters()
+    if (!CoNET_Data) {
+      waiters.forEach((done) => done(false))
+      return
+    }
+    let stored = false
     try {
       const temp = { ...CoNET_Data }
       if (temp.profiles) temp.profiles = ensureFlatProfiles(temp.profiles)
@@ -1557,11 +1577,23 @@ export const storeSystemData = async () => {
       const dataB64 = Buffer.from(customJsonStringify(temp)).toString("base64")
       cacheStorageBackup(dataB64)
       await storageHashData("init", dataB64)
+      stored = true
     } catch (ex) {
       console.warn(`[storeSystemData] Error:`, ex)
     }
+    waiters.forEach((done) => done(stored))
   }, 200)
 }
+
+/**
+ * Same debounced write as storeSystemData, but resolves only once the data
+ * has been written (true) or the write failed (false).
+ */
+export const storeSystemDataAndWait = (): Promise<boolean> =>
+  new Promise<boolean>((resolve) => {
+    storeSystemDataWaiters.push(resolve)
+    void storeSystemData()
+  })
 
 /** 立即将当前 CoNET_Data 写入存储（用于 cardRedeems 等需马上落盘的数据），并取消待执行的 storeSystemData 定时器 */
 export const flushStoreSystemData = async () => {
@@ -1569,15 +1601,26 @@ export const flushStoreSystemData = async () => {
     clearTimeout(storeSystemDataTimer)
     storeSystemDataTimer = null
   }
-  if (!CoNET_Data) return
-  const temp = { ...CoNET_Data }
-  if (temp.profiles) temp.profiles = ensureFlatProfiles(temp.profiles)
-  if ((CoNET_Data as any)?.cardRedeems) (temp as any).cardRedeems = (CoNET_Data as any).cardRedeems
-  const dataB64 = Buffer.from(customJsonStringify(temp)).toString("base64")
-  cacheStorageBackup(dataB64)
-  // Drop any in-flight checkStorage so the next read sees this write.
-  checkStorageInFlight = null
-  await storageHashData("init", dataB64)
+  // The cancelled timer's waiters ride on this write.
+  const waiters = takeStoreSystemDataWaiters()
+  if (!CoNET_Data) {
+    waiters.forEach((done) => done(false))
+    return
+  }
+  try {
+    const temp = { ...CoNET_Data }
+    if (temp.profiles) temp.profiles = ensureFlatProfiles(temp.profiles)
+    if ((CoNET_Data as any)?.cardRedeems) (temp as any).cardRedeems = (CoNET_Data as any).cardRedeems
+    const dataB64 = Buffer.from(customJsonStringify(temp)).toString("base64")
+    cacheStorageBackup(dataB64)
+    // Drop any in-flight checkStorage so the next read sees this write.
+    checkStorageInFlight = null
+    await storageHashData("init", dataB64)
+  } catch (ex) {
+    waiters.forEach((done) => done(false))
+    throw ex
+  }
+  waiters.forEach((done) => done(true))
 }
 
 /**

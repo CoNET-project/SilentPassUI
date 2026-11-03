@@ -36,7 +36,7 @@ import { ensureNativePushBoundForWallet, ensurePushDeviceTokenListener } from "@
 import { mirrorChatMessageToHistory, mergeHistoryEntriesIntoMessages } from "@/services/chatHistoryMirror"
 import { onHistoryBuffer, loadWorkerHistory, onDecryptedChatHistory, readDecryptedChatHistory, confirmInboundLines } from "@/services/chatWorkerBridge"
 import type { HistoryEntry } from "@conet.project/chat-sdk"
-import { checkStorage, storeSystemData, runAutoBUnitFreeClaimIfEligible, handleNfcLinkAppDeepLinkScan, ensureProfilePrivateKeyArmorFromMnemonic, bootstrapProfileLocaleCurrencyIfUnset, mergeLocalLocaleLanguageOntoChainProfile } from "@/services/beamio"
+import { checkStorage, storeSystemData, storeSystemDataAndWait, runAutoBUnitFreeClaimIfEligible, handleNfcLinkAppDeepLinkScan, ensureProfilePrivateKeyArmorFromMnemonic, bootstrapProfileLocaleCurrencyIfUnset, mergeLocalLocaleLanguageOntoChainProfile } from "@/services/beamio"
 import { hasLocalPlaintextMnemonic } from "@/utils/consumerWalletGate"
 import { ensureEphemeralWalletForCouponClaim } from "@/utils/ephemeralCouponClaimWallet"
 import { CoNET_Data, setCoNET_Data } from "@/utils/globals"
@@ -115,7 +115,7 @@ import { ingestAaMultisigFromChat } from '@/utils/aaMultisigIngest'
 import { tu } from '@/locale/beamioLocale'
 import { mapServerError } from '@/locale/mapServerError'
 import { installPwaLifecycleRecovery } from '@/utils/pwaLifecycleRecovery'
-import { applyNativeIncomingVoiceOfferFromLine, reportNativeIncomingSystemCall, claimIncomingVoiceCallReport, claimedVoiceCallerAddress, claimedVoiceCallerTag, dismissNativeIncomingVoiceCall, findPhoneCallByIds, forgetIncomingVoiceOffer, formatLookedUpBeamioTag, isVoiceCallOfferActive, isVoiceCallOfferRinging, lookupIncomingVoiceOffer, markVoiceCallTerminal, mergePhoneCallRecord, nativeIncomingSystemCallPayload, noteNativeCallAnswered, parseVoiceCallSignal, phoneCallStatusForPeerHangup, recoverVoiceCallOfferSigner, rememberIncomingVoiceOffer, replacePhoneCallInRows, VOICE_CALL_IDENTITY_WARNING, voiceCallClaimMismatchesKey } from '@/utils/voiceCallSession'
+import { applyNativeIncomingVoiceOfferFromLine, closeSettledIncomingCalls, incomingSettledStatusForAction, noteIncomingCallSettled, reportNativeIncomingSystemCall, claimIncomingVoiceCallReport, isPhoneCallTerminalStatus, noteVoiceCallsEnded, voiceCallHandlesEndedInBatch, claimedVoiceCallerAddress, claimedVoiceCallerTag, dismissNativeIncomingVoiceCall, findPhoneCallByIds, forgetIncomingVoiceOffer, formatLookedUpBeamioTag, isVoiceCallOfferActive, isVoiceCallOfferRinging, lookupIncomingVoiceOffer, markVoiceCallTerminal, mergePhoneCallRecord, nativeIncomingSystemCallPayload, noteNativeCallAnswered, parseVoiceCallSignal, phoneCallStatusForPeerHangup, recoverVoiceCallOfferSigner, rememberIncomingVoiceOffer, replacePhoneCallInRows, VOICE_CALL_IDENTITY_WARNING, voiceCallClaimMismatchesKey } from '@/utils/voiceCallSession'
 
 global.Buffer = require("buffer").Buffer
 
@@ -1019,6 +1019,8 @@ function AppShell() {
 		}
 
 		await initChat(setProfiles,setAllNodes, setGossip, gossipActiveRef.current, message => {
+			// A signed end on this line stops its (replayed) offer from ringing the shell.
+			noteVoiceCallsEnded(voiceCallHandlesEndedInBatch([message], recoverChatSigner))
 			applyNativeIncomingVoiceOfferFromLine(message)
 			setChartsRef.current((prev: string[]) => [...prev, message])
 		})
@@ -1070,6 +1072,7 @@ function AppShell() {
 				setAllNodes,
 				setGossip,
 				message => {
+					noteVoiceCallsEnded(voiceCallHandlesEndedInBatch([message], recoverChatSigner))
 					applyNativeIncomingVoiceOfferFromLine(message)
 					setChartsRef.current((prev: string[]) => [...prev, message])
 				},
@@ -1320,12 +1323,60 @@ function AppShell() {
 			nativeVoiceAnswerKeyRef.current = null
 		}
 
+		// Store a change to the call rows (null from `change` = nothing to store).
+		const commitCallRows = (change: (rows: PhoneCallRecord[]) => PhoneCallRecord[] | null) => {
+			const dataProfiles = CoNET_Data?.profiles
+			const currentProfiles = Array.isArray(dataProfiles) && dataProfiles.length
+				? dataProfiles
+				: profilesForVoiceDeclineRef.current
+			if (!currentProfiles?.[0]) return
+			const rows: PhoneCallRecord[] = Array.isArray(currentProfiles[0].phoneCalls)
+				? currentProfiles[0].phoneCalls
+				: []
+			const changed = change(rows)
+			if (!changed) return
+			const next = currentProfiles.slice()
+			next[0] = {
+				...currentProfiles[0],
+				phoneCalls: changed
+					.sort((a, b) => Number(b.createdAt || 0) - Number(a.createdAt || 0))
+					.slice(0, 200),
+			}
+			profilesForVoiceDeclineRef.current = next
+			setProfilesForVoiceRef.current(next)
+			if (CoNET_Data) CoNET_Data.profiles = next
+			void storeSystemData()
+		}
+
+		// Close still-ringing incoming rows the shell already ended (see noteIncomingCallSettled).
+		const closeSettledIncomingRowsNow = () => commitCallRows(closeSettledIncomingCalls)
+
 		const onNativeHangupCancelsLateAccept = (event: Event) => {
 			const detail = (event as CustomEvent<{
 				action?: string
 				callId?: string
 				sessionId?: string
+				settledAs?: string
 			}>).detail
+			if (detail?.action === 'incomingCallSettled') {
+				// The page re-reported an offer the shell had already ended (a cold
+				// start replays it). Record only: no banner change, nothing to the caller.
+				const callId = String(detail.callId || '').trim()
+				const sessionId = String(detail.sessionId || '').trim()
+				const status = incomingSettledStatusForAction(detail.settledAs)
+				if (!status || (!callId && !sessionId)) return
+				publishNativePwaLog('info', `[voice] shell says incoming call already ended as ${status}`)
+				noteVoiceCallsEnded([callId, sessionId])
+				noteIncomingCallSettled(callId, sessionId, status)
+				forgetIncomingVoiceOffer(callId || sessionId, sessionId || callId)
+				setGlobalIncomingVoiceCall(current =>
+					(sessionId && current?.signal?.sessionId === sessionId) || (callId && current?.signal?.callId === callId)
+						? null
+						: current,
+				)
+				closeSettledIncomingRowsNow()
+				return
+			}
 			if (
 				detail?.action !== 'callEnded'
 				&& detail?.action !== 'callRejected'
@@ -1337,6 +1388,24 @@ function AppShell() {
 			const sessionId = String(detail.sessionId || '').trim()
 			if (callId || sessionId) {
 				forgetIncomingVoiceOffer(callId || sessionId, sessionId || callId)
+			}
+			if (detail.action === 'callEnded' && (callId || sessionId)) {
+				// The shell ends an unanswered incoming call only when its caller stopped
+				// (cancel, or the same caller ringing again while it still rang). With no
+				// voice_end_v1 for it, the row would stay "Incoming call": close it here.
+				// No row yet (cold start: this arrives before the inbox replays the offer):
+				// the page reports the replayed offer and the shell answers incomingCallSettled,
+				// which knows whether the call was answered.
+				noteVoiceCallsEnded([callId, sessionId])
+				const dataProfiles = CoNET_Data?.profiles
+				const currentProfiles = Array.isArray(dataProfiles) && dataProfiles.length
+					? dataProfiles
+					: profilesForVoiceDeclineRef.current
+				const existing = findPhoneCallByIds(currentProfiles?.[0]?.phoneCalls, { callId, sessionId })
+				if (existing?.direction === 'incoming' && existing.status === 'ringing') {
+					noteIncomingCallSettled(callId, sessionId, 'cancelled')
+					closeSettledIncomingRowsNow()
+				}
 			}
 			setGlobalIncomingVoiceCall(null)
 			clearLateAccept()
@@ -1788,6 +1857,10 @@ function AppShell() {
 		const profile = profiles[0]
 		const chats: chatData[] = Array.isArray(profile.chats) ? [...profile.chats] : []
 		const chatsToAutoReply: chatData[] = []
+		// Calls whose end is in this same batch (a cold start replays the whole
+		// native inbox at once): their offer must not ring the shell again.
+		const voiceCallsEndedInBatch = voiceCallHandlesEndedInBatch(uniqLines, recoverChatSigner)
+		noteVoiceCallsEnded(voiceCallsEndedInBatch)
 
 		for (const raw of uniqLines) {
 			try {
@@ -1842,11 +1915,40 @@ function AppShell() {
 					typeof signal.sessionId === 'string' &&
 					isVoiceCallOfferRinging(signal)
 				) {
-					const previousCall = (Array.isArray(profile.phoneCalls) ? profile.phoneCalls : []).find(
-						(item: any) => item.sessionId === signal.sessionId,
-					)
-					const terminalStatuses = new Set(['declined', 'ended', 'answered', 'missed', 'timed_out'])
-					if (!terminalStatuses.has(String(previousCall?.status || ''))) {
+					const previousCall = findPhoneCallByIds(profile.phoneCalls, {
+						callId: signal.callId,
+						sessionId: signal.sessionId,
+					})
+					// A stored record already answered or ended (cancelled included) means
+					// this offer is a replay: no report, no new row.
+					const settledBefore = Boolean(previousCall && (
+						isPhoneCallTerminalStatus(previousCall.status) || previousCall.status === 'answered'
+					))
+					const endsInBatch = voiceCallsEndedInBatch.has(signal.callId.trim())
+						|| voiceCallsEndedInBatch.has(signal.sessionId.trim())
+					if (!settledBefore && endsInBatch) {
+						// Keep the offer's row (its start time and caller) so the end in
+						// this batch turns it into "cancelled"; do not ring the shell.
+						publishNativePwaLog('info', '[voice] offer ends in the same batch; not reported to the shell')
+						if (claimIncomingVoiceCallReport(signal.callId, signal.sessionId)) {
+							const callRows = Array.isArray(profile.phoneCalls) ? profile.phoneCalls : []
+							if (!findPhoneCallByIds(callRows, { callId: signal.callId, sessionId: signal.sessionId })) {
+								profile.phoneCalls = [
+									...callRows,
+									{
+										callId: signal.callId,
+										sessionId: signal.sessionId,
+										peerAddress: callerEoa || claimedVoiceCallerAddress(signal),
+										direction: 'incoming',
+										status: 'ringing',
+										createdAt: Number(signal.createdAt) || msg.timestamp,
+										answeredAt: undefined,
+										endedAt: undefined,
+									},
+								]
+							}
+						}
+					} else if (!settledBefore) {
 						rememberIncomingVoiceOffer(signal)
 						const provenAddress = callerEoa || ''
 						const localTag = provenAddress
@@ -2195,16 +2297,24 @@ function AppShell() {
 		}
 
 		profile.chats = chats
+		// A replayed offer above may have added a ringing row for a call the shell
+		// already ended (its outcome can arrive while this batch is still running).
+		const settledCallRows = closeSettledIncomingCalls(profile.phoneCalls)
+		if (settledCallRows) profile.phoneCalls = settledCallRows
 
 		// ✅ 关键：setProfiles 必须不可变更新（复制 profile + 复制 profiles 数组）
 		setProfiles([...profiles])
 		temp.profiles = profiles
 		setCoNET_Data(temp)
-		await storeSystemData()
-		// Stored: now the native module may ACK the mailbox (it deletes its
-		// offline copy) and send the sender receipt. An early return above
-		// leaves the lines unconfirmed, so the mailbox redelivers them.
-		confirmInboundLines(lines)
+		// storeSystemData() only schedules the write (200 ms debounce, and a frozen
+		// background WebView runs it even later). Confirm the lines once the write
+		// has landed: then the native module may ACK the mailbox (it deletes its
+		// offline copy) and send the sender receipt. A crash or kill before that
+		// leaves the lines in the native inbox, which replays them. An early
+		// return above leaves them unconfirmed too.
+		void storeSystemDataAndWait().then((stored) => {
+			if (stored) confirmInboundLines(lines)
+		})
 
 		// ✅ 聆听进入的新 message 后自动回复
 		if (onAutoReply && chatsToAutoReply.length > 0) {

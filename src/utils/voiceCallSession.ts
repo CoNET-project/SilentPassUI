@@ -137,6 +137,49 @@ export function parseVoiceCallSignal(raw: unknown): VoiceCallSignal | null {
 	return null
 }
 
+const VOICE_CALL_END_TYPES: ReadonlySet<string> = new Set([
+	'voice_end_v1',
+	'voice_call_reject_v1',
+	'voice_call_timeout_v1',
+])
+
+/**
+ * callIds and sessionIds of calls that end (hangup, decline, timeout) somewhere
+ * in one inbound batch. A cold start hands the whole native inbox to the page
+ * at once, so an offer and its end can arrive together: that offer must not be
+ * reported to the shell again. Only lines with a valid chat signature count
+ * (`signerOf` returns the recovered signer, or nothing).
+ */
+export function voiceCallHandlesEndedInBatch(
+	lines: readonly string[],
+	signerOf: (text: string, signature: string) => string | null | undefined,
+): Set<string> {
+	const ended = new Set<string>()
+	for (const raw of lines) {
+		try {
+			const msg = JSON.parse(raw) as { text?: unknown; signMessage?: unknown }
+			if (typeof msg?.text !== 'string' || typeof msg.signMessage !== 'string') continue
+			const signal = parseVoiceCallSignal(msg.text)
+			if (!signal || !VOICE_CALL_END_TYPES.has(signal.type)) continue
+			let signed = Boolean(signerOf(msg.text, msg.signMessage))
+			if (!signed) {
+				try {
+					const inner = JSON.parse(msg.text) as { text?: unknown }
+					if (typeof inner?.text === 'string') signed = Boolean(signerOf(inner.text, msg.signMessage))
+				} catch {
+					/* not nested */
+				}
+			}
+			if (!signed) continue
+			if (signal.callId.trim()) ended.add(signal.callId.trim())
+			if (signal.sessionId.trim()) ended.add(signal.sessionId.trim())
+		} catch {
+			/* not a chat line */
+		}
+	}
+	return ended
+}
+
 export function isVoiceCallProtocolMessage(raw: unknown): boolean {
 	let value: unknown = raw
 	for (let depth = 0; depth < 4; depth += 1) {
@@ -381,6 +424,38 @@ export function nativeIncomingSystemCallPayload(args: {
  * This does not claim the in-app report, so the Chat ingest path can still
  * record the call and replace the address with a looked-up BeamioTag.
  */
+/**
+ * Calls whose end (hangup, decline, timeout) the page has seen on the inbound
+ * line path in this page session. In memory only; markVoiceCallTerminal keeps
+ * the durable copy once the batch is processed.
+ */
+const endedVoiceCallHandles = new Set<string>()
+
+export function noteVoiceCallsEnded(handles: Iterable<string>): void {
+	for (const handle of handles) {
+		const id = String(handle || '').trim()
+		if (id) endedVoiceCallHandles.add(id)
+	}
+	while (endedVoiceCallHandles.size > 400) {
+		const oldest = endedVoiceCallHandles.values().next().value
+		if (oldest === undefined) break
+		endedVoiceCallHandles.delete(oldest)
+	}
+}
+
+const voiceCallEndSeen = (signal: { callId?: unknown; sessionId?: unknown }): boolean =>
+	endedVoiceCallHandles.has(String(signal.callId || '').trim())
+	|| endedVoiceCallHandles.has(String(signal.sessionId || '').trim())
+
+/**
+ * An offer older than this is a replay (cold start hands over the native inbox,
+ * a reconnect drains the mailbox), not a live ring. Its end can be a few lines
+ * behind it, so its report waits briefly.
+ */
+const VOICE_OFFER_REPLAY_AGE_MS = 15_000
+const VOICE_OFFER_REPLAY_HOLD_MS = 1_000
+const replayedVoiceOfferTimers = new Map<string, ReturnType<typeof setTimeout>>()
+
 export function applyNativeIncomingVoiceOfferFromLine(raw: string): boolean {
 	const signal = parseVoiceCallSignal(raw)
 	if (!signal) {
@@ -410,6 +485,31 @@ export function applyNativeIncomingVoiceOfferFromLine(raw: string): boolean {
 		)
 		return false
 	}
+	// Already ended (stored terminal mark, or its end was seen on the line path),
+	// or older than the ring window: never ring the shell for it again.
+	if (!isVoiceCallOfferRinging(signal) || voiceCallEndSeen(signal)) {
+		publishNativePwaLog('info', '[voice] incoming offer not reported: call already ended or past the ring window')
+		return false
+	}
+	const callKey = `${signal.callId.trim()}:${signal.sessionId.trim()}`
+	const createdMs = normalizeVoiceTimestampMs(signal.createdAt) || normalizeVoiceTimestampMs(signal.timestamp)
+	if (createdMs && Date.now() - createdMs > VOICE_OFFER_REPLAY_AGE_MS) {
+		if (!replayedVoiceOfferTimers.has(callKey)) {
+			replayedVoiceOfferTimers.set(callKey, setTimeout(() => {
+				replayedVoiceOfferTimers.delete(callKey)
+				if (!isVoiceCallOfferRinging(signal) || voiceCallEndSeen(signal)) {
+					publishNativePwaLog('info', '[voice] replayed offer not reported: its end followed it')
+					return
+				}
+				reportNativeIncomingVoiceOffer(signal)
+			}, VOICE_OFFER_REPLAY_HOLD_MS))
+		}
+		return false
+	}
+	return reportNativeIncomingVoiceOffer(signal)
+}
+
+function reportNativeIncomingVoiceOffer(signal: VoiceCallSignal): boolean {
 	const callerEoa = recoverVoiceCallOfferSigner(signal)
 	const claimedTag = claimedVoiceCallerTag(signal)
 	if (!callerEoa && !claimedTag) {
@@ -731,6 +831,72 @@ export const mergePhoneCallRecord = (
 		endedAt,
 		durationMs,
 	}
+}
+
+/**
+ * Incoming calls the native shell closed before anyone answered them, by callId
+ * and sessionId. The shell's own callEnded can reach the page before the page
+ * has the call's row (cold start: it arrives first, then the native inbox
+ * replays the offer), or not at all (it ended in a process that was killed).
+ * The page applies these outcomes whenever it stores call rows, so a replayed
+ * offer cannot leave the row "Incoming call". In memory for the page's life.
+ */
+const settledIncomingOutcomes = new Map<string, { status: PhoneCallRecord['status']; endedAt: number }>()
+
+/** Record status for a shell action that ends an unanswered incoming call. */
+export const incomingSettledStatusForAction = (action: unknown): PhoneCallRecord['status'] | null => {
+	switch (String(action || '').trim()) {
+		case 'callEnded':
+			return 'cancelled'
+		case 'callTimedOut':
+			return 'timed_out'
+		case 'callRejected':
+			return 'declined'
+		default:
+			return null
+	}
+}
+
+export const noteIncomingCallSettled = (
+	callId: string,
+	sessionId: string,
+	status: PhoneCallRecord['status'],
+	endedAt = Date.now(),
+): void => {
+	if (!PHONE_CALL_UNANSWERED_STATUSES.has(status)) return
+	for (const id of [nonBlank(callId), nonBlank(sessionId)]) {
+		if (id && !settledIncomingOutcomes.has(id)) settledIncomingOutcomes.set(id, { status, endedAt })
+	}
+	while (settledIncomingOutcomes.size > 400) {
+		const oldest = settledIncomingOutcomes.keys().next().value
+		if (oldest === undefined) break
+		settledIncomingOutcomes.delete(oldest)
+	}
+}
+
+/** The row with its shell outcome applied, or the same row when there is none to apply. */
+export const withSettledIncomingOutcome = (record: PhoneCallRecord): PhoneCallRecord => {
+	if (record.direction !== 'incoming') return record
+	const outcome = settledIncomingOutcomes.get(nonBlank(record.callId))
+		|| settledIncomingOutcomes.get(nonBlank(record.sessionId))
+	if (!outcome) return record
+	const applies = record.status === 'ringing'
+	if (!applies) return record
+	return mergePhoneCallRecord(record, { ...record, status: outcome.status, endedAt: outcome.endedAt }) || record
+}
+
+/** Rows with every known shell outcome applied; null when nothing changed. */
+export const closeSettledIncomingCalls = (
+	rows: readonly PhoneCallRecord[] | null | undefined,
+): PhoneCallRecord[] | null => {
+	if (!rows?.length || !settledIncomingOutcomes.size) return null
+	let changed = false
+	const next = rows.map((row) => {
+		const closed = withSettledIncomingOutcome(row)
+		if (closed !== row) changed = true
+		return closed
+	})
+	return changed ? next : null
 }
 
 export const makeVoiceCallSignal = (

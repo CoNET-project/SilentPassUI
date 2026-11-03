@@ -115,7 +115,7 @@ import { ingestAaMultisigFromChat } from '@/utils/aaMultisigIngest'
 import { tu } from '@/locale/beamioLocale'
 import { mapServerError } from '@/locale/mapServerError'
 import { installPwaLifecycleRecovery } from '@/utils/pwaLifecycleRecovery'
-import { applyNativeIncomingVoiceOfferFromLine, closeSettledIncomingCalls, incomingSettledStatusForAction, noteIncomingCallSettled, reportNativeIncomingSystemCall, claimIncomingVoiceCallReport, isPhoneCallTerminalStatus, noteVoiceCallsEnded, voiceCallHandlesEndedInBatch, claimedVoiceCallerAddress, claimedVoiceCallerTag, dismissNativeIncomingVoiceCall, findPhoneCallByIds, forgetIncomingVoiceOffer, formatLookedUpBeamioTag, isVoiceCallOfferActive, isVoiceCallOfferRinging, lookupIncomingVoiceOffer, markVoiceCallTerminal, mergePhoneCallRecord, nativeIncomingSystemCallPayload, noteNativeCallAnswered, parseVoiceCallSignal, phoneCallStatusForPeerHangup, recoverVoiceCallOfferSigner, rememberIncomingVoiceOffer, replacePhoneCallInRows, VOICE_CALL_IDENTITY_WARNING, voiceCallClaimMismatchesKey, noteVoicePeerRinging } from '@/utils/voiceCallSession'
+import { applyNativeIncomingVoiceOfferFromLine, browserVoiceCallBusyFor, closeSettledIncomingCalls, incomingSettledStatusForAction, noteIncomingCallSettled, reportNativeIncomingSystemCall, claimIncomingVoiceCallReport, isPhoneCallTerminalStatus, noteVoiceCallsEnded, voiceCallHandlesEndedInBatch, claimedVoiceCallerAddress, claimedVoiceCallerTag, dismissNativeIncomingVoiceCall, findPhoneCallByIds, forgetIncomingVoiceOffer, formatLookedUpBeamioTag, isVoiceCallOfferActive, isVoiceCallOfferRinging, lookupIncomingVoiceOffer, markVoiceCallTerminal, mergePhoneCallRecord, nativeIncomingSystemCallPayload, noteNativeCallAnswered, parseVoiceCallSignal, phoneCallStatusForPeerHangup, recoverVoiceCallOfferSigner, rememberIncomingVoiceOffer, replacePhoneCallInRows, VOICE_CALL_IDENTITY_WARNING, voiceCallClaimMismatchesKey, noteVoicePeerRinging } from '@/utils/voiceCallSession'
 
 global.Buffer = require("buffer").Buffer
 
@@ -1377,6 +1377,27 @@ function AppShell() {
 				sessionId?: string
 				settledAs?: string
 			}>).detail
+			if (detail?.action === 'callBusyRejected') {
+				// The shell rejected this incoming call as busy (we were in another
+				// call) and already told the caller. Record only:
+				// "Missed call · While on another call".
+				const callId = String(detail.callId || '').trim()
+				const sessionId = String(detail.sessionId || '').trim()
+				if (!callId && !sessionId) return
+				publishNativePwaLog('info', '[voice] shell rejected an incoming call as busy')
+				// No terminal mark here: a replayed offer must still create its row,
+				// which the settled outcome then turns into "busy".
+				noteVoiceCallsEnded([callId, sessionId])
+				noteIncomingCallSettled(callId, sessionId, 'busy')
+				forgetIncomingVoiceOffer(callId || sessionId, sessionId || callId)
+				setGlobalIncomingVoiceCall(current =>
+					(sessionId && current?.signal?.sessionId === sessionId) || (callId && current?.signal?.callId === callId)
+						? null
+						: current,
+				)
+				closeSettledIncomingRowsNow()
+				return
+			}
 			if (detail?.action === 'incomingCallSettled') {
 				// The page re-reported an offer the shell had already ended (a cold
 				// start replays it). Record only: no banner change, nothing to the caller.
@@ -1945,7 +1966,41 @@ function AppShell() {
 					))
 					const endsInBatch = voiceCallsEndedInBatch.has(signal.callId.trim())
 						|| voiceCallsEndedInBatch.has(signal.sessionId.trim())
-					if (!settledBefore && endsInBatch) {
+					// Browser in another call: answer "busy" (the caller hears a busy tone)
+					// and record "Missed call · While on another call". No ring, no push.
+					const busyHere = !settledBefore && !endsInBatch && !!callerEoa
+						&& !isCashTreesNativeWebView() && browserVoiceCallBusyFor(signal)
+					if (busyHere) {
+						publishNativePwaLog('info', '[voice] offer while in another call; answered busy')
+						markVoiceCallTerminal(signal.callId, signal.sessionId)
+						const callRows = Array.isArray(profile.phoneCalls) ? profile.phoneCalls : []
+						if (!findPhoneCallByIds(callRows, { callId: signal.callId, sessionId: signal.sessionId })) {
+							profile.phoneCalls = [
+								...callRows,
+								{
+									callId: signal.callId,
+									sessionId: signal.sessionId,
+									peerAddress: callerEoa,
+									direction: 'incoming',
+									status: 'busy',
+									createdAt: Number(signal.createdAt) || msg.timestamp,
+									answeredAt: undefined,
+									endedAt: Date.now(),
+								},
+							]
+						}
+						const busyKey = resolveSigningPrivateKeyArmor(profile)
+						if (busyKey) {
+							void declineIncomingVoiceOffer({
+								privateKey: busyKey,
+								localCallId: new ethers.Wallet(busyKey).address,
+								peerEoa: callerEoa,
+								peerPgp: '',
+								peerRoute: '',
+								allNodes: allNodesForVoiceDeclineRef.current || [],
+							}, signal, 'busy')
+						}
+					} else if (!settledBefore && endsInBatch) {
 						// Keep the offer's row (its start time and caller) so the end in
 						// this batch turns it into "cancelled"; do not ring the shell.
 						publishNativePwaLog('info', '[voice] offer ends in the same batch; not reported to the shell')
@@ -2089,7 +2144,9 @@ function AppShell() {
 							? null
 							: current,
 					)
-					const terminalStatus = signal.type === 'voice_call_timeout_v1' ? 'timed_out' : 'declined'
+					// reason "busy": the callee was in another call (the caller hears a busy tone).
+					const peerBusy = signal.type === 'voice_call_reject_v1' && (signal as { reason?: unknown }).reason === 'busy'
+					const terminalStatus = signal.type === 'voice_call_timeout_v1' ? 'timed_out' : peerBusy ? 'busy' : 'declined'
 					const callRows = Array.isArray(profile.phoneCalls) ? profile.phoneCalls : []
 					const existing = findPhoneCallByIds(callRows, {
 						callId: signal.callId,
@@ -2110,7 +2167,7 @@ function AppShell() {
 					}
 					window.dispatchEvent(new CustomEvent(
 						signal.type === 'voice_call_timeout_v1' ? 'beamio-voice-peer-timed-out' : 'beamio-voice-peer-declined',
-						{ detail: { callId: signal.callId, sessionId: signal.sessionId } },
+						{ detail: { callId: signal.callId, sessionId: signal.sessionId, ...(peerBusy ? { reason: 'busy' } : {}) } },
 					))
 					voiceControlConsumed = true
 				} else if (

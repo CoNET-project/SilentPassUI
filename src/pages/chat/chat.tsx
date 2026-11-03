@@ -124,6 +124,7 @@ import {
 import {
 	decryptVoiceFrame,
 	encryptVoiceFrame,
+	registerBrowserVoiceCallProbe,
 	claimIncomingVoiceCallReport,
 	applyNativeIncomingVoiceOfferFromLine,
 	reportNativeIncomingSystemCall,
@@ -164,6 +165,8 @@ import {
 	type VoiceCallSignal,
 	voicePeerRingingMatches,
 	wasVoicePeerRinging,
+	pageEndsSystemCall,
+	callWindowHoldMs,
 } from '@/utils/voiceCallSession'
 import {
 	decodeBjpgFrame,
@@ -2102,6 +2105,8 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 		dispatchedAt: number
 	} | null>(null)
 	const nativeDialerAckTimerRef = useRef<number | null>(null)
+	// Browser dialer: the call window stays up while the busy tone plays, then closes.
+	const busyHoldTimerRef = useRef<number | null>(null)
 	const pageVisibleSinceRef = useRef(0)
 	useEffect(() => {
 		const onVisibility = () => {
@@ -2111,6 +2116,7 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 		return () => {
 			document.removeEventListener('visibilitychange', onVisibility)
 			if (nativeDialerAckTimerRef.current !== null) window.clearTimeout(nativeDialerAckTimerRef.current)
+			if (busyHoldTimerRef.current !== null) window.clearTimeout(busyHoldTimerRef.current)
 		}
 	}, [])
 	const clearNativeDialerAck = useCallback(() => {
@@ -3972,6 +3978,11 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 		notifyPeer = true,
 		idHint?: { callId?: string; sessionId?: string; peerAddress?: string },
 	) => {
+		// Hang-up during a busy hold (or the hold's own end): no second close.
+		if (busyHoldTimerRef.current !== null) {
+			window.clearTimeout(busyHoldTimerRef.current)
+			busyHoldTimerRef.current = null
+		}
 		voiceCallLiveRef.current = false
 		setVoiceDialFailed(false)
 		// Invalidate a call that is still being set up (see voiceStartTokenRef).
@@ -4048,10 +4059,14 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 				endedAt,
 				durationMs: previous?.answeredAt ? Math.max(0, endedAt - previous.answeredAt) : previous?.durationMs,
 			})
-			dispatchNativeSystemCallAction('endSystemCall', {
-				callId: upsertCallId || upsertId,
-				sessionId: upsertSessionId || upsertId,
-			})
+			// Busy in the shell: its dialer shows "On another call", plays the busy
+			// tone and ends the system call itself about 3 s later.
+			if (pageEndsSystemCall(status, isCashTreesNativeWebView())) {
+				dispatchNativeSystemCallAction('endSystemCall', {
+					callId: upsertCallId || upsertId,
+					sessionId: upsertSessionId || upsertId,
+				})
+			}
 		}
 		// Snapshot before clearing — native Accept never creates a controller, so
 		// hangup must still reach the dialer via AES + Chat when notifyPeer.
@@ -4325,6 +4340,15 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 
 	const endVoiceCallRef = useRef(endVoiceCall)
 	endVoiceCallRef.current = endVoiceCall
+	// Browser busy: a new offer while this page has a call up is answered "busy" (App.tsx).
+	useEffect(() => {
+		registerBrowserVoiceCallProbe(() => ({
+			live: voiceCallLiveRef.current || voiceCallStartingRef.current,
+			callId: voiceCallOfferRef.current?.callId,
+			sessionId: voiceCallOfferRef.current?.sessionId,
+		}))
+		return () => registerBrowserVoiceCallProbe(null)
+	}, [])
 	useEffect(() => {
 		if (voiceCallState !== 'outgoing') return
 		const offer = voiceCallOfferRef.current
@@ -4443,8 +4467,10 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 	}, [profiles, setProfiles])
 
 	useEffect(() => {
-		const onPeerStopped = (status: 'declined' | 'timed_out') => (event: Event) => {
-			const detail = (event as CustomEvent<{ callId?: string; sessionId?: string }>).detail
+		const onPeerStopped = (stopped: 'declined' | 'timed_out') => (event: Event) => {
+			const detail = (event as CustomEvent<{ callId?: string; sessionId?: string; reason?: string }>).detail
+			// A decline with reason "busy": the callee is in another call.
+			const status: 'declined' | 'timed_out' | 'busy' = stopped === 'declined' && detail?.reason === 'busy' ? 'busy' : stopped
 			const sessionId = String(detail?.sessionId || '').trim()
 			const callId = String(detail?.callId || '').trim()
 			const rows: PhoneCallRecord[] = Array.isArray(CoNET_Data?.profiles?.[0]?.phoneCalls)
@@ -4466,7 +4492,7 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 			const peerAddress = previous?.peerAddress || toAddress
 			// Browser dialer still ringing and the callee declined (or is busy):
 			// a short busy tone, like a phone, while the window closes.
-			if (status === 'declined') callTonesRef.current?.busyIfRinging()
+			if (status === 'declined' || status === 'busy') callTonesRef.current?.busyIfRinging()
 			if (previous || callId || sessionId) {
 				upsertPhoneCallRecord({
 					callId: callId || previous?.callId || sessionId,
@@ -4479,11 +4505,23 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 				})
 			}
 			if (idsMatchOffer || voiceCallState === 'outgoing' || previous?.direction === 'outgoing') {
-				void endVoiceCall(status, false, {
+				const closeCall = () => void endVoiceCall(status, false, {
 					callId: callId || previous?.callId || offer?.callId,
 					sessionId: sessionId || previous?.sessionId || offer?.sessionId,
 					peerAddress,
 				})
+				// Busy: keep the window up with "On another call" while the busy tone
+				// plays; hang-up during the hold closes it at once (endVoiceCall).
+				const holdMs = callWindowHoldMs(status, isCashTreesNativeWebView())
+				if (holdMs > 0) {
+					if (busyHoldTimerRef.current !== null) window.clearTimeout(busyHoldTimerRef.current)
+					busyHoldTimerRef.current = window.setTimeout(() => {
+						busyHoldTimerRef.current = null
+						closeCall()
+					}, holdMs)
+				} else {
+					closeCall()
+				}
 			}
 		}
 		const onPeerDeclined = onPeerStopped('declined')
@@ -4755,6 +4793,9 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 					callId: String(detail.callId || '').trim() || voiceCallOfferRef.current?.callId,
 					sessionId: String(detail.sessionId || '').trim() || voiceCallOfferRef.current?.sessionId,
 				})
+			} else if (detail.action === 'callBusy' && (matchesOutgoing || voiceCallState === 'outgoing' || voiceCallOfferRef.current)) {
+				// The shell's dialer got the callee's busy reject and plays the busy tone itself.
+				void endVoiceCall('busy', false)
 			} else if (detail.action === 'callEnded') {
 				const endCallId = String(detail.callId || '').trim()
 				const endSessionId = String(detail.sessionId || '').trim()
@@ -7202,7 +7243,9 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 				? 'Timed out'
 				: activeVoiceCallRecord?.status === 'unreachable'
 					? 'Unreachable'
-					: 'Ringing'
+					: activeVoiceCallRecord?.status === 'busy'
+						? 'On another call'
+						: 'Ringing'
 	// Browser dialer: ringback from the moment the offer is out (record 'ringing')
 	// until Accept, decline, timeout, hang-up or failure changes any of these.
 	const voiceRingbackActive = !isCashTreesNativeWebView()
@@ -7862,6 +7905,10 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 																? 'No answer'
 																: record.status === 'declined'
 																	? 'Recipient declined'
+																	: record.status === 'busy'
+																		? record.direction === 'incoming'
+																			? 'Missed call · While on another call'
+																			: 'Call failed · On another call'
 																	: record.status === 'timed_out'
 																		? 'Timed out'
 																	: record.status === 'unreachable'
@@ -7874,7 +7921,7 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 																				? record.durationMs ? `Voice call · ${formatVoiceDuration(record.durationMs)}` : 'Voice call'
 																				: record.durationMs ? `Call ended · ${formatVoiceDuration(record.durationMs)}` : 'Call ended'
 													const statusClass =
-														record.status === 'missed' || record.status === 'declined' || record.status === 'timed_out' || record.status === 'unreachable' || record.status === 'failed'
+														record.status === 'missed' || record.status === 'declined' || record.status === 'busy' || record.status === 'timed_out' || record.status === 'unreachable' || record.status === 'failed'
 															? 'text-rose-600'
 															: record.status === 'ringing'
 																? 'text-[#1652f0]'
@@ -7882,7 +7929,7 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 													return (
 														<div className="flex min-w-[190px] items-center gap-3 rounded-2xl bg-white/90 px-4 py-3 shadow-[0_4px_16px_rgba(15,23,42,0.08)] ring-1 ring-black/5">
 															<div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${
-																record.status === 'missed' || record.status === 'declined' || record.status === 'timed_out' || record.status === 'unreachable'
+																record.status === 'missed' || record.status === 'declined' || record.status === 'busy' || record.status === 'timed_out' || record.status === 'unreachable'
 																	? 'bg-rose-50'
 																	: 'bg-[#e9edff]'
 															}`}>

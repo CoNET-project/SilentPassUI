@@ -737,7 +737,8 @@ type PhoneCallRecord = {
 	sessionId: string
 	peerAddress: string
 	direction: 'incoming' | 'outgoing'
-	status: 'ringing' | 'answered' | 'declined' | 'missed' | 'timed_out' | 'cancelled' | 'ended' | 'failed' | 'unreachable'
+	/** `busy`: the callee was in another call (outgoing only). */
+	status: 'ringing' | 'answered' | 'declined' | 'busy' | 'missed' | 'timed_out' | 'cancelled' | 'ended' | 'failed' | 'unreachable'
 	createdAt: number
 	expiresAt?: number
 	answeredAt?: number

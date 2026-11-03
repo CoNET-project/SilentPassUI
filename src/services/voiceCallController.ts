@@ -231,13 +231,15 @@ export async function resolvePeerVoiceMaterialAsync(
 export async function declineIncomingVoiceOffer(
 	options: VoiceCallControllerOptions,
 	offer: VoiceCallSignal,
+	/** `busy`: this device is in another call (the caller plays a busy tone). */
+	reason: 'declined' | 'busy' = 'declined',
 ): Promise<boolean> {
 	if (!offer.callId || !offer.sessionId) return false
 	const key = `${offer.callId}:${offer.sessionId}`
 	if (declinedVoiceOfferKeys.has(key)) return true
 	declinedVoiceOfferKeys.add(key)
 	const controller = createVoiceCallController(options)
-	const sent = await controller.rejectIncoming(offer)
+	const sent = await controller.rejectIncoming(offer, reason)
 	if (!sent) declinedVoiceOfferKeys.delete(key)
 	return sent
 }
@@ -509,14 +511,14 @@ export function createVoiceCallController(options: VoiceCallControllerOptions) {
 		}
 	}
 
-	const rejectIncoming = async (offer: VoiceCallSignal): Promise<boolean> => {
+	const rejectIncoming = async (offer: VoiceCallSignal, reason: 'declined' | 'busy' = 'declined'): Promise<boolean> => {
 		const reject = makeVoiceCallSignal({
 			type: 'voice_call_reject_v1',
 			callId: offer.callId,
 			sessionId: offer.sessionId,
 			from: new ethers.Wallet(options.privateKey).address,
 			to: offer.from,
-			reason: 'declined',
+			reason,
 		})
 		// To the caller's mailbox (the shell sends its own from native when it owns the call).
 		const sentToCaller = (voiceOfferB64Armor(offer.callerPgp) || options.peerPgp)

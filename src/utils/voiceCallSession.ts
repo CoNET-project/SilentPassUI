@@ -777,6 +777,9 @@ const PHONE_CALL_STATUS_RANK: Record<PhoneCallRecord['status'], number> = {
 	missed: 3,
 	timed_out: 3,
 	ended: 3,
+	// The most specific "not connected" outcome: a plain decline arriving after it
+	// (the page's own copy, a shell's callRejected) must not hide it.
+	busy: 4,
 	// No ringing receipt after five rings. The cancel and the shell's call end
 	// that follow are read as "cancelled" and must not hide it.
 	unreachable: 4,
@@ -785,6 +788,7 @@ const PHONE_CALL_STATUS_RANK: Record<PhoneCallRecord['status'], number> = {
 const PHONE_CALL_TERMINAL_STATUSES: ReadonlySet<PhoneCallRecord['status']> = new Set([
 	'cancelled',
 	'declined',
+	'busy',
 	'failed',
 	'missed',
 	'timed_out',
@@ -799,10 +803,30 @@ export const isPhoneCallTerminalStatus = (status: PhoneCallRecord['status'] | un
 const PHONE_CALL_UNANSWERED_STATUSES: ReadonlySet<PhoneCallRecord['status']> = new Set([
 	'cancelled',
 	'declined',
+	'busy',
 	'missed',
 	'timed_out',
 	'unreachable',
 ])
+
+/**
+ * The callee was in another call: the caller's call screen stays about this long,
+ * says "On another call" and lets the busy tone (3 × 0.5 s) finish, then closes.
+ * Hang-up during the hold closes it at once.
+ */
+export const BUSY_HOLD_MS = 3_000
+
+/**
+ * Whether the page itself ends the shell's system call (CallKit / Telecom) when
+ * the call ends with `status`. Not for busy inside a native shell: its dialer
+ * shows "On another call", plays the busy tone and ends the call after it.
+ */
+export const pageEndsSystemCall = (status: PhoneCallRecord['status'] | undefined, inNativeShell: boolean): boolean =>
+	!(inNativeShell && status === 'busy')
+
+/** Browser dialer: how long the in-page call window stays before it closes for `status`. */
+export const callWindowHoldMs = (status: PhoneCallRecord['status'] | undefined, inNativeShell: boolean): number =>
+	!inNativeShell && status === 'busy' ? BUSY_HOLD_MS : 0
 
 /**
  * Calls the native shell answered (CallKit / Telecom), by callId and sessionId.
@@ -901,6 +925,27 @@ export const replacePhoneCallInRows = (
 	merged,
 ]
 
+/**
+ * Browser only: the chat page reports whether it has a call up (dialing, ringing
+ * out, or connected) and which. An offer for another call that arrives then is
+ * answered "busy" without ringing (the shells do the same natively).
+ */
+type BrowserVoiceCallProbe = () => { live: boolean; callId?: string; sessionId?: string }
+let browserVoiceCallProbe: BrowserVoiceCallProbe | null = null
+
+export function registerBrowserVoiceCallProbe(probe: BrowserVoiceCallProbe | null): void {
+	browserVoiceCallProbe = probe
+}
+
+/** This page is in a call other than `offer`'s. */
+export function browserVoiceCallBusyFor(offer: { callId?: string; sessionId?: string }): boolean {
+	const state = browserVoiceCallProbe?.()
+	if (!state?.live) return false
+	const sameCall = (!!offer.callId && offer.callId === state.callId)
+		|| (!!offer.sessionId && offer.sessionId === state.sessionId)
+	return !sameCall
+}
+
 export const mergePhoneCallRecord = (
 	current: PhoneCallRecord | null | undefined,
 	incoming: PhoneCallRecord | null | undefined,
@@ -960,6 +1005,9 @@ export const incomingSettledStatusForAction = (action: unknown): PhoneCallRecord
 			return 'timed_out'
 		case 'callRejected':
 			return 'declined'
+		// The shell rejected it as busy while this device was in another call.
+		case 'callBusyRejected':
+			return 'busy'
 		default:
 			return null
 	}
@@ -988,7 +1036,10 @@ export const withSettledIncomingOutcome = (record: PhoneCallRecord): PhoneCallRe
 	const outcome = settledIncomingOutcomes.get(nonBlank(record.callId))
 		|| settledIncomingOutcomes.get(nonBlank(record.sessionId))
 	if (!outcome) return record
+	// A busy reject also replaces a later "missed" / "declined" guess for the
+	// same call (a replayed offer past its ring window is recorded as missed).
 	const applies = record.status === 'ringing'
+		|| (outcome.status === 'busy' && record.status !== 'busy' && PHONE_CALL_UNANSWERED_STATUSES.has(record.status))
 	if (!applies) return record
 	return mergePhoneCallRecord(record, { ...record, status: outcome.status, endedAt: outcome.endedAt }) || record
 }

@@ -367,7 +367,7 @@ export default function ChatList({
 				? (profiles?.[0]?.phoneCalls || []).find((row: PhoneCallRecord) =>
 					row.callId === signal.callId || row.sessionId === signal.sessionId)
 				: null
-			const phoneCallTerminal = ['declined', 'cancelled', 'ended', 'missed', 'timed_out', 'failed', 'unreachable']
+			const phoneCallTerminal = ['declined', 'busy', 'cancelled', 'ended', 'missed', 'timed_out', 'failed', 'unreachable']
 				.includes(String(phoneCall?.status || ''))
 			if (
 				signal?.type === 'voice_call_offer_v1' &&

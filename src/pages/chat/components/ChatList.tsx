@@ -20,6 +20,7 @@ import { chatShareLinkListPreview } from '@/utils/chatShareLinkPreview'
 import { chatGenericLinkListPreview } from '@/utils/chatGenericLinkPreview'
 import { isVoiceCallOfferActive, isVoiceCallTerminal, parseVoiceCallSignal } from '@/utils/voiceCallSession'
 import { isCashTreesNativeWebView } from '@/utils/cashTreesNativeNfc'
+import { DeliveryHealthBanner } from '@/components/DeliveryHealthBanner'
 
 // 注意：不再接受 `list` prop。ChatList 内部直接从 useDaemonContext().profiles[0].chats
 // 读取并通过 useMemo 派生 items，避免与 profile.chats 出现两个数据源不一致的风险
@@ -554,6 +555,8 @@ export default function ChatList({
         ) : null}
       </div>
 
+      {/* Android: the phone blocks Beamio's wake-up pushes (deep sleep / restricted / force stop). */}
+      <DeliveryHealthBanner />
       {/* 列表 */}
       <div className="px-4 pt-2 pb-[env(safe-area-inset-bottom)]">
         <div className="mx-auto w-full max-w-[820px] min-w-0">

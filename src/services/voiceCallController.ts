@@ -1,5 +1,6 @@
 import { markCallTiming, timeCallStep } from '@/utils/callTiming'
 import { cachedReadKey, cachedWallet } from '@/utils/dialKeyCache'
+import { mailboxNodeIps } from '@/utils/dialPathHelpers'
 import { createMessage, encrypt, enums } from 'openpgp'
 import {
 	createVoiceSessionKey,
@@ -38,6 +39,8 @@ export type VoiceCallControllerOptions = {
 	peerPgp: string
 	peerRoute: string
 	allNodes: nodeInfo[]
+	/** Shell dial: called once the offer is handed to the native side (the page may re-render then). */
+	onOfferHanded?: () => void
 }
 
 const normalizeArmor = (v?: string) => (v || '').replace(/\r/g, '').trim()
@@ -105,6 +108,7 @@ async function deliverOfferToCalleeMailbox(args: {
 	sessionId: string
 	expiresAt: number
 	pushTimestamp: number
+	onHanded?: () => void
 }): Promise<boolean> {
 	const store = await encryptOpaqueVoiceCommandToRoute({
 		command: 'voice_offer_store',
@@ -118,7 +122,10 @@ async function deliverOfferToCalleeMailbox(args: {
 	}, args.calleeRoute)
 	markCallTiming('offer-store-pgp')
 	// purpose 'voice-offer': the shell shows its call screen once the offer is handed over.
-	const posted = await timeCallStep('offer-store-post', () => postNativePgpCiphertext(store, args.excludeIps, undefined, 'voice-offer'))
+	// The post is handed to the shell synchronously here; the page may render after this.
+	const posting = timeCallStep('offer-store-post', () => postNativePgpCiphertext(store, args.excludeIps, undefined, 'voice-offer'))
+	args.onHanded?.()
+	const posted = await posting
 	let ok = false
 	let pushed = false
 	try {
@@ -338,13 +345,7 @@ export function createVoiceCallController(options: VoiceCallControllerOptions) {
 		let delivered = false
 		if (nativeShell) {
 			// Entry: neither mailbox (rule 19).
-			const mailboxIps = options.allNodes
-				.filter((n) => {
-					const key = normalizeArmor(n.armoredPublicKey)
-					return key === normalizeArmor(options.peerRoute) || key === normalizeArmor(ownRoute)
-				})
-				.map((n) => String(n.ip_addr || '').trim())
-				.filter(Boolean)
+			const mailboxIps = mailboxNodeIps(options.allNodes, [options.peerRoute, ownRoute])
 			delivered = await deliverOfferToCalleeMailbox({
 				offerArmor,
 				calleeRoute: options.peerRoute,
@@ -353,6 +354,7 @@ export function createVoiceCallController(options: VoiceCallControllerOptions) {
 				sessionId: ringId,
 				expiresAt: ringExpiresAt,
 				pushTimestamp,
+				onHanded: options.onOfferHanded,
 			})
 		} else {
 			const stored = await timeCallStep('offer-store-post', () => sendWorkerVoiceOffer({

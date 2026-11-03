@@ -92,6 +92,7 @@ import { useBeamioTagDatabase } from '@/providers/BeamioTagDatabaseProvider'
 import { fiatPrefix } from '@/services/currency'
 import { beginCallTiming, markCallTiming, timeCallStep } from '@/utils/callTiming'
 import { cachedWallet, prewarmDialKeys } from '@/utils/dialKeyCache'
+import { createDialStateGate } from '@/utils/dialPathHelpers'
 import { VOICE_LINK, newVoiceLinkState, noteVoiceLinkRx, tickVoiceLink, type VoiceLinkState } from '@/utils/voiceLinkPolicy'
 import { dispatchNativeSystemCallAction, getCashTreesNativeNfcBridge, getCashTreesNativeNfcHost, isCashTreesNativeWebView, nativeShellAcksDialer, notifyNativeVoiceMicReady, openExternalUrl, requestNativeCameraCapture, requestNativePhotoPicker, saveFileToNative } from '@/utils/cashTreesNativeNfc'
 import { NATIVE_DIALER_ACK_MS, nativeDialerAckOverdue } from '@/utils/nativeDialerAck'
@@ -3018,11 +3019,13 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 			setVoiceCallConnecting(true)
 			setVoiceCallState('outgoing')
 		}
-		// The native screen already shows the call; re-rendering the chat page
-		// here ran inside the awaits below and held the offer back. A transition
-		// lets React render it in small slices around the dial work.
-		if (nativePrepared) startTransition(applyDialState)
-		else applyDialState()
+		// The native screen already shows the call: re-rendering the chat page here
+		// held the offer's last encryption back (RC3d R17, 1.3–3.8 s). Inside the
+		// shell the page state waits until the offer is handed to the native side.
+		const dialState = createDialStateGate(
+			() => (nativePrepared ? startTransition(applyDialState) : applyDialState()),
+			nativePrepared,
+		)
 		let route = chatData.chatData?.routersArmoreds?.trim() || ''
 		let recipientPgp = chatData.chatData?.publicArmored?.trim() || ''
 		// ChatList refreshes peer routes in the background. A call can be
@@ -3076,8 +3079,10 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 				peerPgp: recipientPgp,
 				peerRoute: route,
 				allNodes,
+				onOfferHanded: dialState.offerHanded,
 			})
 			const channel = await timeCallStep('offer-ready', () => controller.startOutgoing())
+			if (channel && !cancelledWhileStarting()) dialState.settle()
 			if (nativePrepared) window.setTimeout(prewarmAudio, 0)
 			if (cancelledWhileStarting()) {
 				// Cancel was pressed while the offer was being posted. The callee's

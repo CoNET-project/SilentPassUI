@@ -59,6 +59,7 @@ import {
 import { ChatHeaderIOS } from "./components/ChatHeaderIOS"
 import BeamioContactProfilePreview from "@/components/Home/BeamioContactProfilePreview"
 import { useScrollCapsuleOpacity } from "@/hooks/useScrollCapsuleOpacity"
+import { useVisualViewportFrame } from "@/hooks/useVisualViewportFrame"
 import {
 	initBeamioPGPKeys,
 	regiestChatRoute,
@@ -6283,6 +6284,8 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 	if (!el) return
 	// 直接到底（不依赖 scrollHeight - clientHeight）
 	el.scrollTo({ top: el.scrollHeight, behavior: mode })
+	// A scroll the page makes itself must not hide the header (back + call buttons).
+	showCapsuleNow()
 	}
 
 	/**
@@ -6321,15 +6324,35 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 		}, ms)
 		const sc = scrollRef.current
 		if (sc) sc.scrollTop = sc.scrollHeight
-	}, [])
+		showCapsuleNow()
+	}, [showCapsuleNow])
 	const [composerEl, setComposerEl] = useState<HTMLDivElement | null>(null)
 	const [chatContentEl, setChatContentEl] = useState<HTMLDivElement | null>(null)
+	// iOS keyboard: keep the header on screen; only the list and composer move.
+	const [chatRootEl, setChatRootEl] = useState<HTMLDivElement | null>(null)
+	const keyboardCovers = useVisualViewportFrame(chatRootEl)
+	// The list got shorter under the keyboard: keep the newest bubble above the composer.
+	useEffect(() => {
+		const scroller = scrollRef.current
+		if (!scroller || !followBottomRef.current) return
+		const frame = requestAnimationFrame(() => {
+			scroller.scrollTop = scroller.scrollHeight
+			showCapsuleNow()
+		})
+		return () => cancelAnimationFrame(frame)
+	}, [keyboardCovers, showCapsuleNow])
 
 	useEffect(() => {
 		const scroller = scrollRef.current
 		if (!scroller || typeof ResizeObserver === 'undefined') return
 		const frameHost = scroller.parentElement
-		const pinNow = () => { scroller.scrollTop = scroller.scrollHeight }
+		// Following the newest bubble is the page's own scroll, not the user's:
+		// keep the header (back + call buttons) on screen. Without this, a new
+		// message while pinned to the bottom slid the whole header away.
+		const pinNow = () => {
+			scroller.scrollTop = scroller.scrollHeight
+			showCapsuleNow()
+		}
 		const observers: ResizeObserver[] = []
 		if (composerEl) {
 			let lastHeight = -1
@@ -6385,7 +6408,7 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 			scroller.removeEventListener('touchend', onTouchEnd)
 			scroller.removeEventListener('scroll', settleFollow)
 		}
-	}, [composerEl, chatContentEl, releaseBottomPin])
+	}, [composerEl, chatContentEl, releaseBottomPin, showCapsuleNow])
 
 	useEffect(() => () => {
 		if (stickReleaseTimerRef.current !== null) window.clearTimeout(stickReleaseTimerRef.current)
@@ -7331,6 +7354,7 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 
   return (
 		<div
+			ref={setChatRootEl}
 			className="fixed inset-0 bg-[#F1F8ED]"
 			onDragEnter={handleChatFileDragEnter}
 			onDragOver={handleChatFileDragOver}
@@ -8514,7 +8538,8 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 				ref={setComposerEl}
 				className={[
 					"fixed left-0 right-0 bottom-0 z-50",
-					"pb-[env(safe-area-inset-bottom)]"
+					// On the keyboard there is no home indicator to clear.
+					keyboardCovers ? "pb-0" : "pb-[env(safe-area-inset-bottom)]"
 				].join(" ")}
 				onDragEnter={handleChatFileDragEnter}
 				onDragOver={handleChatFileDragOver}

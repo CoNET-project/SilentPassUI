@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Check, Loader2, Users } from 'lucide-react'
 import { chatComposerAutofillProps } from '@/utils/chatComposerAutofill'
+import { useVisualViewportFrame } from '@/hooks/useVisualViewportFrame'
 
 import {
 	BeamioCircularBackButton,
@@ -48,6 +49,9 @@ export default function GroupChatScreen({ chats, ownEoa, onClose }: Props) {
 	const { resolveTagPlain } = useBeamioTagDatabase()
 	const [groups, setGroups] = useState<StoredGroupV1[]>(() => listGroupChats())
 	const [mode, setMode] = useState<'list' | 'create' | 'thread'>('list')
+	// iOS keyboard pans the page; keep the back row on screen (see useVisualViewportFrame).
+	const [rootEl, setRootEl] = useState<HTMLDivElement | null>(null)
+	useVisualViewportFrame(rootEl)
 	const [openId, setOpenId] = useState('')
 	const [name, setName] = useState('')
 	const [selected, setSelected] = useState<string[]>([])
@@ -138,7 +142,7 @@ export default function GroupChatScreen({ chats, ownEoa, onClose }: Props) {
 	const isOwner = open ? open.roster.policy.owner.toLowerCase() === ownEoa.toLowerCase() : false
 
 	return (
-		<div className="flex min-h-0 flex-1 flex-col bg-[#F1F8ED]">
+		<div ref={setRootEl} className="flex min-h-0 flex-1 flex-col bg-[#F1F8ED]">
 			<div className="px-4 pt-[max(1rem,env(safe-area-inset-top,0px))]">
 				<div className={BEAMIO_CIRCULAR_BACK_ROW_CLASS}>
 					<BeamioCircularBackButton variant="onLight" onClick={back} className="absolute left-0 top-0" />

@@ -12,6 +12,8 @@ import {aesGcmEncrypt, aesGcmDecrypt, toBase64, fromBase64, storeSystemData } fr
 import { isWorkerGossipActive, startWorkerGossipListen, stopWorkerGossip } from '@/services/chatWorkerBridge'
 import { gossipLog } from '@/utils/gossipLog'
 import { wrapArmorToMailboxWork } from '@/vendor/beamio-chat-sdk/envelope'
+import { pickRecordedMailbox, planOwnChatRoute, readOwnChainState, resolveCurrentMailbox } from '@/services/chatOwnRoutePlan'
+import type { OwnPrivateBlob } from '@/services/chatOwnRoutePlan'
 
 
 type GenerateKeyArg = Parameters<typeof generateKey>[0]
@@ -241,7 +243,8 @@ export const initChat = async (setProfiles: (val: profile[]) => void, setAllNode
 
 		chatManager = {
 			pgpKey: pgpData,
-			router: chatManager?.router || '',
+			// Keep the chain route just read: it is the current mailbox if a later read fails.
+			router: chatManager?.router || pgpData.routes || '',
 
 		}
 		profile.chatManager = chatManager
@@ -249,60 +252,73 @@ export const initChat = async (setProfiles: (val: profile[]) => void, setAllNode
 	}
 
 
-	// ✅ 如果没有 routes，从链上/SC 找；再不行就随机注册一个
-	//	寻找链上信息
+	// Own mailbox (chatOwnRoutePlan.ts). A failed chain read keeps the current
+	// mailbox and never registers. Only a successful read that shows no record,
+	// another key or no route registers the local key, on the mailbox the
+	// account already has; a random mailbox is only for a new account.
 	const rr = await settleWithin(getKeysFromCoNETPGPSC(profile.keyID, profile.privateKeyArmor), 8_000, null)
-	routes = rr?.routersArmoreds||''
-
-	//	链上route信息
-	if (routes) {
-		chatManager.router = routes
-	}
-
-	// 检测：本地 PGP 与链上不一致时，说明用户在本地更换了密钥对但未重新登记，需调用 regiestChatRoute 同步
-	if (rr?.userPgpKeyID && chatManager.pgpKey.publicKey) {
-		try {
-			const localKeyID = await getPublicKeyArmoredKeyID(chatManager.pgpKey.publicKey)
-			const chainKeyID = (rr.userPgpKeyID || '').toUpperCase()
-			if (localKeyID && chainKeyID && localKeyID !== chainKeyID) {
-				console.warn('[initChat] 本地 PGP KeyID 与链上不一致，重新登记', { localKeyID, chainKeyID })
-				const node = getRandomNode(allNodes)
-				if (node) {
-					const ok = await regiestChatRoute(
-						profile.privateKeyArmor,
-						chatManager.pgpKey.publicKey,
-						localKeyID,
-						chatManager.pgpKey.privateKey,
-						node.domain
-					)
-					if (ok) {
-						await new Promise(r => setTimeout(r, 5000))
-						const rr2 = await settleWithin(getKeysFromCoNETPGPSC(profile.keyID, profile.privateKeyArmor), 8_000, null)
-						const chainKeyID2 = (rr2?.userPgpKeyID || '').toUpperCase()
-						if (chainKeyID2 === localKeyID) {
-							console.log('[initChat] 重新登记验证成功', { localKeyID, chainKeyID2 })
-						} else {
-							console.warn('[initChat] 重新登记 5 秒后验证失败：链上仍为', chainKeyID2, '，期望', localKeyID)
-						}
-					}
-				}
-			}
-		} catch (e: any) {
-			console.warn('[initChat] 检测 PGP KeyID 时出错', e?.message ?? e)
+	const ownChain = await readOwnChatChain(rr, profile.privateKeyArmor)
+	const localKeyID = await getPublicKeyArmoredKeyID(chatManager.pgpKey.publicKey || '').catch(() => '')
+	const currentMailbox = resolveCurrentMailbox(chatManager.router || '', allNodes || [], null)
+	const plan = planOwnChatRoute({
+		read: ownChain.read,
+		localKeyID,
+		current: currentMailbox.mailbox,
+		currentArmor: currentMailbox.armor,
+	})
+	gossipLog(plan.action === 'use-chain' ? 'info' : 'warn', `[initChat] own mailbox: ${plan.action} (${plan.reason})`)
+	if (plan.action === 'use-chain') {
+		chatManager.router = plan.mailbox.routeArmor
+	} else if (plan.action === 'keep-current') {
+		chatManager.router = plan.routeArmor
+	} else if (plan.action === 'wait-retry') {
+		setGossip(false)
+		return
+	} else {
+		// A new mailbox only on a node AddressPGP has recorded; a failed check picks nothing.
+		const randomPick = plan.target === 'random'
+			? await pickRecordedMailbox({
+				candidates: await reachableMailboxCandidates(allNodes),
+				routeKeyID: (n) => n.domain,
+				isRecorded: isMailboxNodeRecorded,
+			})
+			: null
+		if (randomPick?.skipped.length) console.warn('[initChat] new mailbox: skipped unrecorded nodes', randomPick.skipped.join(','))
+		if (randomPick?.status === 'error') {
+			console.warn('[initChat] new mailbox: node check failed; not registering', randomPick.reason)
+			setGossip(false)
+			return
 		}
-	}
-
-	if (!routes) {
-		const node = await pickReachableGossipNode(allNodes)
-		if (node) {
-			await regiestChatRoute(
-				profile.privateKeyArmor,
-				chatManager.pgpKey.publicKey,
-				chatManager.pgpKey.keyID,
-				chatManager.pgpKey.privateKey,
-				node.domain
-			)
-			chatManager.router = node.armoredPublicKey
+		const randomNode = randomPick?.status === 'ok' ? randomPick.node : null
+		const target = plan.target !== 'random'
+			? plan.target
+			: randomNode ? { routeKeyID: randomNode.domain, routeArmor: randomNode.armoredPublicKey } : null
+		if (!target) {
+			setGossip(false)
+			return
+		}
+		const ok = await regiestChatRoute(
+			profile.privateKeyArmor,
+			chatManager.pgpKey.publicKey,
+			localKeyID || chatManager.pgpKey.keyID,
+			chatManager.pgpKey.privateKey,
+			target.routeKeyID,
+		)
+		if (!ok && plan.target === 'random') {
+			// A new account whose registration failed has no mailbox yet.
+			setGossip(false)
+			return
+		}
+		chatManager.router = target.routeArmor
+		if (ok && localKeyID) {
+			await new Promise(r => setTimeout(r, 5000))
+			const rr2 = await settleWithin(getKeysFromCoNETPGPSC(profile.keyID, profile.privateKeyArmor), 8_000, null)
+			const chainKeyID2 = (rr2?.userPgpKeyID || '').toUpperCase()
+			if (chainKeyID2 === localKeyID) {
+				console.log('[initChat] 重新登记验证成功', { localKeyID, chainKeyID2 })
+			} else {
+				console.warn('[initChat] 重新登记 5 秒后验证失败：链上仍为', chainKeyID2, '，期望', localKeyID)
+			}
 		}
 	}
 
@@ -346,6 +362,24 @@ export const initBeamioPGPKeys = async (profile: profile): Promise<initBeamioPGP
 		}
 	}
 
+	// No usable chain private key. Make a new key only when the read worked and
+	// the chain holds nothing we could ever load (no record, no blob, or a blob
+	// our key cannot open). A failed read returns null (initChat stops; the next
+	// start tries again); a new key here would overwrite the user's key on chain.
+	const own = await readOwnChatChain(keyInfo, profile.privateKeyArmor)
+	if (own.read.status === 'error' || (own.read.status === 'ok' && own.read.privateBlob === 'error')) {
+		gossipLog('warn', '[initBeamioPGPKeys] chain key unreadable; not making a new key')
+		return null
+	}
+	if (own.read.status === 'ok' && own.privateArmored && own.publicArmored) {
+		return {
+			privateKey: own.privateArmored,
+			publicKey: own.publicArmored,
+			keyID: profile.keyID || own.read.userKeyID || '',
+			routes: own.read.routeArmor,
+		}
+	}
+
 	const keys = await generatePgpKey(profile.keyID,'')
 	const ret: initBeamioPGPKeysRet = {
 		privateKey: keys.privateKey as unknown as string,
@@ -356,24 +390,105 @@ export const initBeamioPGPKeys = async (profile: profile): Promise<initBeamioPGP
 	return ret
 }
 
-export const regiestChatRoute = async (privateKey: string, pubArmor: string, keyID: string, priArmor: string, routeKeyID: string) => {
-	const Wallet = new ethers.Wallet(privateKey, conetDepinProvider)
-	const encryptPri = await aesGcmEncrypt(priArmor, privateKey)
-	const publicKeyArmored = toBase64(pubArmor)
+/** Our own encrypted PGP private key: loaded, absent on chain, or not openable with our key. Throws on RPC error. */
+const probeOwnPrivateBlob = async (privateKeyArmor: string): Promise<{ state: OwnPrivateBlob; armored: string }> => {
+	const wallet = new ethers.Wallet(privateKeyArmor, conetDepinProvider)
+	const contract = contracts.constPgpManager
+	const SC = new ethers.Contract(contract.address, contract.abi, wallet)
+	const encrypted: string = await SC.getEncryptedPrivateKey()
+	if (!encrypted) return { state: 'missing', armored: '' }
 	try {
+		const armored = await aesGcmDecrypt(encrypted, privateKeyArmor)
+		return armored?.trim() ? { state: 'ok', armored } : { state: 'undecryptable', armored: '' }
+	} catch {
+		return { state: 'undecryptable', armored: '' }
+	}
+}
+
+/**
+ * Our own AddressPGP record, with a failed read told apart from an empty one
+ * (chatOwnRoutePlan.ts `readOwnChainState`). `getKeysFromCoNETPGPSC` returns
+ * null for an RPC error, a timeout and an undecryptable blob alike, so on null
+ * (or an empty record) searchKey is read once more on its own.
+ */
+const readOwnChatChain = async (
+	rr: Awaited<ReturnType<typeof getKeysFromCoNETPGPSC>>,
+	privateKeyArmor: string,
+) => {
+	const hasRecord = Boolean(rr && (rr.publicArmored || rr.routersArmoreds))
+	return readOwnChainState({
+		first: rr && hasRecord
+			? {
+				userKeyID: rr.userPgpKeyID || '',
+				routeKeyID: rr.routePgpKeyID || '',
+				routeArmor: rr.routersArmoreds || '',
+				publicArmored: rr.publicArmored || '',
+				privateArmored: rr.privateArmored || '',
+			}
+			: null,
+		searchKey: async () => {
+			const address = new ethers.Wallet(privateKeyArmor).address
+			const contract = contracts.constPgpManager
+			const SC = new ethers.Contract(contract.address, contract.abi, conetDepinProvider)
+			const info: searchKeyPGP = await SC.searchKey(address)
+			const publicArmored = info?.userPublicKeyArmored ? fromBase64(info.userPublicKeyArmored) : ''
+			const routeArmor = info?.routePublicKeyArmored ? fromBase64(info.routePublicKeyArmored) : ''
+			if (!publicArmored && !routeArmor) return null
+			return { userKeyID: info.userPgpKeyID || '', routeKeyID: info.routePgpKeyID || '', routeArmor, publicArmored }
+		},
+		probeBlob: () => probeOwnPrivateBlob(privateKeyArmor),
+	})
+}
+
+/**
+ * Message the wallet signs for `POST /api/regiestChatRoute` (EIP-191).
+ * Must match x402sdk `src/chatRouteAuth.ts` `buildRegiestChatRouteMessage`.
+ */
+const buildRegiestChatRouteMessage = (p: {
+	wallet: string
+	keyID: string
+	publicKeyArmored: string
+	encrypKeyArmored: string
+	routeKeyID: string
+	timestamp: number
+	nonce: string
+}): string => [
+	'Beamio regiestChatRoute',
+	`wallet:${p.wallet.toLowerCase()}`,
+	`keyID:${p.keyID}`,
+	`publicKeyArmoredHash:${ethers.keccak256(ethers.toUtf8Bytes(p.publicKeyArmored))}`,
+	`encrypKeyArmoredHash:${ethers.keccak256(ethers.toUtf8Bytes(p.encrypKeyArmored))}`,
+	`routeKeyID:${p.routeKeyID}`,
+	`timestamp:${p.timestamp}`,
+	`nonce:${p.nonce.toLowerCase()}`,
+].join('\n')
+
+/** Signed request body; the API rejects unsigned or foreign-signed requests. */
+const signRegiestChatRouteBody = async (privateKey: string, pubArmor: string, keyID: string, priArmor: string, routeKeyID: string) => {
+	const Wallet = new ethers.Wallet(privateKey)
+	const fields = {
+		wallet: Wallet.address,
+		keyID: String(keyID || '').trim(),
+		publicKeyArmored: toBase64(pubArmor).trim(),
+		encrypKeyArmored: String(await aesGcmEncrypt(priArmor, privateKey)).trim(),
+		routeKeyID: String(routeKeyID || '').trim(),
+		timestamp: Date.now(),
+		nonce: ethers.hexlify(ethers.randomBytes(16)),
+	}
+	const signature = await Wallet.signMessage(buildRegiestChatRouteMessage(fields))
+	return { ...fields, signature }
+}
+
+export const regiestChatRoute = async (privateKey: string, pubArmor: string, keyID: string, priArmor: string, routeKeyID: string) => {
+	try {
+		const signedBody = await signRegiestChatRouteBody(privateKey, pubArmor, keyID, priArmor, routeKeyID)
 		const ac = new AbortController()
 		const abortTimer = window.setTimeout(() => ac.abort(), 12_000)
 		const res = await fetch(`${beamioApi}/api/regiestChatRoute`, {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/json' },
 			signal: ac.signal,
-			body: JSON.stringify({
-				wallet: Wallet.address,
-				keyID,
-				publicKeyArmored,
-				encrypKeyArmored: encryptPri,
-				routeKeyID
-			})
+			body: JSON.stringify(signedBody)
 		}).finally(() => window.clearTimeout(abortTimer))
 		const json = await res.json()
 		if (!res.ok) {
@@ -765,9 +880,18 @@ const pickHealthyGossipNodes = async (nodes: nodeInfo[]): Promise<nodeInfo[]> =>
 	return checks.filter(n => n.ok).map(n => n.node)
 }
 
-const pickReachableGossipNode = async (nodes: nodeInfo[]): Promise<nodeInfo | null> => {
+/** New-mailbox candidates in random order, reachable nodes first. */
+const reachableMailboxCandidates = async (nodes: nodeInfo[]): Promise<nodeInfo[]> => {
 	const healthy = await pickHealthyGossipNodes(nodes)
-	return getRandomNode(healthy.length ? healthy : nodes)
+	const rest = nodes.filter(n => !healthy.includes(n))
+	return [...getRandomNodes(healthy, healthy.length), ...getRandomNodes(rest, Math.min(8, rest.length))]
+}
+
+/** AddressPGP has recorded this node as a mailbox (`nodeKeyExists`). Throws on RPC error. */
+const isMailboxNodeRecorded = async (routeKeyID: string): Promise<boolean> => {
+	const contract = contracts.constPgpManager
+	const SC = new ethers.Contract(contract.address, contract.abi, conetDepinProvider)
+	return Boolean(await SC.nodeKeyExists(ethers.id(routeKeyID)))
 }
 
 export const connectToGossipNode = async (

@@ -689,19 +689,10 @@ class NativeConetChatClientImpl implements BeamioChatClient {
 		}
 	}
 
-	async startVoiceListen(
-		sessionId: string,
-		pushWakeup?: {
-			callId: string
-			calleeEoa: string
-			expiresAt: number
-			timestamp: number
-			offerText?: string
-			recipientPgp?: string
-		},
-	): Promise<boolean> {
+	async startVoiceListen(sessionId: string, _call?: unknown): Promise<boolean> {
+		// The shell's native voice module owns v3 channels; call keys never cross this bridge.
 		try {
-			await this.request<void>({ type: 'voiceListen', reqId: 0, sessionId, pushWakeup }, 60_000)
+			await this.request<void>({ type: 'voiceListen', reqId: 0, sessionId }, 60_000)
 			return true
 		} catch {
 			return false

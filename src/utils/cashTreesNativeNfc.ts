@@ -531,6 +531,47 @@ export function setNativeChatPgpSecrets(payload: NativeChatPgpSecretsPayload): b
 	return false
 }
 
+/**
+ * Voice protocol v3: the shell picks relays for its own paid channels and
+ * encrypts to them, so it needs every node's route public key (public data).
+ * The shell caches the list for a cold start that answers without the page.
+ */
+export function setNativeVoiceRelayNodes(nodes: Array<{ ip_addr?: string; domain?: string; armoredPublicKey?: string }> | undefined): boolean {
+	if (typeof window === 'undefined' || !isCashTreesNativeWebView() || !Array.isArray(nodes)) return false
+	const list = nodes
+		.map((n) => ({
+			ip: String(n?.ip_addr || '').trim(),
+			domain: String(n?.domain || '').trim().toUpperCase(),
+			armor: String(n?.armoredPublicKey || '').replace(/\r/g, '').trim(),
+		}))
+		.filter((n) => n.ip && n.domain && n.armor.includes('BEGIN PGP PUBLIC KEY'))
+	if (!list.length) return false
+	const host = getCashTreesNativeNfcHost()
+	try {
+		if (host === 'ios') {
+			const handler = (
+				window as unknown as {
+					webkit?: { messageHandlers?: { CashTreesIOS?: { postMessage: (m: unknown) => void } } }
+				}
+			).webkit?.messageHandlers?.CashTreesIOS
+			if (!handler?.postMessage) return false
+			handler.postMessage({ action: 'setNativeVoiceRelayNodes', nodes: list })
+			return true
+		}
+		if (host === 'android') {
+			const android = window.CashTreesAndroid as
+				| { setNativeVoiceRelayNodes?: (json: string) => void }
+				| undefined
+			if (typeof android?.setNativeVoiceRelayNodes !== 'function') return false
+			callAndroidBridge(android, 'setNativeVoiceRelayNodes', JSON.stringify({ nodes: list }))
+			return true
+		}
+	} catch {
+		return false
+	}
+	return false
+}
+
 function normalizeNativeSiNodes(nodes: NativeSiNode[] | undefined): NativeSiNode[] | undefined {
 	if (!Array.isArray(nodes) || !nodes.length) return undefined
 	const out: NativeSiNode[] = []

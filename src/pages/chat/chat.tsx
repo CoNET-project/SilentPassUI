@@ -135,7 +135,6 @@ import {
 	parseVoiceCallSignal,
 	randomVoiceId,
 	recoverVoiceCallOfferSigner,
-	voiceOfferRelayRoute,
 	lookupIncomingVoiceOffer,
 	INCOMING_CALL_RING_TIMEOUT_MS,
 	mergePhoneCallRecord,
@@ -151,8 +150,6 @@ import {
 	rememberIncomingVoiceOffer,
 	VOICE_CALL_IDENTITY_WARNING,
 	voiceCallClaimMismatchesKey,
-	voiceSessionKeyToBase64,
-	voiceSessionKeyFromBase64,
 	makeVoiceCallSignal,
 	type VoiceCallSignal,
 } from '@/utils/voiceCallSession'
@@ -176,7 +173,6 @@ import {
 	createVoiceCallController,
 	declineIncomingVoiceOffer,
 	resolvePeerVoiceMaterialAsync,
-	sendVoiceCallHangupToTemporaryRelay,
 	timeoutIncomingVoiceOffer,
 	type VoiceCallController,
 } from '@/services/voiceCallController'
@@ -2078,9 +2074,9 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 	const voiceCallSessionRef = useRef<string | null>(null)
 	const voiceCallOfferRef = useRef<{
 		callId: string
+		/** Ring ID of the call (v3): offer index, push handle, call record key. */
 		sessionId: string
-		sessionKey: string
-		/** Caller EOA on inbound offers; used for hangup peer + temporary-relay path. */
+		/** Caller EOA on inbound offers; used as the hangup peer. */
 		from?: string
 		timestamp?: number
 		expiresAt?: number
@@ -2997,7 +2993,6 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 			voiceCallOfferRef.current = {
 				callId: signal.callId,
 				sessionId,
-				sessionKey: signal.sessionKey || '',
 				timestamp: signal.timestamp,
 				expiresAt: signal.expiresAt,
 			}
@@ -3012,10 +3007,6 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 				createdAt: Date.now(),
 				expiresAt: signal.expiresAt,
 			})
-			const sessionKeyB64 =
-				(typeof signal.sessionKey === 'string' && signal.sessionKey.trim()) ||
-				(key ? voiceSessionKeyToBase64(key) : '')
-			const wake = channel.dialerWake
 			nativeStarted = true
 			markCallTiming('start-dispatch')
 			dispatchNativeSystemCallAction('startSystemCall', {
@@ -3023,20 +3014,11 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 				dialId: timing.dialId,
 				callId: signal.callId,
 				sessionId,
-				sessionKey: sessionKeyB64,
 				peerAddress: toAddress,
 				displayName: chatData.beamio?.username || toAddress,
-				...(wake
-					? {
-							dialerWakeCallId: wake.callId,
-							dialerWakeCalleeEoa: wake.calleeEoa,
-							dialerWakeExpiresAt: wake.expiresAt,
-							dialerWakeTimestamp: wake.timestamp,
-							dialerWakeOfferArmor: wake.offerArmor,
-							dialerRelayRoute: wake.relayRoute,
-							dialerRelayIp: wake.relayIp,
-						}
-					: {}),
+				// A dial (not an in-page answer): the shell opens no channel now and
+				// waits for the callee's accept on our mailbox.
+				dialerProto: 3,
 			})
 			// Native shell owns dialer voice_listen + VoIP wake (offerArmor never
 			// started on the worker — do not stopWorkerVoiceListen / no conflict).
@@ -3431,7 +3413,7 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 				(callerEoa || claimedVoiceCallerTag(signal) || claimedVoiceCallerAddress(signal)) &&
 				typeof signal.callId === 'string' &&
 				typeof signal.sessionId === 'string' &&
-				typeof signal.sessionKey === 'string' &&
+				Number(signal.proto) === 3 &&
 				isVoiceCallOfferRinging(signal)
 			) {
 				const persistedPhoneCalls = Array.isArray(profiles?.[0]?.phoneCalls)
@@ -3515,46 +3497,48 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 			}
 			if (
 				signal.type === 'voice_call_accept_v1' &&
-				voiceCallOfferRef.current?.sessionId === signal.peerSessionId &&
-				typeof signal.peerSessionId === 'string' &&
-				!locallyEndedVoiceSessionsRef.current.has(signal.peerSessionId) &&
-				!locallyEndedVoiceSessionsRef.current.has(String(signal.sessionId || ''))
+				Number(signal.proto) === 3 &&
+				voiceCallOfferRef.current?.callId === signal.callId &&
+				voiceCallOfferRef.current?.sessionId === signal.sessionId &&
+				!voiceAcceptHandledRef.current.has(signal.callId) &&
+				!locallyEndedVoiceSessionsRef.current.has(signal.callId) &&
+				!locallyEndedVoiceSessionsRef.current.has(signal.sessionId)
 			) {
-				// The inbound effect re-runs whenever messages or profiles change.
-				// Handling the same accept again restarts the speaker from the beginning.
-				const acceptKey = String(signal.sessionId || '')
-				if (
-					voiceAcceptHandledRef.current.has(acceptKey) ||
-					locallyEndedVoiceSessionsRef.current.has(acceptKey) ||
-					locallyEndedVoiceSessionsRef.current.has(String(signal.peerSessionId || '')) ||
-					locallyEndedVoiceSessionsRef.current.has(String(signal.callId || '')) ||
-					(newestActiveOffer && signal.peerSessionId !== newestActiveOffer.sessionId)
-				) continue
-				voiceAcceptHandledRef.current.add(acceptKey)
-				// Accept.sessionId is the callee's voice listen. peerSessionId is our own.
-				// Frames must be addressed to the callee, or their mailbox drops them.
-				voiceCallPeerSessionRef.current = signal.sessionId
+				// v3: the accept carries our two channels. The shell opens them itself
+				// (its chat module sees the same message); the browser opens them here.
+				voiceAcceptHandledRef.current.add(signal.callId)
 				voiceCallLiveRef.current = true
-				setLiveVoiceSessionId(voiceCallOfferRef.current?.sessionId || signal.peerSessionId || '')
 				setVoiceCallAnswered(true)
 				setVoiceCallMinimized(false)
 				setVoiceCallState('outgoing')
 				void voicePlaybackRef.current?.resume()
 				upsertPhoneCallRecord({
 					callId: signal.callId,
-					sessionId: voiceCallOfferRef.current?.sessionId || signal.sessionId,
+					sessionId: signal.sessionId,
 					peerAddress: toAddress,
 					direction: 'outgoing',
 					status: 'answered',
 					createdAt: Date.now(),
 					answeredAt: Date.now(),
 				})
-				// Native shell dialer owns PCM after accept — do not start PWA media.
-				if (!isCashTreesNativeWebView()) {
-					void startVoiceMedia()
+				const controller = voiceControllerRef.current
+				if (!isCashTreesNativeWebView() && controller) {
+					const accepted = signal
+					void (async () => {
+						const opened = await controller.applyAccept(accepted)
+						if (!opened) {
+							setVoiceError(VOICE_RELAY_OPEN_ERROR)
+							void endVoiceCallRef.current?.('ended')
+							return
+						}
+						voiceCallSessionRef.current = opened.sessionId
+						voiceCallPeerSessionRef.current = opened.peerSessionId
+						void startVoiceMedia()
+					})()
 				}
+				continue
 			}
-			} catch {
+						} catch {
 				/* ordinary Chat text */
 			}
 		}
@@ -3677,10 +3661,6 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 			setIncomingVoiceAction('idle')
 			return
 		}
-		// Media and control go to the caller's session on its per-call relay
-		// node when the offer names one (not the caller's mailbox).
-		const relayRoute = voiceOfferRelayRoute(offer)
-		if (relayRoute) route = relayRoute
 		voicePeerRouteRef.current = route
 		voicePeerWalletRef.current = callerEoa
 		try {
@@ -3714,23 +3694,16 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 			voiceControllerRef.current = controller
 			const dialerSessionId = String(offer.sessionId || '').trim()
 			const localSessionId = channel?.sessionId || dialerSessionId
-			try {
-				voiceCallKeyRef.current =
-					channel?.sessionKey ||
-					(offer.sessionKey ? voiceSessionKeyFromBase64(offer.sessionKey) : null)
-			} catch {
-				voiceCallKeyRef.current = channel?.sessionKey || null
-			}
+			voiceCallKeyRef.current = channel?.sessionKey || null
 			setVoiceCallMuted(false)
 			setVoiceLevelSamples([])
 			voiceCallSessionRef.current = localSessionId
-			// Callee: peer media session is the dialer's offer listen id.
-			voiceCallPeerSessionRef.current = dialerSessionId
+			// Callee: frames go to the caller's voice channel (created by us in the accept).
+			voiceCallPeerSessionRef.current = channel?.peerSessionId || dialerSessionId
 			voiceCallLiveRef.current = true
 			voiceCallOfferRef.current = {
 				callId: channel?.callId || offer.callId,
 				sessionId: dialerSessionId,
-				sessionKey: offer.sessionKey || '',
 				from: offer.from,
 				timestamp: offer.timestamp,
 				expiresAt: offer.expiresAt,
@@ -4001,7 +3974,6 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 				await controller.end(notifyPeer)
 			}
 		} else {
-			if (sessionId) await stopWorkerVoiceListen(sessionId)
 			if (notifyPeer && offerForHangup?.callId && privateKey) {
 				const hangupPeer = String(
 					offerForHangup.from || hintPeer || toAddress || '',
@@ -4020,20 +3992,6 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 							)
 							const route = peerRoute || peerRouteForHangup
 							const selfAddress = new ethers.Wallet(privateKey).address
-							const inbound =
-								String(offerForHangup.from || '').toLowerCase() ===
-								hangupPeer.toLowerCase()
-							if (inbound && offerForHangup.sessionKey && route) {
-								await sendVoiceCallHangupToTemporaryRelay(
-									{ privateKey, peerRoute: route },
-									{
-										callId: offerForHangup.callId,
-										sessionId: offerForHangup.sessionId,
-										sessionKey: offerForHangup.sessionKey,
-										from: hangupPeer,
-									},
-								)
-							}
 							if (peerPgp) {
 								const signal = makeVoiceCallSignal({
 									type: 'voice_end_v1',
@@ -4058,6 +4016,7 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 					})()
 				}
 			}
+			if (sessionId) await stopWorkerVoiceListen(sessionId)
 		}
 		voiceCaptureStopRef.current?.()
 		voiceCaptureStopRef.current = null
@@ -4123,12 +4082,15 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 			link.inFlight = true
 			void (async () => {
 				try {
+					// v3 caller: our own channel is known only after the accept, so
+					// read it now rather than when this effect started.
+					const current = voiceCallSessionRef.current?.trim() || sessionId
 					if (decision.unlistenFirst) {
-						await stopWorkerVoiceListen(sessionId)
+						await stopWorkerVoiceListen(current)
 						await new Promise((done) => setTimeout(done, 1_500))
 					}
 					if (disposed) return
-					const ok = await startWorkerVoiceListen(sessionId)
+					const ok = await startWorkerVoiceListen(current)
 					console.info('[voice-link] reopen', { attempt: decision.attempt, ok })
 				} finally {
 					link.inFlight = false
@@ -4387,17 +4349,9 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 						voiceCallOfferRef.current = {
 							callId: offer.callId,
 							sessionId: dialerSessionId,
-							sessionKey: offer.sessionKey || '',
 							from: offer.from,
 							timestamp: offer.timestamp,
 							expiresAt: offer.expiresAt,
-						}
-						try {
-							if (offer.sessionKey) {
-								voiceCallKeyRef.current = voiceSessionKeyFromBase64(offer.sessionKey)
-							}
-						} catch {
-							/* keep prior key */
 						}
 						// Callee: frames from dialer use offer.sessionId as the peer media id.
 						voiceCallPeerSessionRef.current = dialerSessionId
@@ -4777,69 +4731,6 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 					} catch {
 						// Audio frames are binary; only JSON payloads are control frames.
 					}
-				}
-				if (control?.type === 'voice_call_accept_v1') {
-					// Native shell Accept arrives on the temporary AES relay (not chat PGP).
-					const acceptSessionId = String(
-						(control as { sessionId?: string }).sessionId || '',
-					)
-					const peerSessionId = String(
-						(control as { peerSessionId?: string }).peerSessionId || '',
-					)
-					const mark = Number(control.timestamp || control.createdAt)
-					if (
-						!acceptSessionId ||
-						peerSessionId !== voiceCallOfferRef.current?.sessionId ||
-						!Number.isFinite(mark) ||
-						mark <= Number(voiceCallOfferRef.current?.timestamp || 0) ||
-						voiceAcceptHandledRef.current.has(acceptSessionId) ||
-						locallyEndedVoiceSessionsRef.current.has(acceptSessionId) ||
-						locallyEndedVoiceSessionsRef.current.has(peerSessionId)
-					) {
-						return
-					}
-					voiceAcceptHandledRef.current.add(acceptSessionId)
-					callTonesRef.current?.stopRingback()
-					voiceCallPeerSessionRef.current = acceptSessionId
-					voiceCallLiveRef.current = true
-					setLiveVoiceSessionId(voiceCallOfferRef.current?.sessionId || peerSessionId)
-					setVoiceCallAnswered(true)
-					setVoiceCallMinimized(false)
-					setVoiceCallState('outgoing')
-					notePeerRx({ accept: acceptSessionId, peerSessionId })
-					// Soft resume only — remount requires a user gesture (Dial already armed).
-					void voicePlaybackRef.current?.resume()
-					upsertPhoneCallRecord({
-						callId: String((control as { callId?: string }).callId || ''),
-						sessionId: voiceCallOfferRef.current?.sessionId || acceptSessionId,
-						peerAddress: toAddress,
-						direction: 'outgoing',
-						status: 'answered',
-						createdAt: Date.now(),
-						answeredAt: Date.now(),
-					})
-					if (!isCashTreesNativeWebView()) {
-						void startVoiceMedia()
-					}
-					return
-				}
-				if (control?.type === 'voice_call_reject_v1' || control?.type === 'voice_call_timeout_v1') {
-					const mark = Number(control.timestamp || control.createdAt)
-					if (
-						control.sessionId !== voiceCallOfferRef.current?.sessionId ||
-						!Number.isFinite(mark) ||
-						mark <= Number(voiceCallOfferRef.current?.timestamp || 0) ||
-						remoteRejectHandledRef.current === voiceCallOfferRef.current?.sessionId
-					) {
-						return
-					}
-					remoteRejectHandledRef.current = voiceCallOfferRef.current?.sessionId || ''
-					if (control.type === 'voice_call_reject_v1') callTonesRef.current?.busyIfRinging()
-					void endVoiceCall(
-						control.type === 'voice_call_timeout_v1' ? 'timed_out' : 'declined',
-						false,
-					)
-					return
 				}
 				if (control?.type === 'voice_end_v1') {
 					// Hang Up from a native-shell peer arrives on the temporary AES relay.

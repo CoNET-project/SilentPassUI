@@ -19,24 +19,20 @@ export type VoiceCallSignal = {
 	createdAt: number
 	expiresAt: number
 	timestamp: number
-	sessionKey?: string
-	tempWalletAddress?: string
-	entryDomains?: string[]
-	peerSessionId?: string
 	codec?: string
 	reason?: string
 	/** EIP-191 signature by the caller over {@link voiceCallOfferSignText}. Not an identity field. */
 	callerSignature?: string
 	/** Claim inside the encrypted offer. Display only after comparing it with the signature. */
 	callerTag?: string
-	/**
-	 * Per-call relay node chosen by the caller (not the caller's mailbox): its
-	 * route public key, base64 of the armored key. The callee sends accept,
-	 * control and media frames to the caller's session on this node.
-	 */
-	relayRoute?: string
-	/** IP of the relay node, so the callee never uses it as its entry. */
-	relayIp?: string
+	/** Voice protocol v3 (paid channels created by the callee). Offers and accepts carry `3`. */
+	proto?: number
+	/** v3 offer: base64 of the caller's user-PGP public key (the callee answers to it). */
+	callerPgp?: string
+	/** v3 offer: base64 of the caller's mailbox route public key. */
+	callerRoute?: string
+	/** v3 accept: the four channels (memory only; never logged). */
+	ch?: unknown
 }
 
 export const VOICE_CALL_IDENTITY_WARNING = 'Does not match the signing key'
@@ -77,44 +73,22 @@ export function formatLookedUpBeamioTag(username?: string | null): string {
 /** Canonical text signed by the caller. Identity fields (`from`, tag) are excluded. */
 export function voiceCallOfferSignText(signal: Pick<
 	VoiceCallSignal,
-	'callId' | 'sessionId' | 'to' | 'createdAt' | 'expiresAt' | 'timestamp' | 'sessionKey' | 'tempWalletAddress' | 'entryDomains' | 'codec' | 'relayRoute' | 'relayIp'
+	'callId' | 'sessionId' | 'to' | 'createdAt' | 'expiresAt' | 'timestamp' | 'codec' | 'callerPgp' | 'callerRoute'
 >): string {
-	const domains = Array.isArray(signal.entryDomains) ? signal.entryDomains.join(',') : ''
-	// Relay lines are signed only when present, so older offers still verify.
-	const relay = signal.relayRoute
-		? [`relayRoute:${signal.relayRoute}`, `relayIp:${signal.relayIp || ''}`]
-		: []
+	// Voice protocol v3 only: no channel material in the offer; the callee
+	// creates the channels on Answer. Older offers do not verify.
 	return [
-		'CoNET voice_call_offer_v1',
+		'CoNET voice_call_offer_v3',
 		`callId:${signal.callId}`,
 		`sessionId:${signal.sessionId}`,
 		`to:${String(signal.to || '').toLowerCase()}`,
 		`createdAt:${signal.createdAt}`,
 		`expiresAt:${signal.expiresAt}`,
 		`timestamp:${signal.timestamp}`,
-		`sessionKey:${signal.sessionKey || ''}`,
-		`tempWalletAddress:${String(signal.tempWalletAddress || '').toLowerCase()}`,
-		`entryDomains:${domains}`,
 		`codec:${signal.codec || ''}`,
-		...relay,
+		`callerPgp:${signal.callerPgp || ''}`,
+		`callerRoute:${signal.callerRoute || ''}`,
 	].join('\n')
-}
-
-/**
- * Route public key of the caller's per-call relay node (armored), or '' for
- * older offers. Callers of this send accept / control / media to that node.
- */
-export function voiceOfferRelayRoute(signal: { relayRoute?: string } | null | undefined): string {
-	const raw = String(signal?.relayRoute || '').trim()
-	if (!raw) return ''
-	try {
-		const armor = typeof atob === 'function'
-			? decodeURIComponent(escape(atob(raw)))
-			: Buffer.from(raw, 'base64').toString('utf8')
-		return armor.includes('BEGIN PGP PUBLIC KEY') ? armor : ''
-	} catch {
-		return ''
-	}
 }
 
 export async function signVoiceCallOffer(signal: VoiceCallSignal, privateKey: string): Promise<VoiceCallSignal> {
@@ -124,7 +98,7 @@ export async function signVoiceCallOffer(signal: VoiceCallSignal, privateKey: st
 
 /** Recover the caller EOA from the offer signature. Returns null when the proof is missing or invalid. */
 export function recoverVoiceCallOfferSigner(signal: VoiceCallSignal | null | undefined): string | null {
-	if (!signal || signal.type !== 'voice_call_offer_v1' || !signal.callerSignature) return null
+	if (!signal || signal.type !== 'voice_call_offer_v1' || Number(signal.proto) !== 3 || !signal.callerSignature) return null
 	try {
 		const recovered = verifyMessage(voiceCallOfferSignText(signal), signal.callerSignature)
 		return /^0x[0-9a-fA-F]{40}$/.test(recovered) ? recovered.toLowerCase() : null
@@ -373,9 +347,8 @@ export function reportNativeIncomingSystemCall(payload: Record<string, unknown>)
 }
 
 /**
- * Native Decline/X encrypts `voice_call_reject_v1` with the offer AES key.
- * Without `sessionKey` in this payload the shell cannot uplink and the dialer
- * stays on Ringing. Always include sessionKey (+ optional `to`) from the offer.
+ * The shell answers or declines to the caller's mailbox: the payload carries
+ * the caller's user-PGP and mailbox route keys from the signed v3 offer.
  */
 export function nativeIncomingSystemCallPayload(args: {
 	callId: string
@@ -385,14 +358,9 @@ export function nativeIncomingSystemCallPayload(args: {
 	claimedTag?: string
 	claimedAddress?: string
 	identityWarning?: string
-	signal?: Pick<VoiceCallSignal, 'sessionKey' | 'to' | 'relayRoute' | 'relayIp'> | null
+	signal?: Pick<VoiceCallSignal, 'to' | 'callerPgp' | 'callerRoute'> | null
 }): Record<string, unknown> {
-	const sessionKey = String(args.signal?.sessionKey || '').trim()
 	const to = String(args.signal?.to || '').trim()
-	// Signed relay node (base64 armored route key); the shell sends accept and
-	// media to the caller's session there.
-	const relayRoute = String(args.signal?.relayRoute || '').trim()
-	const relayIp = String(args.signal?.relayIp || '').trim()
 	return {
 		callId: args.callId,
 		sessionId: args.sessionId,
@@ -401,9 +369,10 @@ export function nativeIncomingSystemCallPayload(args: {
 		claimedTag: args.claimedTag || '',
 		claimedAddress: args.claimedAddress || '',
 		identityWarning: args.identityWarning || '',
-		...(sessionKey ? { sessionKey } : {}),
 		...(to ? { to } : {}),
-		...(relayRoute ? { relayRoute, relayIp } : {}),
+		proto: 3,
+		callerPgp: String(args.signal?.callerPgp || ''),
+		callerRoute: String(args.signal?.callerRoute || ''),
 	}
 }
 
@@ -466,7 +435,7 @@ export function applyNativeIncomingVoiceOfferFromLine(raw: string): boolean {
 	console.info(
 		`[voice] decrypted incoming offer callId=${Boolean(signal.callId)} ` +
 			`sessionId=${Boolean(signal.sessionId)} verifiedPeer=${Boolean(proven)} ` +
-			`displayName=${Boolean(displayName)} sessionKey=${Boolean(signal.sessionKey)}`,
+			`displayName=${Boolean(displayName)}`,
 	)
 	const delivered = reportNativeIncomingSystemCall(payload)
 	publishNativePwaLog(

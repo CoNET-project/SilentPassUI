@@ -27,6 +27,8 @@ import {
 	type HistoryLoadOptions,
 	type HistoryReadOptions,
 	type NodeInfo,
+	type VoiceCallV3Config,
+	type VoiceOfferArgs,
 	type VoiceConflictEvent,
 	type VoiceFrame,
 	type VoiceGapEvent,
@@ -159,18 +161,10 @@ let workerInitPromise: Promise<boolean> | null = null
 let lastGossipParams: StartWorkerGossipParams | null = null
 
 type VoiceRelayRequest = {
+	/** Own voice channel of the v3 call. */
 	sessionId: string
-	pushWakeup?: {
-		callId: string
-		calleeEoa: string
-		expiresAt: number
-		timestamp: number
-		offerText?: string
-		recipientPgp?: string
-		calleeRoute?: string
-	}
-	/** Base64 AES session key of the call: lets the worker use voice channel v2. */
-	channelKey?: string
+	/** The call's channels (memory only). Kept so a restarted worker can reopen them. */
+	call?: VoiceCallV3Config
 }
 
 /** Survives a gossip-worker restart so an in-progress call can reopen its mailbox SSE. */
@@ -740,7 +734,7 @@ const openActiveVoiceRelay = (sessionId: string): Promise<boolean> => {
 			return false
 		}
 		try {
-			const started = await client.startVoiceListen(sessionId, relay.pushWakeup, relay.channelKey)
+			const started = await client.startVoiceListen(sessionId, relay.call)
 			if (!started) console.warn('[voiceListen] worker refused to open the voice relay')
 			if (started && activeVoiceRelay?.sessionId !== sessionId) {
 				console.warn(`[voiceListen] relay cleared after the worker accepted session=${sessionId}`)
@@ -762,27 +756,18 @@ const openActiveVoiceRelay = (sessionId: string): Promise<boolean> => {
 	return tracked
 }
 
-/** AES key of the last voice listen, kept across voice_unlisten for a same-session reconnect. */
-let lastVoiceChannelKey: { sessionId: string; key: string } = { sessionId: '', key: '' }
+/** The last v3 call's channels, kept across voice_unlisten for a same-session reconnect. */
+let lastVoiceCall: { sessionId: string; call: VoiceCallV3Config } | null = null
 
 export const startWorkerVoiceListen = async (
 	sessionId: string,
-	pushWakeup?: {
-		callId: string
-		calleeEoa: string
-		expiresAt: number
-		timestamp: number
-		offerText?: string
-		recipientPgp?: string
-		calleeRoute?: string
-	},
-	channelKey?: string,
+	call?: VoiceCallV3Config,
 ): Promise<boolean> => {
-	// A reconnect reopens the same session without the call's key: keep it, so
-	// the worker re-registers the same v2 channel (no wake fields this time).
-	if (!channelKey && lastVoiceChannelKey.sessionId === sessionId) channelKey = lastVoiceChannelKey.key
-	if (channelKey) lastVoiceChannelKey = { sessionId, key: channelKey }
-	activeVoiceRelay = { sessionId, pushWakeup, channelKey }
+	// A reconnect reopens the same session without the call: reuse its channels
+	// (same temporary wallets, keys and relays), so the peer keeps sending there.
+	if (!call && lastVoiceCall?.sessionId === sessionId) call = lastVoiceCall.call
+	if (call) lastVoiceCall = { sessionId, call }
+	activeVoiceRelay = { sessionId, call }
 	const started = await openActiveVoiceRelay(sessionId)
 	if (started) return true
 	if (activeVoiceRelay?.sessionId !== sessionId) {
@@ -812,6 +797,22 @@ export const postWorkerOwnMailboxCommand = async (
 	} catch {
 		return false
 	}
+}
+
+/** Browser dial: the offer to the callee mailbox (`voice_offer_store`, `push: 1`) through the worker. */
+export const sendWorkerVoiceOffer = async (offer: VoiceOfferArgs): Promise<{ ok: boolean; pushed: boolean }> => {
+	const client = await waitForVoiceWorker()
+	if (!client?.sendVoiceOffer) return { ok: false, pushed: false }
+	try {
+		return await client.sendVoiceOffer(offer)
+	} catch {
+		return { ok: false, pushed: false }
+	}
+}
+
+/** Forget the last call's channels (call over): no reconnect can reopen them. */
+export const forgetWorkerVoiceCall = (sessionId: string): void => {
+	if (lastVoiceCall?.sessionId === sessionId) lastVoiceCall = null
 }
 
 export const stopWorkerVoiceListen = async (sessionId: string): Promise<boolean> => {

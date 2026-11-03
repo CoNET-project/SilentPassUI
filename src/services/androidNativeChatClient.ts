@@ -282,17 +282,7 @@ function createLegacyAndroidListenClient(config: BeamioChatConfig): BeamioChatCl
 			return false
 		},
 
-		async startVoiceListen(
-			_sessionId: string,
-			_pushWakeup?: {
-				callId: string
-				calleeEoa: string
-				expiresAt: number
-				timestamp: number
-				offerText?: string
-				recipientPgp?: string
-			},
-		): Promise<boolean> {
+		async startVoiceListen(_sessionId: string, _call?: unknown): Promise<boolean> {
 			/* Shell already owns voice listen when CashTreesAndroid is present. */
 			return true
 		},

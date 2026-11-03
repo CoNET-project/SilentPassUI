@@ -3,7 +3,7 @@ import {
 	ensureNativePushBoundForWallet,
 	injectNativeChatPgpSecretsFromProfile,
 } from '@/utils/cashTreesPushBind'
-import { isCashTreesNativeWebView, postNativePgpCiphertext } from '@/utils/cashTreesNativeNfc'
+import { isCashTreesNativeWebView, postNativePgpCiphertext, setNativeVoiceRelayNodes } from '@/utils/cashTreesNativeNfc'
 import { CoNET_Data, setCoNET_Data } from "@/utils/globals"
 
 import {GuardianNodesMainnet, conetDepinProvider, beamioApi} from '@/utils/constants'
@@ -431,6 +431,8 @@ export const initChat = async (setProfiles: (val: profile[]) => void, setAllNode
 				.map((n) => String(n?.domain || '').trim())
 				.filter(Boolean)
 			injectNativeChatPgpSecretsFromProfile(profile, entryDomains)
+			// Voice v3: route keys of all nodes, so the shell can pick its own relays.
+			setNativeVoiceRelayNodes(allNodes)
 		} catch {
 			/* shell may omit bridge on first paint */
 		}

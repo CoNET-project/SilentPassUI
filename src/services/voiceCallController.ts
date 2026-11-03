@@ -3,14 +3,11 @@ import { ethers } from 'ethers'
 import { createMessage, encrypt, enums, readKey } from 'openpgp'
 import {
 	createVoiceSessionKey,
-	encryptVoiceFrame,
 	INCOMING_CALL_RING_TIMEOUT_MS,
 	makeVoiceCallSignal,
 	recoverVoiceCallOfferSigner,
 	signVoiceCallOffer,
 	randomMailboxVoiceSessionId,
-	voiceOfferRelayRoute,
-	voiceSessionKeyFromBase64,
 	voiceSessionKeyToBase64,
 	type VoiceCallSignal,
 } from '@/utils/voiceCallSession'
@@ -22,10 +19,17 @@ import {
 import { ensureNativePushBoundForWallet } from '@/utils/cashTreesPushBind'
 import { isCashTreesNativeWebView, postNativePgpCiphertext } from '@/utils/cashTreesNativeNfc'
 import {
+	forgetWorkerVoiceCall,
+	sendWorkerVoiceOffer,
 	startWorkerVoiceListen,
 	stopWorkerVoiceListen,
-	sendWorkerVoiceFrame,
 } from '@/services/chatWorkerBridge'
+import {
+	newPaidVoiceChannel,
+	parseVoiceChannelsWire,
+	type VoiceCallV3Config,
+} from '@conet.project/chat-sdk'
+import { CoNET_Data } from '@/utils/globals'
 
 export type VoiceCallControllerOptions = {
 	privateKey: string
@@ -36,19 +40,27 @@ export type VoiceCallControllerOptions = {
 	allNodes: nodeInfo[]
 }
 
-/** Wake + offerArmor for native-shell dialer `voice_listen` (mailbox push). */
-export type VoiceDialerWake = {
-	callId: string
-	calleeEoa: string
-	expiresAt: number
-	timestamp: number
-	offerArmor: string
-	/** Relay node for this call: the shell opens `voice_listen` there, not on its own mailbox. */
-	relayRoute: string
-	relayIp: string
+const normalizeArmor = (v?: string) => (v || '').replace(/\r/g, '').trim()
+
+const armorToB64 = (armor: string): string => Buffer.from(normalizeArmor(armor), 'utf8').toString('base64')
+
+/** base64 armored public key from a v3 offer → armor, or ''. */
+export function voiceOfferB64Armor(raw?: string): string {
+	const t = String(raw || '').trim()
+	if (!t) return ''
+	try {
+		const armor = Buffer.from(t, 'base64').toString('utf8')
+		return armor.includes('BEGIN PGP PUBLIC KEY') ? normalizeArmor(armor) : ''
+	} catch {
+		return ''
+	}
 }
 
-const normalizeArmor = (v?: string) => (v || '').replace(/\r/g, '').trim()
+/** Our own Chat user-PGP public key (the callee answers a v3 offer to it). */
+function ownChatPgpPublicArmor(): string {
+	const profile = CoNET_Data?.profiles?.[0] as { chatManager?: { pgpKey?: { publicKey?: string } } } | undefined
+	return normalizeArmor(profile?.chatManager?.pgpKey?.publicKey)
+}
 
 /**
  * Pick the per-call relay node: a random node that is neither the caller's
@@ -76,59 +88,58 @@ async function encryptOpaqueVoiceCommandToRoute(command: Record<string, unknown>
 	return typeof out === 'string' ? out : String((out as { data?: unknown })?.data ?? out)
 }
 
-/** Mailbox work `{ data, NoPush: true }` for the callee's mailbox: store the offer, no badge push. */
-async function wrapOfferForCalleeMailbox(offerArmor: string, calleeRoute: string): Promise<string> {
-	const out = await encrypt({
-		message: await createMessage({ text: JSON.stringify({ data: offerArmor, NoPush: true }) }),
-		encryptionKeys: await readKey({ armoredKey: calleeRoute }),
-	})
-	return typeof out === 'string' ? out : String((out as { data?: unknown })?.data ?? out)
-}
-
 /**
- * Deliver the offer to the callee's mailbox through a random entry (CoNET
- * Chat path). The entry reads only the recipient key id; the caller's own
- * mailbox is never used. Two posts: the offer itself (live callee sessions)
- * and `voice_offer_store`, which indexes it so a killed shell can fetch it
- * after the wake push. The shell picks a fresh random entry for each post
- * and never the callee's mailbox.
+ * Send the offer to the callee's mailbox through a random entry (CoNET Chat
+ * path): one opaque `voice_offer_store` with `push: 1`, encrypted to that
+ * mailbox's route key. The mailbox stores the offer, writes it to the
+ * callee's live sessions and rings the callee itself (it finds the callee
+ * from the offer's recipient key ID). The entry sees only that mailbox's key
+ * id; no other node learns who is being called. The shell picks the entry and
+ * never the callee's mailbox.
  */
 async function deliverOfferToCalleeMailbox(args: {
 	offerArmor: string
 	calleeRoute: string
-	calleeMailboxIps: string[]
+	excludeIps: string[]
 	callId: string
 	sessionId: string
 	expiresAt: number
+	pushTimestamp: number
 }): Promise<boolean> {
-	const work = await wrapOfferForCalleeMailbox(args.offerArmor, args.calleeRoute)
-	markCallTiming('offer-wrap-pgp')
 	const store = await encryptOpaqueVoiceCommandToRoute({
 		command: 'voice_offer_store',
 		callId: args.callId,
 		sessionId: args.sessionId,
 		offerArmor: args.offerArmor,
 		expiresAt: args.expiresAt,
+		push: 1,
+		pushTimestamp: args.pushTimestamp,
 		timestamp: Math.floor(Date.now() / 1000),
 	}, args.calleeRoute)
 	markCallTiming('offer-store-pgp')
-	const [delivered, indexed] = await Promise.all([
-		timeCallStep('offer-post', () => postNativePgpCiphertext(work, args.calleeMailboxIps)),
-		timeCallStep('offer-store-post', () => postNativePgpCiphertext(store, args.calleeMailboxIps)),
-	])
-	console.info(`[voiceCall] offer to callee mailbox delivered=${delivered.ok} indexed=${indexed.ok}`)
-	return delivered.ok || indexed.ok
+	const posted = await timeCallStep('offer-store-post', () => postNativePgpCiphertext(store, args.excludeIps))
+	let ok = false
+	let pushed = false
+	try {
+		const body = JSON.parse((posted.body || '').trim() || '{}') as { ok?: unknown; pushed?: unknown }
+		ok = posted.ok && body.ok === true
+		pushed = body.pushed === true
+	} catch {
+		ok = false
+	}
+	console.info(`[voiceCall] offer to callee mailbox ok=${ok} pushed=${pushed}`)
+	return ok
 }
 
 export type VoiceCallChannel = {
 	callId: string
+	/** v3 caller before the accept: the ring ID. Otherwise our own voice channel. */
 	sessionId: string
-	tempWalletAddress: string
-	entryDomains: string[]
+	/** v3: the peer's voice channel (frames go there). Empty until known. */
+	peerSessionId?: string
 	signal: VoiceCallSignal
+	/** The page's own AES key for its frames (the worker re-keys per channel). */
 	sessionKey: Uint8Array
-	/** Present when native shell owns listen; shell posts wake+offerArmor. */
-	dialerWake?: VoiceDialerWake
 }
 
 async function encryptVoiceOfferArmorToCallee(
@@ -161,98 +172,6 @@ async function encryptVoiceOfferArmorToCallee(
 }
 
 /**
- * Send an incoming-call rejection over the caller's temporary voice SSE.
- *
- * The caller is listening on `offer.sessionId` before the offer is delivered.
- * Keep this control signal on that short-lived encrypted relay instead of
- * depending only on the normal Chat mailbox, which may be paused while the
- * native call UI is in the foreground.
- */
-const sendVoiceCallControlToTemporaryRelay = async (
-	options: VoiceCallControllerOptions,
-	offer: VoiceCallSignal,
-	control: {
-		type: 'voice_call_reject_v1' | 'voice_call_timeout_v1' | 'voice_call_accept_v1' | 'voice_end_v1'
-		reason: string
-		framePrefix: string
-		/** Accept only: the callee's own temporary session and codec. */
-		accept?: { sessionId: string; codec: string }
-	},
-): Promise<boolean> => {
-	if (!offer.sessionId || !offer.from || !offer.callId || !offer.sessionKey) return false
-	try {
-		const sessionKey = voiceSessionKeyFromBase64(offer.sessionKey)
-		const now = Date.now()
-		const body = JSON.stringify({
-			type: control.type,
-			callId: offer.callId,
-			// An accept names the callee's session and points at the caller's ring
-			// session with `peerSessionId`; reject / timeout echo the ring session.
-			sessionId: control.accept ? control.accept.sessionId : offer.sessionId,
-			...(control.accept ? { peerSessionId: offer.sessionId, codec: control.accept.codec } : {}),
-			from: new ethers.Wallet(options.privateKey).address,
-			to: offer.from,
-			reason: control.reason,
-			createdAt: now,
-			timestamp: now,
-		})
-		const payload = await encryptVoiceFrame(
-			sessionKey,
-			new TextEncoder().encode(body),
-		)
-		// The caller's session lives on its per-call relay node when the offer names one.
-		return await sendWorkerVoiceFrame(voiceOfferRelayRoute(offer) || options.peerRoute, {
-			type: 'voice_frame_v1',
-			callId: offer.callId,
-			// Prefer the caller's ring session so the dialer can match before
-			// accept sets voiceCallPeerSessionRef. Fall back to a fresh id
-			// only when the offer has no sessionId (should not happen).
-			sessionId: offer.sessionId || randomMailboxVoiceSessionId(),
-			targetSessionId: offer.sessionId,
-			to: offer.from,
-			seq: 0,
-			timestamp: Math.floor(Date.now() / 1000),
-			payload,
-		})
-	} catch {
-		return false
-	}
-}
-
-export const sendVoiceCallRejectionToTemporaryRelay = async (
-	options: VoiceCallControllerOptions,
-	offer: VoiceCallSignal,
-): Promise<boolean> => sendVoiceCallControlToTemporaryRelay(options, offer, {
-	type: 'voice_call_reject_v1',
-	reason: 'declined',
-	framePrefix: 'reject',
-})
-
-/** AES hangup on the peer's temporary voice SSE (fast path; Chat PGP is backup). */
-export const sendVoiceCallHangupToTemporaryRelay = async (
-	options: Pick<VoiceCallControllerOptions, 'privateKey' | 'peerRoute'>,
-	offer: Pick<VoiceCallSignal, 'callId' | 'sessionId' | 'sessionKey' | 'from' | 'relayRoute'>,
-): Promise<boolean> => {
-	if (!offer.sessionId || !offer.from || !offer.callId || !offer.sessionKey) return false
-	return sendVoiceCallControlToTemporaryRelay(
-		{
-			privateKey: options.privateKey,
-			localCallId: offer.callId,
-			peerEoa: offer.from,
-			peerPgp: '',
-			peerRoute: options.peerRoute,
-			allNodes: [],
-		},
-		offer as VoiceCallSignal,
-		{
-			type: 'voice_end_v1',
-			reason: 'ended',
-			framePrefix: 'hangup',
-		},
-	)
-}
-
-/**
  * Chat-only voice controller. It owns temporary in-memory channel identity,
  * route-compatible mailbox use, random entry selection, signaling, and teardown.
  * The temporary wallet is never registered on-chain and never persisted.
@@ -279,8 +198,7 @@ export function peerVoiceMaterial(
 /**
  * Decline / timeout must target the *offer caller* (offer.from), never the
  * currently open Chat thread. Local chats may miss route/PGP on cold start —
- * fall back to AddressPGP so the temporary voice relay + chat reject both reach
- * the dialer.
+ * fall back to AddressPGP so the chat reject reaches the dialer.
  */
 export async function resolvePeerVoiceMaterialAsync(
 	chats: Array<{ address?: string; chatData?: { publicArmored?: string; routersArmoreds?: string } }> | undefined,
@@ -344,27 +262,36 @@ export async function timeoutIncomingVoiceOffer(
 }
 
 export function createVoiceCallController(options: VoiceCallControllerOptions) {
-	const tempWallet = ethers.Wallet.createRandom()
 	let activeSessionId: string | null = null
 	let activeSessionKey: Uint8Array | null = null
 	let activeSignal: VoiceCallSignal | null = null
 	let selectedEntries = getRandomNodes(options.allNodes, Math.min(4, options.allNodes.length))
 
+	/**
+	 * Voice protocol v3 dial: sign the offer and send it to the callee mailbox
+	 * (`voice_offer_store`, `push: 1`). No channel and no temporary wallet here:
+	 * the callee creates all four channels when it answers.
+	 */
 	const startOutgoing = async (): Promise<VoiceCallChannel | null> => {
-		const sessionId = randomMailboxVoiceSessionId()
-		const sessionKey = createVoiceSessionKey()
-		selectedEntries = getRandomNodes(options.allNodes, Math.min(4, options.allNodes.length))
+		const ringId = randomMailboxVoiceSessionId()
+		const uiKey = createVoiceSessionKey()
+		const ownRoute = getOwnMailboxRouteArmor()
+		const ownPgp = ownChatPgpPublicArmor()
+		if (!ownRoute || !ownPgp || !options.peerRoute || !options.peerPgp) {
+			console.warn(`[voiceCall] dial refused: ownRoute=${!!ownRoute} ownPgp=${!!ownPgp} peerRoute=${!!options.peerRoute} peerPgp=${!!options.peerPgp}`)
+			return null
+		}
 		const callerTag = options.localCallId.trim().replace(/^@/, '')
 		const signal = await signVoiceCallOffer(makeVoiceCallSignal({
 			type: 'voice_call_offer_v1',
+			proto: 3,
 			callId: randomMailboxVoiceSessionId(),
-			sessionId,
+			sessionId: ringId,
 			from: new ethers.Wallet(options.privateKey).address,
 			to: options.peerEoa,
-			sessionKey: voiceSessionKeyToBase64(sessionKey),
-			tempWalletAddress: tempWallet.address,
-			entryDomains: selectedEntries.map(node => node.domain),
 			codec: 'audio/pcm;rate=16000',
+			callerPgp: armorToB64(ownPgp),
+			callerRoute: armorToB64(ownRoute),
 			...( /^[A-Za-z0-9_]{1,32}$/.test(callerTag) && !/^[0-9a-fA-F]{16,32}$/.test(callerTag)
 				? { callerTag }
 				: {}),
@@ -372,100 +299,101 @@ export function createVoiceCallController(options: VoiceCallControllerOptions) {
 		markCallTiming('offer-signed')
 		const pushTimestamp = Math.floor(Date.now() / 1000)
 		// Ring window must stay inside the mailbox/API 10-minute cap.
-		// Native shell owns dialer voice_listen + VoIP wake (offerArmor).
-		// Browser / non-shell still uses worker listen with the same wake shape.
 		const ringExpiresAt = Date.now() + INCOMING_CALL_RING_TIMEOUT_MS
-		const nativeOwnsListen = isCashTreesNativeWebView()
-		let dialerWake: VoiceDialerWake | undefined
-		if (nativeOwnsListen) {
-			try {
-				const ownRoute = getOwnMailboxRouteArmor()
-				if (!ownRoute) {
-					// Without it the relay could be the caller's own mailbox.
-					console.warn('[voiceCall] own mailbox route unknown')
-					return null
-				}
-				const relayNode = pickVoiceRelayNode(options.allNodes, ownRoute, options.peerRoute)
-				if (!relayNode) {
-					console.warn('[voiceCall] no relay node outside both mailboxes')
-					return null
-				}
-				const relayRouteArmor = normalizeArmor(relayNode.armoredPublicKey)
-				const relayIp = String(relayNode.ip_addr || '').trim()
-				// Re-sign with the relay inside the signed text.
-				const relayedSignal = await signVoiceCallOffer({
-					...signal,
-					relayRoute: Buffer.from(relayRouteArmor, 'utf8').toString('base64'),
-					relayIp,
-				}, options.privateKey)
-				Object.assign(signal, relayedSignal)
-				markCallTiming('offer-resigned-relay')
-				const offerArmor = await encryptVoiceOfferArmorToCallee(
-					JSON.stringify(signal),
-					options.peerPgp,
-					options.privateKey,
-				)
-				markCallTiming('offer-callee-pgp')
-				const calleeMailboxIps = options.allNodes
-					.filter((n) => normalizeArmor(n.armoredPublicKey) === normalizeArmor(options.peerRoute))
-					.map((n) => String(n.ip_addr || '').trim())
-					.filter(Boolean)
-				// The offer must be on the callee's mailbox before the wake push.
-				const delivered = await deliverOfferToCalleeMailbox({
-					offerArmor,
-					calleeRoute: options.peerRoute,
-					calleeMailboxIps,
-					callId: signal.callId,
-					sessionId,
-					expiresAt: ringExpiresAt,
+		let offerArmor: string
+		try {
+			offerArmor = await encryptVoiceOfferArmorToCallee(JSON.stringify(signal), options.peerPgp, options.privateKey)
+		} catch (ex) {
+			console.warn('[voiceCall] offer encrypt failed', (ex as Error)?.message ?? ex)
+			return null
+		}
+		markCallTiming('offer-callee-pgp')
+		const nativeShell = isCashTreesNativeWebView()
+		let delivered = false
+		if (nativeShell) {
+			// Entry: neither mailbox (rule 19).
+			const mailboxIps = options.allNodes
+				.filter((n) => {
+					const key = normalizeArmor(n.armoredPublicKey)
+					return key === normalizeArmor(options.peerRoute) || key === normalizeArmor(ownRoute)
 				})
-				if (!delivered) {
-					console.warn('[voiceCall] offer delivery to callee mailbox failed')
-					return null
-				}
-				dialerWake = {
-					callId: signal.callId,
-					calleeEoa: signal.to,
-					expiresAt: ringExpiresAt,
-					timestamp: pushTimestamp,
-					offerArmor,
-					relayRoute: relayRouteArmor,
-					relayIp,
-				}
-			} catch (ex) {
-				console.warn(
-					'[voiceCall] native dialer offerArmor encrypt failed',
-					(ex as Error)?.message ?? ex,
-				)
-				return null
-			}
-		} else if (!await timeCallStep('worker-voice-listen', () => startWorkerVoiceListen(sessionId, {
-			callId: signal.callId,
-			calleeEoa: signal.to,
-			expiresAt: ringExpiresAt,
-			timestamp: pushTimestamp,
-			offerText: JSON.stringify(signal),
-			recipientPgp: options.peerPgp,
-			// Lets the worker index the offer on the callee mailbox directly.
-			calleeRoute: options.peerRoute,
-		}, voiceSessionKeyToBase64(sessionKey)))) {
+				.map((n) => String(n.ip_addr || '').trim())
+				.filter(Boolean)
+			delivered = await deliverOfferToCalleeMailbox({
+				offerArmor,
+				calleeRoute: options.peerRoute,
+				excludeIps: mailboxIps,
+				callId: signal.callId,
+				sessionId: ringId,
+				expiresAt: ringExpiresAt,
+				pushTimestamp,
+			})
+		} else {
+			const stored = await timeCallStep('offer-store-post', () => sendWorkerVoiceOffer({
+				callId: signal.callId,
+				sessionId: ringId,
+				expiresAt: ringExpiresAt,
+				pushTimestamp,
+				offerArmor,
+				calleeRoute: options.peerRoute,
+			}))
+			delivered = stored.ok
+		}
+		if (!delivered) {
+			console.warn('[voiceCall] offer delivery to callee mailbox failed')
 			return null
 		}
 		ensureNativePushBoundForWallet()
-		activeSessionId = sessionId
-		activeSessionKey = sessionKey
+		activeSessionId = null
+		activeSessionKey = uiKey
 		activeSignal = signal
 		return {
 			callId: signal.callId,
-			sessionId,
-			tempWalletAddress: tempWallet.address,
-			entryDomains: signal.entryDomains || [],
+			sessionId: ringId,
 			signal,
-			sessionKey,
-			dialerWake,
+			sessionKey: uiKey,
 		}
 	}
 
+	/**
+	 * v3 caller (browser): the callee's accept carries our two channels (temporary
+	 * wallet + payment signature) and its own two. Pick our relays, open our
+	 * channels, then the worker tells the callee where they are.
+	 */
+	const applyAccept = async (accept: VoiceCallSignal): Promise<{ sessionId: string; peerSessionId: string } | null> => {
+		if (!activeSignal || accept.callId !== activeSignal.callId || Number(accept.proto) !== 3 || !activeSessionKey) return null
+		const ch = parseVoiceChannelsWire(accept.ch)
+		if (!ch) {
+			console.warn('[voiceCall] accept has no usable channels')
+			return null
+		}
+		const ownRoute = getOwnMailboxRouteArmor()
+		const voiceRelay = pickVoiceRelayNode(options.allNodes, ownRoute, options.peerRoute)
+		const videoRelay = pickVoiceRelayNode(options.allNodes, ownRoute, options.peerRoute)
+		if (!voiceRelay || !videoRelay || !ch.cv.tk || !ch.cv.pay || !ch.cV.tk || !ch.cV.pay) return null
+		const call: VoiceCallV3Config = {
+			callId: accept.callId,
+			uiKey: voiceSessionKeyToBase64(activeSessionKey),
+			role: 'caller',
+			own: {
+				voice: { sid: ch.cv.sid, key: ch.cv.key, wk: ch.cv.wk, tk: ch.cv.tk, pay: ch.cv.pay, relay: voiceRelay.domain },
+				video: { sid: ch.cV.sid, key: ch.cV.key, wk: ch.cV.wk, tk: ch.cV.tk, pay: ch.cV.pay, relay: videoRelay.domain },
+			},
+			peer: {
+				voice: { sid: ch.ev.sid, key: ch.ev.key, wk: ch.ev.wk, relay: ch.ev.relay, relayIp: ch.ev.relayIp, relayKey: ch.ev.relayKey },
+				video: { sid: ch.eV.sid, key: ch.eV.key, wk: ch.eV.wk, relay: ch.eV.relay, relayIp: ch.eV.relayIp, relayKey: ch.eV.relayKey },
+			},
+			avoidRoutes: [ownRoute, options.peerRoute].filter(Boolean),
+		}
+		if (!await timeCallStep('caller-channels', () => startWorkerVoiceListen(ch.cv.sid, call))) return null
+		activeSessionId = ch.cv.sid
+		return { sessionId: ch.cv.sid, peerSessionId: ch.ev.sid }
+	}
+
+	/**
+	 * v3 callee (browser): create the four channels, open our two (relays we
+	 * pick) and send the accept to the caller's mailbox as a chat message.
+	 */
 	const acceptIncoming = async (offer: VoiceCallSignal): Promise<VoiceCallChannel | null> => {
 		// Native shell owns Accept + temporary media (AES accept + AudioRecord/Track).
 		// PWA must not start worker listen or chat-send accept on shell.
@@ -473,47 +401,89 @@ export function createVoiceCallController(options: VoiceCallControllerOptions) {
 			console.warn('[voiceCall] acceptIncoming skipped — native shell owns Accept + media')
 			return null
 		}
-		const sessionId = randomMailboxVoiceSessionId()
-		const sessionKey = voiceSessionKeyFromBase64(offer.sessionKey || '')
-		selectedEntries = getRandomNodes(options.allNodes, Math.min(4, options.allNodes.length))
-		if (!await startWorkerVoiceListen(sessionId, undefined, voiceSessionKeyToBase64(sessionKey))) return null
-		const callerEoa = recoverVoiceCallOfferSigner(offer)
-		const answer = makeVoiceCallSignal({
-			type: 'voice_call_accept_v1',
-			callId: offer.callId,
-			sessionId,
-			peerSessionId: offer.sessionId,
-			from: new ethers.Wallet(options.privateKey).address,
-			to: callerEoa || options.peerEoa,
-			tempWalletAddress: tempWallet.address,
-			entryDomains: selectedEntries.map(node => node.domain),
-			codec: 'audio/pcm;rate=16000',
-		})
-		const sent = await sendMessage(
-			options.peerPgp,
-			JSON.stringify(answer),
-			options.privateKey,
-			selectedEntries.length ? selectedEntries : options.allNodes,
-		)
-		// A native-shell caller only listens on its temporary AES relay and never
-		// sees the Chat copy above, so tell it there as well. A web caller accepts
-		// whichever copy arrives first (`voiceAcceptHandledRef` ignores the other).
-		// Best effort: SI answers `target_voice_session_not_found` when the caller
-		// has no listen session, which is fine for a caller that uses Chat.
-		void sendVoiceCallControlToTemporaryRelay(options, offer, {
-			type: 'voice_call_accept_v1',
-			reason: 'accepted',
-			framePrefix: 'accept',
-			accept: { sessionId, codec: 'audio/pcm;rate=16000' },
-		})
-		if (!sent) {
-			await stopWorkerVoiceListen(sessionId)
+		if (Number(offer.proto) !== 3) {
+			console.warn('[voiceCall] offer is not voice protocol v3; not answered')
 			return null
 		}
-		activeSessionId = sessionId
-		activeSessionKey = sessionKey
+		const callerEoa = recoverVoiceCallOfferSigner(offer)
+		const callerPgp = voiceOfferB64Armor(offer.callerPgp) || options.peerPgp
+		const callerRoute = voiceOfferB64Armor(offer.callerRoute) || options.peerRoute
+		if (!callerEoa || !callerPgp || !callerRoute) return null
+		const payer = new ethers.Wallet(options.privateKey)
+		const ownRoute = getOwnMailboxRouteArmor()
+		const voiceRelay = pickVoiceRelayNode(options.allNodes, ownRoute, callerRoute)
+		const videoRelay = pickVoiceRelayNode(options.allNodes, ownRoute, callerRoute)
+		if (!voiceRelay || !videoRelay) return null
+		// This round the callee's own wallet pays every channel; the format allows
+		// a different payer per channel.
+		const [cv, cV, ev, eV] = await Promise.all([
+			newPaidVoiceChannel(payer),
+			newPaidVoiceChannel(payer),
+			newPaidVoiceChannel(payer),
+			newPaidVoiceChannel(payer),
+		])
+		ev.relay = voiceRelay.domain
+		eV.relay = videoRelay.domain
+		const uiKey = createVoiceSessionKey()
+		const call: VoiceCallV3Config = {
+			callId: offer.callId,
+			uiKey: voiceSessionKeyToBase64(uiKey),
+			role: 'callee',
+			own: { voice: ev, video: eV },
+			peer: {
+				voice: { sid: cv.sid, key: cv.key, wk: cv.wk },
+				video: { sid: cV.sid, key: cV.key, wk: cV.wk },
+			},
+			avoidRoutes: [ownRoute, callerRoute].filter(Boolean),
+		}
+		const answer = makeVoiceCallSignal({
+			type: 'voice_call_accept_v1',
+			proto: 3,
+			callId: offer.callId,
+			sessionId: offer.sessionId,
+			from: payer.address,
+			to: callerEoa,
+			codec: 'audio/pcm;rate=16000',
+			ch: {
+				cv: { sid: cv.sid, key: cv.key, wk: cv.wk, tk: cv.tk, pay: cv.pay },
+				cV: { sid: cV.sid, key: cV.key, wk: cV.wk, tk: cV.tk, pay: cV.pay },
+				ev: {
+					sid: ev.sid, key: ev.key, wk: ev.wk, relay: ev.relay,
+					relayIp: String(voiceRelay.ip_addr || '').trim(), relayKey: armorToB64(voiceRelay.armoredPublicKey),
+				},
+				eV: {
+					sid: eV.sid, key: eV.key, wk: eV.wk, relay: eV.relay,
+					relayIp: String(videoRelay.ip_addr || '').trim(), relayKey: armorToB64(videoRelay.armoredPublicKey),
+				},
+			},
+		})
+		selectedEntries = getRandomNodes(options.allNodes, Math.min(4, options.allNodes.length))
+		const [listening, sent] = await Promise.all([
+			startWorkerVoiceListen(ev.sid, call),
+			sendMessage(
+				callerPgp,
+				JSON.stringify(answer),
+				options.privateKey,
+				options.allNodes,
+				{ beamioNoPush: true, recipientRouteArmored: callerRoute },
+			),
+		])
+		if (!sent || !listening) {
+			console.warn(`[voiceCall] v3 answer failed sent=${sent} listening=${listening}`)
+			await stopWorkerVoiceListen(ev.sid)
+			forgetWorkerVoiceCall(ev.sid)
+			return null
+		}
+		activeSessionId = ev.sid
+		activeSessionKey = uiKey
 		activeSignal = answer
-		return { callId: answer.callId, sessionId, tempWalletAddress: tempWallet.address, entryDomains: answer.entryDomains || [], signal: answer, sessionKey }
+		return {
+			callId: answer.callId,
+			sessionId: ev.sid,
+			peerSessionId: cv.sid,
+			signal: answer,
+			sessionKey: uiKey,
+		}
 	}
 
 	const rejectIncoming = async (offer: VoiceCallSignal): Promise<boolean> => {
@@ -525,24 +495,20 @@ export function createVoiceCallController(options: VoiceCallControllerOptions) {
 			to: offer.from,
 			reason: 'declined',
 		})
-		// Native shell already sent AES reject on the temporary voice channel.
-		// Still send user-PGP gossip so callers whose dialer listen is not up yet
-		// (SI drops AES with target_voice_session_not_found) still leave Ringing.
-		const sentToTemporaryRelay = isCashTreesNativeWebView()
-			? false
-			: await sendVoiceCallRejectionToTemporaryRelay(options, offer)
-		const sentToCaller = options.peerPgp
+		// To the caller's mailbox (the shell sends its own from native when it owns the call).
+		const sentToCaller = (voiceOfferB64Armor(offer.callerPgp) || options.peerPgp)
 			? await sendMessage(
-				options.peerPgp,
+				voiceOfferB64Armor(offer.callerPgp) || options.peerPgp,
 				JSON.stringify(reject),
 				options.privateKey,
 				selectedEntries.length ? selectedEntries : options.allNodes,
+				{ recipientRouteArmored: voiceOfferB64Armor(offer.callerRoute) || options.peerRoute },
 			)
 			: false
 		if (isCashTreesNativeWebView() && !sentToCaller) {
-			console.warn('[voiceCall] rejectIncoming native — AES owned by shell; gossip reject failed or no peerPgp')
+			console.warn('[voiceCall] rejectIncoming native — chat reject failed or no caller key')
 		}
-		return sentToTemporaryRelay || sentToCaller || isCashTreesNativeWebView()
+		return sentToCaller || isCashTreesNativeWebView()
 	}
 
 	const timeoutIncoming = async (offer: VoiceCallSignal): Promise<boolean> => {
@@ -554,25 +520,19 @@ export function createVoiceCallController(options: VoiceCallControllerOptions) {
 			to: offer.from,
 			reason: 'timeout',
 		})
-		const sentToTemporaryRelay = isCashTreesNativeWebView()
-			? false
-			: await sendVoiceCallControlToTemporaryRelay(options, offer, {
-				type: 'voice_call_timeout_v1',
-				reason: 'timeout',
-				framePrefix: 'timeout',
-			})
-		const sentToCaller = options.peerPgp
+		const sentToCaller = (voiceOfferB64Armor(offer.callerPgp) || options.peerPgp)
 			? await sendMessage(
-				options.peerPgp,
+				voiceOfferB64Armor(offer.callerPgp) || options.peerPgp,
 				JSON.stringify(timeout),
 				options.privateKey,
 				selectedEntries.length ? selectedEntries : options.allNodes,
+				{ recipientRouteArmored: voiceOfferB64Armor(offer.callerRoute) || options.peerRoute },
 			)
 			: false
 		if (isCashTreesNativeWebView() && !sentToCaller) {
-			console.warn('[voiceCall] timeoutIncoming native — AES owned by shell; gossip timeout failed or no peerPgp')
+			console.warn('[voiceCall] timeoutIncoming native — chat timeout failed or no caller key')
 		}
-		return sentToTemporaryRelay || sentToCaller || isCashTreesNativeWebView()
+		return sentToCaller || isCashTreesNativeWebView()
 	}
 
 	const notifyRingTimeout = async (): Promise<boolean> => {
@@ -594,24 +554,16 @@ export function createVoiceCallController(options: VoiceCallControllerOptions) {
 	}
 
 	const end = async (notifyPeer = true): Promise<void> => {
-		if (notifyPeer && activeSignal && activeSessionId) {
+		if (notifyPeer && activeSignal && (activeSessionId || activeSignal.type === 'voice_call_offer_v1')) {
 			const selfAddress = new ethers.Wallet(options.privateKey).address
 			const signal = makeVoiceCallSignal({
 				type: 'voice_end_v1',
 				callId: activeSignal.callId,
-				sessionId: activeSessionId,
+				// The ring ID names the call on both sides.
+				sessionId: activeSignal.sessionId,
 				from: selfAddress,
 				to: options.peerEoa,
 			})
-			// Callee hangup: AES on dialer's temporary SSE (offer.from = dialer). Dialer local hangup uses Chat.
-			const inboundOffer =
-				String(activeSignal.from || '').toLowerCase() === String(options.peerEoa || '').toLowerCase()
-			if (inboundOffer && activeSignal.sessionKey && options.peerRoute) {
-				void sendVoiceCallHangupToTemporaryRelay(
-					{ privateKey: options.privateKey, peerRoute: options.peerRoute },
-					activeSignal,
-				)
-			}
 			await sendMessage(
 				options.peerPgp,
 				JSON.stringify(signal),
@@ -619,7 +571,10 @@ export function createVoiceCallController(options: VoiceCallControllerOptions) {
 				selectedEntries.length ? selectedEntries : options.allNodes,
 			)
 		}
-		if (activeSessionId) await stopWorkerVoiceListen(activeSessionId)
+		if (activeSessionId) {
+			await stopWorkerVoiceListen(activeSessionId)
+			forgetWorkerVoiceCall(activeSessionId)
+		}
 		activeSessionId = null
 		activeSessionKey = null
 		activeSignal = null
@@ -628,14 +583,13 @@ export function createVoiceCallController(options: VoiceCallControllerOptions) {
 	return {
 		startOutgoing,
 		acceptIncoming,
+		applyAccept,
 		rejectIncoming,
 		timeoutIncoming,
 		notifyRingTimeout,
 		end,
 		get activeSessionId() { return activeSessionId },
 		get activeSessionKey() { return activeSessionKey },
-		get tempWalletAddress() { return tempWallet.address },
-		get entryDomains() { return selectedEntries.map(node => node.domain) },
 	}
 }
 

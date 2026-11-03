@@ -596,6 +596,21 @@ export type NativePgpCipherPostResult = {
 	error: string
 }
 
+/** Bridge body for `postPgpCiphertext`. `purpose` is local to the shell (never sent to a node). */
+export function buildNativePgpPostPayload(
+	requestId: string,
+	data: string,
+	excludeIps?: string[],
+	purpose?: 'voice-offer',
+): { requestId: string; data: string; excludeIps: string[]; purpose?: 'voice-offer' } {
+	return {
+		requestId,
+		data,
+		excludeIps: (excludeIps || []).map((ip) => String(ip || '').trim()).filter(Boolean),
+		...(purpose ? { purpose } : {}),
+	}
+}
+
 /**
  * Ask the native shell to POST `{ data: armor }` to `http://{ip}/post`.
  * The shell chooses the entry IP. Returns `bridge_missing` when the shell
@@ -605,6 +620,8 @@ export function postNativePgpCiphertext(
 	armor: string,
 	excludeIps?: string[],
 	timeoutMs = 15_000,
+	/** 'voice-offer': this post carries a dial's offer; the shell then shows its call screen. Local only. */
+	purpose?: 'voice-offer',
 ): Promise<NativePgpCipherPostResult> {
 	const fail = (error: string): NativePgpCipherPostResult => ({
 		ok: false,
@@ -618,11 +635,7 @@ export function postNativePgpCiphertext(
 	const data = String(armor || '').trim()
 	if (!data.includes('BEGIN PGP MESSAGE')) return Promise.resolve(fail('not_pgp'))
 	const requestId = `pgp_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`
-	const payload = {
-		requestId,
-		data,
-		excludeIps: (excludeIps || []).map((ip) => String(ip || '').trim()).filter(Boolean),
-	}
+	const payload = buildNativePgpPostPayload(requestId, data, excludeIps, purpose)
 	return new Promise((resolve) => {
 		let settled = false
 		const finish = (result: NativePgpCipherPostResult) => {

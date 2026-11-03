@@ -117,7 +117,8 @@ async function deliverOfferToCalleeMailbox(args: {
 		timestamp: Math.floor(Date.now() / 1000),
 	}, args.calleeRoute)
 	markCallTiming('offer-store-pgp')
-	const posted = await timeCallStep('offer-store-post', () => postNativePgpCiphertext(store, args.excludeIps))
+	// purpose 'voice-offer': the shell shows its call screen once the offer is handed over.
+	const posted = await timeCallStep('offer-store-post', () => postNativePgpCiphertext(store, args.excludeIps, undefined, 'voice-offer'))
 	let ok = false
 	let pushed = false
 	try {

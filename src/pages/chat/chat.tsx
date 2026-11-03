@@ -1,5 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState, useLayoutEffect, useCallback } from "react"
 import { flushSync } from "react-dom"
+import { BeamioAddressCapsule } from '@/components/BeamioAddressCapsule'
+import { localCallerAvatarDataUri } from '@/utils/callerAvatar'
 import { useNavigate } from "react-router-dom"
 import { CoNET_Data, setCoNET_Data } from '@/utils/globals'
 import { motion, AnimatePresence } from "framer-motion"
@@ -7600,6 +7602,15 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 					style={{ touchAction: 'manipulation' }}
 				>
 					<div className="flex items-center gap-3">
+						{/* Drawn locally from the verified tag; a call never fetches an avatar. */}
+						{localCallerAvatarDataUri(incomingCaller?.tag) ? (
+							<img
+								src={localCallerAvatarDataUri(incomingCaller?.tag)}
+								alt=""
+								className="h-11 w-11 shrink-0 rounded-full bg-white/10 object-cover"
+								draggable={false}
+							/>
+						) : null}
 						<div className="min-w-0 flex-1">
 							<div className="flex items-center gap-[7px]">
 								<img
@@ -7614,16 +7625,24 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 								{incomingCaller?.tag || 'Incoming voice call'}
 							</p>
 							{incomingCaller?.address ? (
-								<p className="mt-1 inline-flex max-w-full items-center gap-1 break-all rounded-full border border-[#dce2f7] bg-[#e9edff] px-2 py-0.5 font-mono text-[11px] text-[#424655]">
-									<Wallet className="h-3 w-3 shrink-0 text-[#0051d1]" aria-hidden />
-									{incomingCaller.address}
-								</p>
+								<div className="mt-1">
+									<BeamioAddressCapsule
+										address={incomingCaller.address}
+										leading={<Wallet className="h-3 w-3 shrink-0 text-[#0051d1]" aria-hidden />}
+									/>
+								</div>
 							) : null}
 							{incomingCaller?.identityWarning ? (
 								<div className="mt-1">
 									<p className="truncate text-xs font-semibold text-[#FF453A]">{incomingCaller.claimedTag || 'Unknown tag'}</p>
 									{incomingCaller.claimedAddress ? (
-										<p className="mt-1 inline-flex max-w-full break-all rounded-full border border-red-200 bg-red-50 px-2 py-0.5 font-mono text-[11px] text-red-700">{incomingCaller.claimedAddress}</p>
+										<div className="mt-1">
+											<BeamioAddressCapsule
+												address={incomingCaller.claimedAddress}
+												className="border-red-200 bg-red-50 text-red-700"
+												iconClassName="text-red-400"
+											/>
+										</div>
 									) : null}
 									<p className="text-[11px] font-semibold text-[#FF453A]">{incomingCaller.identityWarning}</p>
 								</div>

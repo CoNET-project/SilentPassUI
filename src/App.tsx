@@ -90,6 +90,8 @@ import RenderActionPage from '@/renderAction'
 import { getUserInfo } from "@/services/beamio"
 import { AppButton } from "@/components/button/AppButton"
 import { Check } from "lucide-react"
+import { BeamioAddressCapsule, shortAddressLabel } from "@/components/BeamioAddressCapsule"
+import { localCallerAvatarDataUri, syncCallerAvatarsToShell } from "@/utils/callerAvatar"
 import { postCardCouponOpenClaimWithCurrentWallet, type CouponOpenClaimEligibility } from "@/services/BeamioCard"
 import CouponClaimTicketPreview from "@/components/Home/CouponClaimTicketPreview"
 import ShowPayCodeSheet from "@/components/Home/ShowPayCodeSheet"
@@ -203,7 +205,6 @@ function AppShell() {
   const {
     searchRemoteAndIngest,
     resolvePeerSearchResult,
-    avatarImgUrl,
     ensureProfilesForAddresses,
   } = useBeamioTagDatabase()
 
@@ -250,7 +251,7 @@ function AppShell() {
     }
     const peer = resolvePeerSearchResult(globalIncomingVoiceCall.from)
     const tag = globalIncomingVoiceCall.displayTag || formatLookedUpBeamioTag(peer?.username)
-    const label = tag ? `${tag} ${globalIncomingVoiceCall.from}` : globalIncomingVoiceCall.from
+    const label = tag || shortAddressLabel(globalIncomingVoiceCall.from)
     const notification = new Notification('Incoming voice call', {
       body: `${label} is calling`,
       tag: `beamio-global-voice-${globalIncomingVoiceCall.signal?.sessionId ?? globalIncomingVoiceCall.from}`,
@@ -262,6 +263,21 @@ function AppShell() {
     }
     return () => notification.close()
   }, [browserNotificationPermission, globalIncomingVoiceCall, resolvePeerSearchResult])
+
+  // Android shell: hand contacts' verified tags and avatars over ahead of time,
+  // so its call windows never look a caller up online (see callerAvatar.ts).
+  useEffect(() => {
+    const chats = profiles?.[0]?.chats
+    if (!Array.isArray(chats) || !chats.length) return
+    const timer = window.setTimeout(() => {
+      const contacts = chats.map((chat: chatData) => ({
+        address: chat.address,
+        tag: resolvePeerSearchResult(chat.address)?.username,
+      }))
+      void syncCallerAvatarsToShell(contacts)
+    }, 3000)
+    return () => window.clearTimeout(timer)
+  }, [profiles, resolvePeerSearchResult])
 
   const enableBrowserCallNotifications = useCallback(async () => {
     if (typeof window === 'undefined' || !('Notification' in window)) {
@@ -2927,21 +2943,30 @@ function AppShell() {
 								<div className="pointer-events-none absolute inset-x-4 top-[max(1rem,env(safe-area-inset-top,0px))] mx-auto max-w-lg">
 								<div className="pointer-events-auto rounded-3xl border border-[#dce2f7] bg-white/95 p-4 shadow-[0_18px_50px_rgba(15,23,42,0.24)] backdrop-blur-xl">
 									<div className="flex items-center gap-3">
+										{/* Drawn locally from the verified tag; a call never fetches an avatar. */}
 										<img
-											src={avatarImgUrl(contact.image || undefined, contact.address)}
+											src={localCallerAvatarDataUri(tag) || `${process.env.PUBLIC_URL}/beamio-call-mark.png`}
 											alt=""
-											className="h-12 w-12 shrink-0 rounded-full object-cover ring-2 ring-white"
+											className="h-12 w-12 shrink-0 rounded-full bg-[#e9edff] object-cover ring-2 ring-white"
 										/>
 										<div className="min-w-0 flex-1">
 											<p className="truncate text-base font-bold text-slate-900">{tag || 'Incoming voice call'}</p>
 											{globalIncomingVoiceCall.from ? (
-												<p className="mt-1 inline-flex max-w-full break-all rounded-full border border-[#dce2f7] bg-[#e9edff] px-2.5 py-1 font-mono text-[11px] text-[#424655]">{globalIncomingVoiceCall.from}</p>
+												<div className="mt-1">
+													<BeamioAddressCapsule address={globalIncomingVoiceCall.from} />
+												</div>
 											) : null}
 											{globalIncomingVoiceCall.identityWarning ? (
 												<div className="mt-2">
 													<p className="truncate text-sm font-semibold text-red-600">{globalIncomingVoiceCall.claimedTag || 'Unknown tag'}</p>
 													{globalIncomingVoiceCall.claimedAddress ? (
-														<p className="mt-1 inline-flex max-w-full break-all rounded-full border border-red-200 bg-red-50 px-2.5 py-1 font-mono text-[11px] text-red-700">{globalIncomingVoiceCall.claimedAddress}</p>
+														<div className="mt-1">
+															<BeamioAddressCapsule
+																address={globalIncomingVoiceCall.claimedAddress}
+																className="border-red-200 bg-red-50 text-red-700"
+																iconClassName="text-red-400"
+															/>
+														</div>
 													) : null}
 													<p className="mt-1 text-xs font-semibold text-red-600">{globalIncomingVoiceCall.identityWarning}</p>
 												</div>

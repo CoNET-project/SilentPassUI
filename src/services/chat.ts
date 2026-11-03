@@ -11,7 +11,7 @@ import contracts from '@/utils/contracts'
 import {ethers} from 'ethers'
 import {aesGcmEncrypt, aesGcmDecrypt, toBase64, fromBase64, storeSystemData } from '@/services/beamio'
 import { publishNativePwaLog } from '@/utils/cashTreesNativePwaLog'
-import { getWorkerGossipListenParams, getWorkerGossipRouteArmor, isWorkerGossipActive, isWorkerGossipBusy, isNativeChatListenOwner, pauseNativeChatListen, resumeNativeChatListen, retargetWorkerGossipRoute, startWorkerGossipListen, stopWorkerGossip } from '@/services/chatWorkerBridge'
+import { sendChatViaNativeDaemon, getWorkerGossipListenParams, getWorkerGossipRouteArmor, isWorkerGossipActive, isWorkerGossipBusy, isNativeChatListenOwner, pauseNativeChatListen, resumeNativeChatListen, retargetWorkerGossipRoute, startWorkerGossipListen, stopWorkerGossip } from '@/services/chatWorkerBridge'
 import { isCashTreesAndroidChatModuleAvailable, isCashTreesAndroidChatModuleRunning } from '@/utils/cashTreesAndroidConetChat'
 import { wrapArmorToMailboxWork } from '@conet.project/chat-sdk'
 
@@ -1470,6 +1470,16 @@ export const sendMessage = async (
 	if (!pgpPublic?.trim()) {
 		console.error('[sendMessage] missing recipient publicArmored')
 		return false
+	}
+
+	// Native shell: only the native daemon sends (signs, encrypts, wraps to the
+	// mailbox, posts one entry at a time). It waits up to 10 s for the daemon.
+	if (isCashTreesNativeWebView()) {
+		return sendChatViaNativeDaemon(
+			{ address: '', userPublicKeyArmored: pgpPublic, routerArmoredPublicKey: recipientRoute },
+			text,
+			opts?.beamioNoPush ? { beamioNoPush: true } : undefined,
+		)
 	}
 
 	const wallet = new ethers.Wallet(privateKeyArmor)

@@ -15,8 +15,13 @@
 
 import {
 	createBeamioChatClient,
+	hasCapability,
+	negotiateChatDaemon,
 	type BeamioChatClient,
+	type ChatDaemonCapability,
+	type ChatDaemonFeatures,
 	type BeamioChatConfig,
+	type ChatRoute,
 	type HistoryBufferEvent,
 	type HistoryEntry,
 	type HistoryLoadOptions,
@@ -42,6 +47,7 @@ import { isCashTreesNativeWebView } from '../utils/cashTreesNativeNfc'
 import {
 	createNativeConetChatClient,
 	isCashTreesIosShell,
+	isNativeConetChatClient,
 	preferIosNativeChatClient,
 } from './nativeConetChatTransport'
 
@@ -70,6 +76,54 @@ type ChatWorkerClient = BeamioChatClient
 /** Only one listen client is alive per process. A new session replaces the old. */
 let activeClient: ChatWorkerClient | null = null
 let activeClientIsNative = false
+/** `hello` result of the active daemon (`legacy` until it answers, or for daemons before protocol v1). */
+let activeFeatures: ChatDaemonFeatures = negotiateChatDaemon(null)
+
+/** What the running chat daemon negotiated. Decide by capability, never by "does this method exist". */
+export const getChatDaemonFeatures = (): ChatDaemonFeatures => activeFeatures
+
+/**
+ * True when the active daemon negotiated `cap`, or predates protocol v1 (no
+ * `hello`): then the caller keeps its pre-v1 behaviour.
+ */
+const daemonAllows = (cap: ChatDaemonCapability): boolean =>
+	activeFeatures.status !== 'negotiated' || hasCapability(activeFeatures, cap)
+
+const NATIVE_SEND_READY_WAIT_MS = 10_000
+
+/** The native daemon is up and negotiated `send.mailboxWrap`. */
+const nativeSendReady = (): boolean =>
+	!!activeClient && activeClientIsNative &&
+	activeFeatures.status === 'negotiated' && hasCapability(activeFeatures, 'send.mailboxWrap')
+
+/**
+ * Native shells send chat only through the native daemon, which signs,
+ * encrypts to the recipient, wraps to the recipient's mailbox and posts
+ * through one entry at a time. While the daemon is starting (app launch,
+ * native restart) this waits up to 10 s; then the send fails and the page's
+ * resend handles it. The page never posts chat itself inside a shell.
+ */
+export async function sendChatViaNativeDaemon(
+	to: ChatRoute,
+	payload: string,
+	opts?: { beamioNoPush?: boolean },
+): Promise<boolean> {
+	const deadline = Date.now() + NATIVE_SEND_READY_WAIT_MS
+	while (!nativeSendReady() && Date.now() < deadline) {
+		await new Promise((resolve) => setTimeout(resolve, 200))
+	}
+	const client = activeClient
+	if (!client || !nativeSendReady()) {
+		console.warn('[chat] native daemon not ready after 10 s; send failed')
+		return false
+	}
+	try {
+		await client.sendMessage(to, payload, opts?.beamioNoPush ? { beamioNoPush: true } : undefined)
+		return true
+	} catch {
+		return false
+	}
+}
 
 /**
  * Inbound line → mailbox armor hashes waiting for the page to store the line.
@@ -92,9 +146,11 @@ export const confirmInboundLines = (lines: string[]): void => {
 		hashes.push(...set)
 	}
 	if (!hashes.length) return
-	const client = activeClient as (ChatWorkerClient & { ackInbound?: (h: string[]) => void }) | null
+	// Only native modules hold the ACK for the page (`inbound.deferAck`).
+	const client = activeClient
+	if (!isNativeConetChatClient(client) || !daemonAllows('inbound.deferAck')) return
 	try {
-		client?.ackInbound?.(hashes)
+		client.ackInbound(hashes)
 	} catch {
 		/* the mailbox will redeliver */
 	}
@@ -345,6 +401,7 @@ export const stopWorkerGossip = (): void => {
 		}
 		activeClient = null
 	}
+	activeFeatures = negotiateChatDaemon(null)
 	voiceRelayOpen = null
 	voiceRelayOpenSessionId = ''
 }
@@ -361,13 +418,13 @@ export const isNativeChatListenOwner = (): boolean => activeClient !== null && a
 
 export const pauseNativeChatListen = (): boolean => {
 	if (!isNativeChatListenOwner()) return false
-	;(activeClient as { pause?: () => void }).pause?.()
+	activeClient!.pause()
 	return true
 }
 
 export const resumeNativeChatListen = (): boolean => {
 	if (!isNativeChatListenOwner()) return false
-	;(activeClient as { resume?: () => void }).resume?.()
+	activeClient!.resume()
 	return true
 }
 
@@ -376,6 +433,9 @@ export const resumeNativeChatListen = (): boolean => {
  * it keeps for call pushes. Call before the page drops the wallet.
  */
 export const clearNativeChatIdentity = (): void => {
+	// A module that negotiated without `identity.provision` stores no keys. With no
+	// `hello` answer (or no running module) send it anyway: older modules ignore it.
+	if (activeClientIsNative && !daemonAllows('identity.provision')) return
 	const cmd = { type: 'clearIdentity', reqId: -1 }
 	try {
 		const ios = (window as unknown as { CashTreesIOS?: { chatModuleCommand?: (p: Record<string, unknown>) => void } })
@@ -465,6 +525,7 @@ const startWorkerGossipListenInternal = async (p: StartWorkerGossipParams): Prom
 	}
 	activeClient = client
 	activeClientIsNative = useIosNative || useAndroidNative
+	activeFeatures = negotiateChatDaemon(null)
 
 	const unsubs: Array<() => void> = []
 	unsubs.push(
@@ -563,6 +624,16 @@ const startWorkerGossipListenInternal = async (p: StartWorkerGossipParams): Prom
 			teardown()
 			return false
 		}
+		// Protocol v1: decide by capability. Native clients already asked during
+		// init; daemons before v1 answer null and keep the legacy rules.
+		const features = negotiateChatDaemon(await client.hello().catch(() => null))
+		if (activeClient === client) activeFeatures = features
+		p.onLog?.(
+			'info',
+			features.status === 'negotiated'
+				? `chat daemon: ${features.implementation || '?'} ${features.sdkVersion || '?'} protocol v${features.protocolVersion} caps=${features.capabilities.join(',')}`
+				: `chat daemon: ${features.status} (no protocol v1 hello)`,
+		)
 		// Restore encrypted history once identity/RPC is ready (also flushes a load queued
 		// before the client existed). iOS and Android native modules own historyLoad; the
 		// native client waits for the module's history key before sending it. Old Android

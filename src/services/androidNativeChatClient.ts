@@ -203,6 +203,11 @@ function createLegacyAndroidListenClient(config: BeamioChatConfig): BeamioChatCl
 	}
 
 	const client: BeamioChatClient = {
+		/** Listen-only shells predate protocol v1: no `hello`. */
+		async hello(): Promise<null> {
+			return null
+		},
+
 		async init(): Promise<void> {
 			if (destroyed) throw new Error('android native chat destroyed')
 			if (!preferAndroidNativeChatClient()) {

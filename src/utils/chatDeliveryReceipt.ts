@@ -6,6 +6,7 @@
 import { createMessage, encrypt, enums, readKey } from 'openpgp'
 import { isCashTreesNativeWebView, postNativePgpCiphertext } from '@/utils/cashTreesNativeNfc'
 import { ethers } from 'ethers'
+import { deliveryReceipt } from '@conet.project/chat-sdk'
 
 export const BEAMIO_CHAT_DELIVERY_RECEIPT_V1 = 'beamio_chat_delivery_receipt_v1' as const
 
@@ -13,6 +14,7 @@ export type ChatDeliveryReceiptV1 = {
 	type: typeof BEAMIO_CHAT_DELIVERY_RECEIPT_V1
 	sendId: string
 	armorHash?: string
+	/** Milliseconds since epoch (spec `deliveryReceipt`). */
 	deliveredAt: number
 	from: string
 }
@@ -47,7 +49,7 @@ export function parseChatDeliveryReceiptV1(displayText: unknown): ChatDeliveryRe
 				type: BEAMIO_CHAT_DELIVERY_RECEIPT_V1,
 				sendId: String(o.sendId),
 				armorHash: typeof o.armorHash === 'string' ? o.armorHash : undefined,
-				deliveredAt: Number.isFinite(deliveredAt) ? deliveredAt : Math.floor(Date.now() / 1000),
+				deliveredAt: Number.isFinite(deliveredAt) ? deliveredAt : Date.now(),
 				from,
 			}
 		}
@@ -231,13 +233,9 @@ export async function sendDeliveryReceiptToSender(args: SendDeliveryReceiptArgs)
 	if (receiptedSendIds.has(sendId)) return true
 	try {
 		const wallet = new ethers.Wallet(privateKeyArmor)
-		const inner: ChatDeliveryReceiptV1 = {
-			type: BEAMIO_CHAT_DELIVERY_RECEIPT_V1,
-			sendId,
-			deliveredAt: Math.floor(Date.now() / 1000),
-			from: wallet.address,
-		}
-		if (armorHash) inner.armorHash = armorHash
+		// Same builder as the spec vectors (`builders.deliveryReceipt`); deliveredAt in ms.
+		const inner: ChatDeliveryReceiptV1 = deliveryReceipt(sendId, armorHash ?? '', Date.now(), wallet.address)
+		if (!armorHash) delete inner.armorHash
 		const receiptSendId =
 			typeof crypto !== 'undefined' && crypto.randomUUID
 				? crypto.randomUUID()

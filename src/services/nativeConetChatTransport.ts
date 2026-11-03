@@ -18,6 +18,14 @@
  */
 
 import { ethers } from 'ethers'
+import {
+	CHAT_DAEMON_PROTOCOL_VERSION,
+	hasCapability,
+	negotiateChatDaemon,
+	type ChatDaemonCapability,
+	type ChatDaemonFeatures,
+	type ChatDaemonHello,
+} from '@conet.project/chat-sdk'
 import type {
 	BeamioChatClient,
 	BeamioChatConfig,
@@ -93,9 +101,23 @@ export type NativeChatBridge = {
 	postCommand(cmd: Record<string, unknown>): void
 	/** Deliver a sign result for a `chatModuleSignRequest`. */
 	signResponse(payload: { reqId: string | number; ok: boolean; signature?: string; error?: string }): void
-	/** chat-sdk-ios ≤ 0.1.4 history surface (see `NativeHistoryBridge`). */
+	/**
+	 * chat-sdk-ios ≤ 0.1.4 history surface (see `NativeHistoryBridge`). Used only
+	 * when the module does not answer `hello` (modules before protocol v1).
+	 */
 	legacyHistory?: boolean
 }
+
+/** Modules from protocol v1 answer `hello` at once; older ones never do. */
+const HELLO_TIMEOUT_MS = 5_000
+/**
+ * How long `init` waits for the `hello` answer before it decides what to send.
+ * `hello` goes out before the node lookup, so a v1 module has answered by then;
+ * an older module costs at most this much.
+ */
+const HELLO_SETTLE_MS = 150
+
+const LEGACY_FEATURES: ChatDaemonFeatures = negotiateChatDaemon(null)
 
 const IOS_NATIVE_CHAT_BRIDGE: NativeChatBridge = {
 	label: 'ios native chat',
@@ -214,9 +236,15 @@ class NativeHistoryBridge implements BeamioChatHistory {
 		this.legacy = legacyShell
 	}
 
-	/** Native init result: modules reporting `historyApi >= 2` stream buffers and dedup appends. */
-	_setHistoryApi(api: number): void {
-		this.legacy = this.legacyShell && !(api >= 2)
+	/**
+	 * After `init`. A module that answered `hello` decides by `history.v2`. An
+	 * older one: iOS shells are legacy unless `init` reported `historyApi >= 2`.
+	 */
+	_setHistoryFeatures(features: ChatDaemonFeatures, api: number): void {
+		this.legacy =
+			features.status === 'negotiated'
+				? !hasCapability(features, 'history.v2')
+				: this.legacyShell && !(api >= 2)
 	}
 
 	/** True while a legacy load runs: its head-pointer rewrite is redundant. */
@@ -435,6 +463,8 @@ class NativeConetChatClientImpl implements BeamioChatClient {
 	private destroyed = false
 	private nativeListener: ((ev: Event) => void) | null = null
 	private signingKeyHex: string
+	private features: ChatDaemonFeatures = LEGACY_FEATURES
+	private helloAnswer: Promise<ChatDaemonHello | null> = Promise.resolve(null)
 
 	constructor(
 		private readonly config: BeamioChatConfig,
@@ -448,11 +478,55 @@ class NativeConetChatClientImpl implements BeamioChatClient {
 		return this.historyBridge
 	}
 
+	/** Protocol v1 `hello` answer of the native module; null for modules before v1. */
+	hello(): Promise<ChatDaemonHello | null> {
+		return this.helloAnswer
+	}
+
+	/** What the native module negotiated (`legacy` until / unless it answers `hello`). */
+	get daemonFeatures(): ChatDaemonFeatures {
+		return this.features
+	}
+
+	/** True when the module negotiated `cap`, or did not answer `hello` (keep the pre-v1 behaviour). */
+	private allows(cap: ChatDaemonCapability): boolean {
+		return this.features.status !== 'negotiated' || hasCapability(this.features, cap)
+	}
+
+	private startHello(): Promise<ChatDaemonHello | null> {
+		const answer = this.request<unknown>(
+			{ type: 'hello', reqId: 0, protocolVersion: CHAT_DAEMON_PROTOCOL_VERSION },
+			HELLO_TIMEOUT_MS,
+		)
+			.then((result) => {
+				const features = negotiateChatDaemon(result)
+				this.features = features
+				if (features.status === 'negotiated') {
+					this.log(
+						'info',
+						`${this.bridge.label}: protocol v${features.protocolVersion} sdk ${features.sdkVersion || '?'} caps=${features.capabilities.join(',')}`,
+					)
+					return result as ChatDaemonHello
+				}
+				this.log('warn', `${this.bridge.label}: hello answer not usable (${features.status})`)
+				return null
+			})
+			.catch(() => {
+				if (!this.destroyed) this.log('info', `${this.bridge.label}: no hello answer (module before protocol v1)`)
+				return null
+			})
+		this.helloAnswer = answer
+		return answer
+	}
+
 	async init(): Promise<void> {
 		if (this.destroyed) throw new Error('native chat client destroyed')
 		this.historyBridge._resetSession()
 		this.attachNativeListener()
+		this.features = LEGACY_FEATURES
+		const hello = this.startHello()
 		this.nodes = await this.config.getNodes().catch(() => [])
+		await Promise.race([hello, new Promise((resolve) => setTimeout(resolve, HELLO_SETTLE_MS))])
 		this.routes = []
 		const payload = {
 			identity: identityForNative(this.config.identity),
@@ -467,15 +541,17 @@ class NativeConetChatClientImpl implements BeamioChatClient {
 			runtime: { ...DEFAULT_RUNTIME, ...(this.config.runtime ?? {}) },
 			nodes: this.nodes,
 			routes: this.routes,
-			// The page confirms each stored inbound message with `ackInbound`; the
-			// native module holds the mailbox ACK until then. Older SDKs ignore it.
-			deferAck: true,
+			// `inbound.deferAck`: the page confirms each stored inbound message with
+			// `ackInbound`; the module holds the mailbox ACK until then. Modules
+			// before protocol v1 get it too (older SDKs ignore it).
+			deferAck: this.allows('inbound.deferAck'),
 		}
-		// Hand the keys to the native daemon first (`provisionIdentity`, stored in
+		// `identity.provision`: hand the keys to the native daemon first (stored in
 		// Keychain / Keystore). `init` still carries them for shells that predate
-		// the command (the page can update before the shell does).
+		// the command (the page can update before the shell does); modules before
+		// protocol v1 get the command anyway and ignore it when unknown.
 		const id = this.config.identity
-		this.postCommand({
+		if (this.allows('identity.provision')) this.postCommand({
 			type: 'provisionIdentity',
 			reqId: -1,
 			payload: {
@@ -487,7 +563,10 @@ class NativeConetChatClientImpl implements BeamioChatClient {
 			},
 		})
 		const ready = await this.request<{ historyApi?: unknown } | undefined>({ type: 'init', reqId: 0, payload }, 180_000)
-		this.historyBridge._setHistoryApi(Number(ready && typeof ready === 'object' ? ready.historyApi : 0) || 0)
+		this.historyBridge._setHistoryFeatures(
+			this.features,
+			Number(ready && typeof ready === 'object' ? ready.historyApi : 0) || 0,
+		)
 	}
 
 	/** Diagnostics into the host log sink (no key material / plaintext). */
@@ -514,10 +593,10 @@ class NativeConetChatClientImpl implements BeamioChatClient {
 		}
 	}
 
-	/** The page stored these inbound messages: let the native module ACK the mailbox. */
+	/** The page stored these inbound messages: let the native module ACK the mailbox (`inbound.deferAck`). */
 	ackInbound(armorHashes: string[]): void {
 		const hashes = (armorHashes || []).filter((h) => typeof h === 'string' && h.length > 0)
-		if (!hashes.length || this.destroyed) return
+		if (!hashes.length || this.destroyed || !this.allows('inbound.deferAck')) return
 		this.postCommand({ type: 'ackInbound', armorHashes: hashes })
 	}
 
@@ -546,7 +625,7 @@ class NativeConetChatClientImpl implements BeamioChatClient {
 
 	async sendMessage(to: ChatRoute, payload: string, opts?: SendMessageOptions): Promise<{ sendId: string }> {
 		const sendId = opts?.sendId || `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
-		await this.request<unknown>(
+		const result = await this.request<{ sent?: unknown } | null>(
 			{
 				type: 'send',
 				reqId: 0,
@@ -557,6 +636,10 @@ class NativeConetChatClientImpl implements BeamioChatClient {
 			},
 			60_000,
 		)
+		// The module acks ok with `sent: false` when every entry failed.
+		if (result && typeof result === 'object' && result.sent === false) {
+			throw new Error('native send: not delivered to any entry')
+		}
 		return { sendId }
 	}
 
@@ -905,6 +988,16 @@ class NativeConetChatClientImpl implements BeamioChatClient {
 	}
 }
 
+/** Native chat client: {@link BeamioChatClient} plus the native-only daemon surface. */
+export type NativeConetChatClient = BeamioChatClient & {
+	readonly daemonFeatures: ChatDaemonFeatures
+	ackInbound(armorHashes: string[]): void
+}
+
+export function isNativeConetChatClient(client: unknown): client is NativeConetChatClient {
+	return client instanceof NativeConetChatClientImpl
+}
+
 /**
  * Native chat client for a shell. Defaults to the iOS bridge; the Android shell passes its own
  * {@link NativeChatBridge} (see `androidNativeChatClient.ts`).
@@ -912,6 +1005,6 @@ class NativeConetChatClientImpl implements BeamioChatClient {
 export function createNativeConetChatClient(
 	config: BeamioChatConfig,
 	bridge: NativeChatBridge = IOS_NATIVE_CHAT_BRIDGE,
-): BeamioChatClient {
+): NativeConetChatClient {
 	return new NativeConetChatClientImpl(config, bridge)
 }

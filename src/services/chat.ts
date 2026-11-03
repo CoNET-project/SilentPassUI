@@ -14,6 +14,8 @@ import { publishNativePwaLog } from '@/utils/cashTreesNativePwaLog'
 import { sendChatViaNativeDaemon, getWorkerGossipListenParams, getWorkerGossipRouteArmor, isWorkerGossipActive, isWorkerGossipBusy, isNativeChatListenOwner, pauseNativeChatListen, resumeNativeChatListen, retargetWorkerGossipRoute, startWorkerGossipListen, stopWorkerGossip } from '@/services/chatWorkerBridge'
 import { isCashTreesAndroidChatModuleAvailable, isCashTreesAndroidChatModuleRunning } from '@/utils/cashTreesAndroidConetChat'
 import { wrapArmorToMailboxWork } from '@conet.project/chat-sdk'
+import { planOwnChatRoute, readOwnChainState, recheckListenRoute, resolveCurrentMailbox } from '@/services/chatOwnRoutePlan'
+import type { OwnPrivateBlob } from '@/services/chatOwnRoutePlan'
 
 function chatBootLog(message: string, level: 'info' | 'warn' | 'error' = 'info'): void {
 	publishNativePwaLog(level, `[Chat] ${message}`)
@@ -298,6 +300,8 @@ export const initChat = async (setProfiles: (val: profile[]) => void, setAllNode
 	}
 
 	initChatInProgress = true
+	// A start reads the chain itself: a recheck still waiting is not needed.
+	ownRouteRecheckGen += 1
 	chatBootLog('initChat starting…')
 	try {
 		setGossip(true)
@@ -331,13 +335,16 @@ export const initChat = async (setProfiles: (val: profile[]) => void, setAllNode
 		if (!chatManager || !isPgpKeyComplete(chatManager.pgpKey)) {
 			const pgpData = await initBeamioPGPKeys(profile)
 			if (!pgpData) {
+				// Chain key unreadable right now: retry instead of making a new key.
 				setGossip(false)
+				scheduleChatRetry('own chain key unreadable', [setProfiles, setAllNodes, setGossip, false, newMessage])
 				return
 			}
 
 			chatManager = {
 				pgpKey: pgpData,
-				router: chatManager?.router || '',
+				// Keep the chain route just read: it is the current mailbox if a later read fails.
+				router: chatManager?.router || pgpData.routes || '',
 
 			}
 			profile.chatManager = chatManager
@@ -349,32 +356,51 @@ export const initChat = async (setProfiles: (val: profile[]) => void, setAllNode
 		//	寻找链上信息
 		const rr = await getOwnKeysFromCoNETPGPSC(profile.privateKeyArmor)
 		routes = rr?.routersArmoreds||''
-		// The chain record is the recipient key used by the mailbox.  If reading
-		// it failed (or the encrypted private key could not be recovered), do not
-		// continue with a locally generated/stale key: the mailbox would accept
-		// the message but this PWA could never decrypt it.  Re-register the
-		// current local key and verify the chain record before opening SSE.
+		// Own mailbox (chatOwnRoutePlan.ts). A failed chain read keeps the current
+		// mailbox and never registers. Only a successful read that shows no record,
+		// another key or no route registers the local key, on the mailbox the
+		// account already has; a random mailbox is only for a new account.
 		const localKeyID = await getPublicKeyArmoredKeyID(chatManager.pgpKey.publicKey || '').catch(() => '')
-		const chainKeyID = (rr?.userPgpKeyID || '').toUpperCase()
-		const chainPrivateKeyAvailable = Boolean(rr?.privateArmored?.trim())
-		const chainKeyMatchesLocal = Boolean(
-			localKeyID &&
-			chainKeyID &&
-			localKeyID === chainKeyID,
-		)
-		if (!chainPrivateKeyAvailable || !chainKeyMatchesLocal) {
-			const node = getRandomNode(allNodes)
-			if (node) {
-				chatBootLog(
-					`PGP chain/local mismatch; registering current key (chain=${Boolean(chainKeyID)} private=${chainPrivateKeyAvailable})`,
-					'warn',
-				)
+		const ownChain = await readOwnChatChain(rr, profile.privateKeyArmor)
+		const currentMailbox = resolveCurrentMailbox(chatManager.router || '', allNodes || [], null)
+		const plan = planOwnChatRoute({
+			read: ownChain.read,
+			localKeyID,
+			current: currentMailbox.mailbox,
+			currentArmor: currentMailbox.armor,
+		})
+		chatBootLog(`own mailbox: ${plan.action} (${plan.reason})`, plan.action === 'use-chain' ? 'info' : 'warn')
+		const ownRouteRetryArgs: Parameters<typeof initChat> = [setProfiles, setAllNodes, setGossip, false, newMessage]
+		// True once a working chain read confirmed the mailbox we are about to listen on.
+		let routeConfirmed = false
+		const ownWallet = new ethers.Wallet(profile.privateKeyArmor).address
+		if (plan.action === 'use-chain') {
+			noteOwnMailboxVerified(ownWallet, plan.mailbox.routeKeyID, plan.mailbox.routeArmor)
+		} else {
+			forgetOwnMailboxVerified(ownWallet)
+		}
+		if (plan.action === 'use-chain') {
+			routes = plan.mailbox.routeArmor
+			routeConfirmed = true
+		} else if (plan.action === 'keep-current') {
+			routes = plan.routeArmor
+		} else if (plan.action === 'wait-retry') {
+			setGossip(false)
+			scheduleChatRetry('own chain record unreadable', ownRouteRetryArgs)
+			return
+		} else {
+			const randomNode = plan.target === 'random' ? getRandomNode(allNodes) : null
+			const target = plan.target !== 'random'
+				? plan.target
+				: randomNode ? { routeKeyID: randomNode.domain, routeArmor: randomNode.armoredPublicKey } : null
+			if (target) {
+				routes = target.routeArmor
 				const registered = await regiestChatRoute(
 					profile.privateKeyArmor,
 					chatManager.pgpKey.publicKey,
 					localKeyID || chatManager.pgpKey.keyID,
 					chatManager.pgpKey.privateKey,
-					node.domain,
+					target.routeKeyID,
 				)
 				if (registered) {
 					await new Promise(resolve => setTimeout(resolve, 1500))
@@ -386,6 +412,8 @@ export const initChat = async (setProfiles: (val: profile[]) => void, setAllNode
 						verifiedKeyID === localKeyID
 					) {
 						routes = verified.routersArmoreds || ''
+						routeConfirmed = Boolean(routes)
+						if (routeConfirmed) noteOwnMailboxVerified(ownWallet, verified.routePgpKeyID || '', routes)
 						chatBootLog('PGP chain/local key verified before gossip listen')
 					} else {
 						chatBootLog(
@@ -394,6 +422,16 @@ export const initChat = async (setProfiles: (val: profile[]) => void, setAllNode
 						)
 					}
 				}
+				if (!registered && plan.target === 'random') {
+					// A new account whose registration failed has no mailbox yet.
+					setGossip(false)
+					scheduleChatRetry('mailbox registration failed', ownRouteRetryArgs)
+					return
+				}
+			} else {
+				setGossip(false)
+				scheduleChatRetry('no CoNET nodes for a new mailbox', ownRouteRetryArgs)
+				return
 			}
 		}
 
@@ -402,19 +440,6 @@ export const initChat = async (setProfiles: (val: profile[]) => void, setAllNode
 			chatManager.router = routes
 		}
 
-		if (!routes) {
-			const node = getRandomNode(allNodes)
-			if (node) {
-				await regiestChatRoute(
-					profile.privateKeyArmor,
-					chatManager.pgpKey.publicKey,
-					chatManager.pgpKey.keyID,
-					chatManager.pgpKey.privateKey,
-					node.domain
-				)
-				chatManager.router = node.armoredPublicKey
-			}
-		}
 
 
 		profile.chatManager = chatManager
@@ -444,7 +469,7 @@ export const initChat = async (setProfiles: (val: profile[]) => void, setAllNode
 			return
 		}
 	
-		chatBootLog(`connectToGossipNode starting (router=${Boolean(chatManager.router)})`)
+		chatBootLog(`connectToGossipNode starting (route=${routeIdForLog(chatManager.router, allNodes)} confirmed=${routeConfirmed})`)
 		const started = await connectToGossipNode(
 			chatManager.router,
 			profile.privateKeyArmor,
@@ -459,6 +484,9 @@ export const initChat = async (setProfiles: (val: profile[]) => void, setAllNode
 			scheduleChatRetry('listen did not start', [setProfiles, setAllNodes, setGossip, false, newMessage])
 		} else {
 			clearChatRetry(true)
+			if (!routeConfirmed) {
+				startOwnRouteRecheck(chatManager.router, profile.privateKeyArmor, localKeyID, allNodes, ownRouteRetryArgs)
+			}
 		}
 	} catch (error) {
 		chatBootLog(`initChat error: ${(error as Error)?.message ?? String(error)}`, 'error')
@@ -481,6 +509,24 @@ export const initBeamioPGPKeys = async (profile: profile): Promise<initBeamioPGP
 		}
 	}
 
+	// No usable chain private key. Make a new key only when the read worked and
+	// the chain holds nothing we could ever load (no record, no blob, or a blob
+	// our key cannot open). A failed read returns null so initChat retries;
+	// a new key here would overwrite the user's key on chain.
+	const own = await readOwnChatChain(keyInfo, profile.privateKeyArmor)
+	if (own.read.status === 'error' || (own.read.status === 'ok' && own.read.privateBlob === 'error')) {
+		chatBootLog(`initBeamioPGPKeys: chain key unreadable (${own.read.status === 'error' ? own.read.reason : 'private blob read failed'}); not making a new key`, 'warn')
+		return null
+	}
+	if (own.read.status === 'ok' && own.privateArmored && own.publicArmored) {
+		return {
+			privateKey: own.privateArmored,
+			publicKey: own.publicArmored,
+			keyID: profile.keyID || own.read.userKeyID || '',
+			routes: own.read.routeArmor,
+		}
+	}
+
 	const keys = await generatePgpKey(profile.keyID,'')
 	const ret: initBeamioPGPKeysRet = {
 		privateKey: keys.privateKey as unknown as string,
@@ -491,21 +537,188 @@ export const initBeamioPGPKeys = async (profile: profile): Promise<initBeamioPGP
 	return ret
 }
 
-export const regiestChatRoute = async (privateKey: string, pubArmor: string, keyID: string, priArmor: string, routeKeyID: string) => {
-	const Wallet = new ethers.Wallet(privateKey, conetDepinProvider)
-	const encryptPri = await aesGcmEncrypt(priArmor, privateKey)
-	const publicKeyArmored = toBase64(pubArmor)
+/** Our own encrypted PGP private key: loaded, absent on chain, or not openable with our key. Throws on RPC error. */
+const probeOwnPrivateBlob = async (privateKeyArmor: string): Promise<{ state: OwnPrivateBlob; armored: string }> => {
+	// getEncryptedPrivateKey() reads msg.sender, so this call carries our address.
+	const wallet = new ethers.Wallet(privateKeyArmor, conetDepinProvider)
+	const contract = contracts.constPgpManager
+	const SC = new ethers.Contract(contract.address, contract.abi, wallet)
+	const encrypted: string = await SC.getEncryptedPrivateKey()
+	if (!encrypted) return { state: 'missing', armored: '' }
 	try {
+		const armored = await aesGcmDecrypt(encrypted, privateKeyArmor)
+		return armored?.trim() ? { state: 'ok', armored } : { state: 'undecryptable', armored: '' }
+	} catch {
+		return { state: 'undecryptable', armored: '' }
+	}
+}
+
+/**
+ * Our own AddressPGP record, with a failed read told apart from an empty one
+ * (chatOwnRoutePlan.ts `readOwnChainState`). `rr` is the getOwnKeysFromCoNETPGPSC
+ * result, which is null in both cases; on null the record is read once more
+ * with searchKey (no `from`).
+ */
+const readOwnChatChain = async (
+	rr: Awaited<ReturnType<typeof getOwnKeysFromCoNETPGPSC>>,
+	privateKeyArmor: string,
+) => {
+	const own = await readOwnChainState({
+		first: rr
+			? {
+				userKeyID: rr.userPgpKeyID || '',
+				routeKeyID: rr.routePgpKeyID || '',
+				routeArmor: rr.routersArmoreds || '',
+				publicArmored: rr.publicArmored || '',
+				privateArmored: rr.privateArmored || '',
+			}
+			: null,
+		searchKey: async () => {
+			const address = new ethers.Wallet(privateKeyArmor).address
+			const contract = contracts.constPgpManager
+			const SC = new ethers.Contract(contract.address, contract.abi, conetDepinProvider)
+			const info: searchKeyPGP = await SC.searchKey(address)
+			const publicArmored = info?.userPublicKeyArmored ? fromBase64(info.userPublicKeyArmored) : ''
+			const routeArmor = info?.routePublicKeyArmored ? fromBase64(info.routePublicKeyArmored) : ''
+			if (!publicArmored && !routeArmor) return null
+			return { userKeyID: info.userPgpKeyID || '', routeKeyID: info.routePgpKeyID || '', routeArmor, publicArmored }
+		},
+		probeBlob: () => probeOwnPrivateBlob(privateKeyArmor),
+	})
+	if (own.read.status === 'error') chatBootLog(`own chain read failed: ${own.read.reason}`, 'warn')
+	return own
+}
+
+/** Route key ID of a mailbox armor for logs (node domain = route key ID); '?' if not in the list. */
+const routeIdForLog = (armor: string, nodes: nodeInfo[]): string =>
+	resolveCurrentMailbox(armor || '', nodes || [], null).mailbox?.routeKeyID || (armor ? '?' : 'none')
+
+/**
+ * Own mailbox confirmed by a working chain read during this run. Memory only:
+ * a restart starts unverified. Written by initChat, the listen recheck and the
+ * dial path (alignLiveGossipRouteToChain); the dial path skips waiting for the
+ * chain only when this is set.
+ */
+type VerifiedOwnMailbox = { wallet: string; routeKeyID: string; routeArmor: string; verifiedAt: number }
+let verifiedOwnMailbox: VerifiedOwnMailbox | null = null
+
+/** A working chain read named this mailbox for `wallet`. */
+export const noteOwnMailboxVerified = (wallet: string, routeKeyID: string, routeArmor: string): void => {
+	const armor = (routeArmor || '').replace(/\r/g, '').trim()
+	const w = (wallet || '').toLowerCase()
+	if (!w || !armor) return
+	verifiedOwnMailbox = { wallet: w, routeKeyID: (routeKeyID || '').trim().toUpperCase(), routeArmor: armor, verifiedAt: Date.now() }
+}
+
+/** The local mailbox and the chain disagree, or the registration just changed: unverified again. */
+export const forgetOwnMailboxVerified = (wallet: string): void => {
+	if (verifiedOwnMailbox && verifiedOwnMailbox.wallet === (wallet || '').toLowerCase()) verifiedOwnMailbox = null
+}
+
+/** The mailbox verified in this run for `wallet`, or null. */
+export const getVerifiedOwnMailbox = (wallet: string): { routeKeyID: string; routeArmor: string; verifiedAt: number } | null => {
+	const v = verifiedOwnMailbox
+	if (!v || !wallet || v.wallet !== wallet.toLowerCase()) return null
+	return { routeKeyID: v.routeKeyID, routeArmor: v.routeArmor, verifiedAt: v.verifiedAt }
+}
+
+let ownRouteRecheckGen = 0
+
+/** Wait `ms`, cut short when the network comes back. False once the check is stale or the listen is gone. */
+const waitForOwnRouteRecheck = (ms: number, gen: number): Promise<boolean> => new Promise((resolve) => {
+	let timer: ReturnType<typeof setTimeout> | undefined
+	const done = () => {
+		clearTimeout(timer)
+		window.removeEventListener('online', done)
+		const live = !!currentGossipAbortController && !currentGossipAbortController.signal.aborted
+		resolve(gen === ownRouteRecheckGen && live)
+	}
+	timer = setTimeout(done, ms)
+	window.addEventListener('online', done)
+})
+
+/**
+ * The listen started on a mailbox no working chain read confirmed (the chain
+ * read failed, e.g. airplane mode). Keep it, read the chain with backoff, and
+ * once a read works and names another mailbox, start chat again so the listen
+ * moves to the chain mailbox (2026-11-02 RC3: a stray mailbox outlived the
+ * outage and calls to the chain mailbox never arrived).
+ */
+const startOwnRouteRecheck = (
+	listenArmor: string,
+	privateKeyArmor: string,
+	localKeyID: string,
+	nodes: nodeInfo[],
+	args: Parameters<typeof initChat>,
+) => {
+	const gen = ++ownRouteRecheckGen
+	const listenId = routeIdForLog(listenArmor, nodes)
+	void recheckListenRoute({
+		listenArmor: () => getWorkerGossipRouteArmor() || listenArmor,
+		read: async () => (await readOwnChatChain(null, privateKeyArmor)).read,
+		localKeyID,
+		sleep: (ms) => waitForOwnRouteRecheck(ms, gen),
+		onRetry: (why, ms) => chatBootLog(`own mailbox recheck: chain read failed (${why}); keeping route=${listenId}; retry in ${ms / 1000}s`, 'warn'),
+	}).then(({ result, read }) => {
+		if (gen !== ownRouteRecheckGen || result === 'gone') return
+		const ownWallet = new ethers.Wallet(privateKeyArmor).address
+		if (result === 'match') {
+			if (read?.status === 'ok') noteOwnMailboxVerified(ownWallet, read.routeKeyID, read.routeArmor)
+			chatBootLog(`own mailbox recheck: route=${listenId} matches chain`)
+			return
+		}
+		forgetOwnMailboxVerified(ownWallet)
+		const chainId = read?.status === 'ok' ? (read.routeKeyID || 'none') : 'none'
+		chatBootLog(`own mailbox recheck: route=${listenId} chain=${chainId}; reconnecting per the chain record`, 'warn')
+		if (gen !== ownRouteRecheckGen || initChatInProgress) return
+		clearGossipListenSession('own_route_mismatch')
+		const [setProfiles, setAllNodes, setGossip, , newMessage] = args
+		setGossip(false)
+		void initChat(setProfiles, setAllNodes, setGossip, false, newMessage)
+	}).catch((ex) => chatBootLog(`own mailbox recheck error: ${(ex as Error)?.message ?? String(ex)}`, 'warn'))
+}
+
+/**
+ * Message the wallet signs for `POST /api/regiestChatRoute` (EIP-191).
+ * Must match x402sdk `src/chatRouteAuth.ts` `buildRegiestChatRouteMessage`.
+ */
+const buildRegiestChatRouteMessage = (p: {
+	wallet: string
+	keyID: string
+	publicKeyArmored: string
+	encrypKeyArmored: string
+	routeKeyID: string
+	timestamp: number
+	nonce: string
+}): string => [
+	'Beamio regiestChatRoute',
+	`wallet:${p.wallet.toLowerCase()}`,
+	`keyID:${p.keyID}`,
+	`publicKeyArmoredHash:${ethers.keccak256(ethers.toUtf8Bytes(p.publicKeyArmored))}`,
+	`encrypKeyArmoredHash:${ethers.keccak256(ethers.toUtf8Bytes(p.encrypKeyArmored))}`,
+	`routeKeyID:${p.routeKeyID}`,
+	`timestamp:${p.timestamp}`,
+	`nonce:${p.nonce.toLowerCase()}`,
+].join('\n')
+
+export const regiestChatRoute = async (privateKey: string, pubArmor: string, keyID: string, priArmor: string, routeKeyID: string) => {
+	try {
+		// Signed by the wallet itself; the API rejects unsigned or foreign-signed requests.
+		const Wallet = new ethers.Wallet(privateKey)
+		const fields = {
+			wallet: Wallet.address,
+			keyID: String(keyID || '').trim(),
+			publicKeyArmored: toBase64(pubArmor).trim(),
+			encrypKeyArmored: String(await aesGcmEncrypt(priArmor, privateKey)).trim(),
+			routeKeyID: String(routeKeyID || '').trim(),
+			timestamp: Date.now(),
+			nonce: ethers.hexlify(ethers.randomBytes(16)),
+		}
+		const signature = await Wallet.signMessage(buildRegiestChatRouteMessage(fields))
 		const res = await fetch(`${beamioApi}/api/regiestChatRoute`, {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({
-				wallet: Wallet.address,
-				keyID,
-				publicKeyArmored,
-				encrypKeyArmored: encryptPri,
-				routeKeyID
-			})
+			body: JSON.stringify({ ...fields, signature })
 		})
 		const json = await res.json()
 		if (!res.ok) {
@@ -1208,6 +1421,7 @@ export const connectToGossipNode = async (
       }
 
       console.log("🚀 [Gossip] Starting worker listen…");
+      chatBootLog(`Gossip listen route=${[...mailboxDomains].join(',') || 'none'}`)
       chatBootLog('Gossip SSE connect starting (worker)…')
 
       // Hand the inbound LISTEN loop to the worker. Param naming here is historical:

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Check, Loader2, Users } from 'lucide-react'
+import { chatComposerAutofillProps } from '@/utils/chatComposerAutofill'
 
 import {
 	BeamioCircularBackButton,
@@ -286,6 +287,7 @@ export default function GroupChatScreen({ chats, ownEoa, onClose }: Props) {
 									onChange={(event) => setDraft(event.target.value)}
 									tabIndex={1}
 									enterKeyHint="send"
+									{...chatComposerAutofillProps('beamio-group-message')}
 									rows={3}
 									className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-base text-slate-900"
 									placeholder="Message"

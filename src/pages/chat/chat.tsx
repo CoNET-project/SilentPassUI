@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState, useLayoutEffect, useCallba
 import { flushSync } from "react-dom"
 import { BeamioAddressCapsule } from '@/components/BeamioAddressCapsule'
 import { localCallerAvatarDataUri } from '@/utils/callerAvatar'
+import { chatComposerAutofillProps } from '@/utils/chatComposerAutofill'
 import { useNavigate } from "react-router-dom"
 import { CoNET_Data, setCoNET_Data } from '@/utils/globals'
 import { motion, AnimatePresence } from "framer-motion"
@@ -8728,7 +8729,7 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 									tabIndex={1}
 									inputMode="text"
 									enterKeyHint="send"
-									autoComplete="off"
+									{...chatComposerAutofillProps()}
 									autoCorrect="on"
 									spellCheck
 									className={[

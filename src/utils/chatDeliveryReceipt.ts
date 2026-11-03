@@ -147,23 +147,31 @@ async function postEncryptedToMailboxRoute(
 		}
 	}
 	const payload = JSON.stringify({ data: postData })
-	const results = await Promise.all(
-		pool.slice(0, 6).map(async node => {
-			const url = `https://${node.domain}.conet.network/post`
-			try {
-				const res = await fetch(url, {
-					method: 'POST',
-					headers: { 'Content-Type': 'application/json' },
-					body: payload,
-					referrerPolicy: 'no-referrer',
-				})
-				return res.ok || (res.status >= 200 && res.status < 300)
-			} catch {
-				return false
-			}
-		}),
-	)
-	return results.some(Boolean)
+	// One entry at a time; the next only after a clear failure.
+	const order = [...pool].sort(() => Math.random() - 0.5).slice(0, 4)
+	for (const node of order) {
+		const url = `https://${node.domain}.conet.network/post`
+		const ctrl = new AbortController()
+		const timer = setTimeout(() => ctrl.abort(), 8_000)
+		try {
+			const res = await fetch(url, {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: payload,
+				referrerPolicy: 'no-referrer',
+				signal: ctrl.signal,
+			})
+			if (!res.ok) continue
+			const answer = await res.text().catch(() => '')
+			if (/"ok"\s*:\s*false/.test(answer)) continue
+			return true
+		} catch {
+			/* next entry */
+		} finally {
+			clearTimeout(timer)
+		}
+	}
+	return false
 }
 
 /** Encrypt command to mailbox B (same shape as mining listen). */

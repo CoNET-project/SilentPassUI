@@ -177,11 +177,14 @@ function isGossipListingLivenessFrame(payload: unknown): boolean {
 
 const INBOUND_WRAPPER_KEYS = ['data', 'message', 'payload', 'body', 'text'] as const
 
-function findInboundArmor(value: unknown, depth = 0): string {
+export function findInboundArmor(value: unknown, depth = 0): string {
 	if (depth > 5) return ''
 	if (typeof value === 'string') {
 		const text = value.trim()
-		if (/^-----BEGIN PGP MESSAGE-----/i.test(text)) return text
+		// Return the armor exactly as the mailbox stored it: the ACK hash is
+		// keccak256 of that string, and a trimmed copy (e.g. a voice offer that
+		// ends with a newline) never matches, so the mailbox kept replaying it.
+		if (/^-----BEGIN PGP MESSAGE-----/i.test(text)) return value
 		if (text.startsWith('{') || text.startsWith('[')) {
 			try {
 				return findInboundArmor(JSON.parse(text), depth + 1)
@@ -688,7 +691,7 @@ export class GossipCore {
 			// Mailbox relays can add several JSON envelopes. Walk only a bounded
 			// set of wrapper keys; never log or forward the plaintext/ciphertext.
 			const armored = findInboundArmor(data ?? trimmedRaw)
-			if (armored && /^-----BEGIN PGP MESSAGE-----/i.test(armored)) {
+			if (armored && /^-----BEGIN PGP MESSAGE-----/i.test(armored.trimStart())) {
 				this.emit.log('info', `inbound PGP candidate bytes=${armored.length} via=${viaDomain}`)
 				const msg = await readMessage({ armoredMessage: armored })
 				const { data: decrypted } = await decrypt({ message: msg, decryptionKeys: this.pgpPrivateKey! })

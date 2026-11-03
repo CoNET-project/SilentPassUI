@@ -52,6 +52,8 @@ import {
 	isNativeConetChatClient,
 	preferIosNativeChatClient,
 } from './nativeConetChatTransport'
+import { ackInboundHashesInBrowser } from './browserInboundAck'
+import { isMailboxAckSent, noteMailboxAckSent } from '../utils/chatDeliveryReceipt'
 
 /** True when any native shell path must own Chat (no TS gossip Worker). */
 function mustUseNativeChatBridge(): boolean {
@@ -148,6 +150,18 @@ export const confirmInboundLines = (lines: string[]): void => {
 		hashes.push(...set)
 	}
 	if (!hashes.length) return
+	// Browser (TS Worker): the page ACKs every stored line itself, voice control
+	// and duplicates included (native modules do the same in `ackInbound`).
+	if (activeClient && !activeClientIsNative) {
+		const browserClient = activeClient
+		void ackInboundHashesInBrowser(hashes, {
+			eoa: lastGossipParams ? deriveEoaAddress(lastGossipParams.privateKeyHex) : '',
+			post: (command) => browserClient.postOwnMailboxCommand(command),
+			isSent: isMailboxAckSent,
+			noteSent: noteMailboxAckSent,
+		})
+		return
+	}
 	// Only native modules hold the ACK for the page (`inbound.deferAck`).
 	const client = activeClient
 	if (!isNativeConetChatClient(client) || !daemonAllows('inbound.deferAck')) return

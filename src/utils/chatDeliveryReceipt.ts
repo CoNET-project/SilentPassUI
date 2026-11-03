@@ -26,6 +26,16 @@ export function hashPgpArmor(pgpArmor: string): string {
 	return ethers.keccak256(ethers.toUtf8Bytes(pgpArmor))
 }
 
+/** Mailbox ACK already accepted for this armor hash (any ACK path on this page). */
+export const isMailboxAckSent = (armorHash: string): boolean =>
+	ackedArmorHashes.has(String(armorHash || '').trim().toLowerCase())
+
+/** Remember an ACK accepted outside `postMailboxDeliveryAck` (browser batch ACK). */
+export const noteMailboxAckSent = (armorHash: string): void => {
+	const hash = String(armorHash || '').trim().toLowerCase()
+	if (hash) ackedArmorHashes.add(hash)
+}
+
 /** Unwrap nested chat `text` layers; return receipt or null. */
 export function parseChatDeliveryReceiptV1(displayText: unknown): ChatDeliveryReceiptV1 | null {
 	let cur: unknown = displayText

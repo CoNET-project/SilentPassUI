@@ -2842,13 +2842,26 @@ function AppShell() {
 
 				// 全局去重：按 sendId 或 from_timestamp 过滤已处理
 				const toProcess: string[] = []
+				// Already handled on this page (or not a chat line): nothing to store, but the
+				// mailbox still holds the copy. Confirm once a write has landed so it is ACKed.
+				const alreadyHandled: string[] = []
 				for (const raw of batch) {
 					const key = getMsgKey(raw)
-					if (!key || processedIdsRef.current.has(key)) continue
+					if (!key || processedIdsRef.current.has(key)) {
+						alreadyHandled.push(raw)
+						continue
+					}
 					processedIdsRef.current.add(key)
 					toProcess.push(raw)
 				}
+				const confirmAlreadyHandled = () => {
+					if (!alreadyHandled.length) return
+					void storeSystemDataAndWait().then((stored) => {
+						if (stored) confirmInboundLines(alreadyHandled)
+					})
+				}
 				if (toProcess.length === 0) {
+					confirmAlreadyHandled()
 					runningRef.current = false
 					if (pendingQueueRef.current.length > 0) setTimeout(processQueue, 0)
 					return
@@ -2884,6 +2897,8 @@ function AppShell() {
 					}
 					await autoReplayMessage(text, chatData)
 				})
+				// After this batch is stored, so a duplicate is never ACKed before its first copy.
+				confirmAlreadyHandled()
 			} finally {
 				runningRef.current = false
 				if (pendingQueueRef.current.length > 0) setTimeout(processQueue, 0)

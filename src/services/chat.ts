@@ -978,7 +978,7 @@ export const sendMessage = async (
 	text: string,
 	privateKeyArmor: string,
 	entryNodes: nodeInfo[],
-	opts?: { beamioNoPush?: boolean; mailboxRoutePublicKey?: string },
+	opts?: { beamioNoPush?: boolean; mailboxRoutePublicKey?: string; recipientRouteArmored?: string },
 ): Promise<boolean> => {
 	if (!entryNodes?.length) {
 		console.error('[sendMessage] no entry nodes')
@@ -986,6 +986,13 @@ export const sendMessage = async (
 	}
 	if (!pgpPublic?.trim()) {
 		console.error('[sendMessage] missing recipient publicArmored')
+		return false
+	}
+	// Always wrapped to the recipient's mailbox B: the entry sees only B's route
+	// key ID, never the recipient's key ID. Without B's route: not sent.
+	const recipientRoute = normalizeArmoredKey(opts?.recipientRouteArmored || opts?.mailboxRoutePublicKey)
+	if (!recipientRoute) {
+		console.error('[sendMessage] recipient mailbox unknown; not sent')
 		return false
 	}
 
@@ -1015,59 +1022,44 @@ export const sendMessage = async (
 	let postData: string
 	try {
 		postData = await encrypt(encryptObj)
+		postData = await wrapArmorToMailboxWork(postData, recipientRoute, opts?.beamioNoPush ? { NoPush: true } : undefined)
 	} catch (ex: any) {
-		console.error(`[sendMessage] encrypt Error! ${ex?.message || ex}`)
+		console.error(`[sendMessage] encrypt/wrap Error! ${ex?.message || ex}`)
 		return false
 	}
 
-	if (opts?.beamioNoPush) {
-		const mailboxKey = opts.mailboxRoutePublicKey?.trim()
-		if (!mailboxKey) {
-			console.error('[sendMessage] NoPush requires recipient mailbox route public key')
-			return false
-		}
+	const body = JSON.stringify({ data: postData })
+	// Entry A is never the recipient's mailbox B.
+	const mailboxDomains = new Set(pickRouteNodesByArmoredKey(entryNodes, recipientRoute).map((n) => n.domain))
+	const pool = entryNodes.filter((n) => !mailboxDomains.has(n.domain)).sort(() => Math.random() - 0.5)
+	// One entry at a time; the next only after a clear failure (network error or
+	// reset, non-2xx, `{ ok: false }`, or no answer in 8 s). A timed-out POST may
+	// have arrived: the mailbox keeps one copy and the recipient dedupes by sendId.
+	for (const node of pool.slice(0, 4)) {
+		const url = `https://${node.domain}.conet.network/post`
 		try {
-			postData = await wrapArmorToMailboxWork(postData, mailboxKey, { NoPush: true })
+			const res = await postWithTimeout(url, {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body,
+				referrerPolicy: "no-referrer",
+			}, 8_000)
+			if (!res.ok) {
+				console.warn(`[sendMessage] ${url} → HTTP ${res.status}`)
+				continue
+			}
+			const answer = await res.text().catch(() => '')
+			if (/"ok"\s*:\s*false/.test(answer)) {
+				console.warn(`[sendMessage] ${url} → ok:false`)
+				continue
+			}
+			return true
 		} catch (ex: any) {
-			console.error(`[sendMessage] mailbox wrap Error! ${ex?.message || ex}`)
-			return false
+			console.warn(`[sendMessage] ${url} → ${ex?.name || 'error'}: ${ex?.message || ex}`)
 		}
 	}
-
-	const payload = { data: postData }
-	const postOpts: RequestInit = {
-		method: "POST",
-		headers: { "Content-Type": "application/json" },
-		body: JSON.stringify(payload),
-		referrerPolicy: "no-referrer",
-	}
-
-	const results = await Promise.all(
-		entryNodes.map(async node => {
-			const url = `https://${node.domain}.conet.network/post`
-			try {
-				const res = await postWithTimeout(url, postOpts, 12_000)
-				if (!res.ok) {
-					console.warn(`[sendMessage] ${url} → HTTP ${res.status}`)
-					return false
-				}
-				console.log(`[sendMessage] ${url} → ${res.status}`)
-				return true
-			} catch (ex: any) {
-				console.warn(`[sendMessage] ${url} → ${ex?.name || 'error'}: ${ex?.message || ex}`)
-				return false
-			}
-		})
-	)
-
-	const ok = results.some(Boolean)
-	if (!ok) {
-		console.error(
-			'[sendMessage] all entry POSTs failed',
-			entryNodes.map(n => n.domain),
-		)
-	}
-	return ok
+	console.error('[sendMessage] all entry POSTs failed')
+	return false
 }
 
 

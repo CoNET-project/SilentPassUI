@@ -581,7 +581,7 @@ function AppShell() {
 		// 送出 message 到对方（随机 2 节点并行 post）
 		const nodes = getRandomNodes(allNodes, 2)
 		if (nodes.length) {
-			await sendMessage(chatData.chatData.publicArmored, text, profile.privateKeyArmor, nodes)
+			await sendMessage(chatData.chatData.publicArmored, text, profile.privateKeyArmor, nodes, { recipientRouteArmored: chatData.chatData.routersArmoreds })
 		}
 		const sent = nextMessages[nextMessages.length - 1]
 		mirrorChatMessageToHistory(chatData.address, sent, 'out')

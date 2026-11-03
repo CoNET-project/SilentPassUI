@@ -258,7 +258,7 @@ export default function PaymentLink ({close, beamioer}: Props) {
 			}
 
 			await storeSystemData()
-			await sendMessage(chatData.chatData.publicArmored, JSON.stringify(paymentRequestMessage), profile.privateKeyArmor, nodes)
+			await sendMessage(chatData.chatData.publicArmored, JSON.stringify(paymentRequestMessage), profile.privateKeyArmor, nodes, { recipientRouteArmored: chatData.chatData.routersArmoreds })
 
 			setSuccessUrl(showUrl)
 		} catch (e) {

@@ -242,7 +242,7 @@ export default function TopUpAccount({
 	// setCharts(prof => [...prof, cardText])
 	await Promise.all([
 		storeSystemData(),
-		sendMessage(chatData.chatData.publicArmored, cardText, profile.privateKeyArmor, nodes )
+		sendMessage(chatData.chatData.publicArmored, cardText, profile.privateKeyArmor, nodes, { recipientRouteArmored: chatData.chatData.routersArmoreds })
 	])
 }
 

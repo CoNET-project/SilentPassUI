@@ -562,7 +562,7 @@ export default function Chat({ onBack, chatData, privateKey, layout = 'fullscree
 		}
 		let ok = false
 		try {
-			ok = !!(await sendMessage(chatData.chatData.publicArmored, JSON.stringify(payload), privateKey, nodes))
+			ok = !!(await sendMessage(chatData.chatData.publicArmored, JSON.stringify(payload), privateKey, nodes, { recipientRouteArmored: chatData.chatData.routersArmoreds }))
 		} catch {
 			ok = false
 		}
@@ -597,7 +597,7 @@ export default function Chat({ onBack, chatData, privateKey, layout = 'fullscree
 			if (!nodes.length) {
 				return
 			}
-			const ok = !!(await sendMessage(chatData.chatData.publicArmored, JSON.stringify(payload), privateKey, nodes))
+			const ok = !!(await sendMessage(chatData.chatData.publicArmored, JSON.stringify(payload), privateKey, nodes, { recipientRouteArmored: chatData.chatData.routersArmoreds }))
 			if (ok) {
 				const next: ChatMessage[] = [...(messagesRef.current || []), payload]
 				messagesRef.current = next
@@ -686,7 +686,7 @@ export default function Chat({ onBack, chatData, privateKey, layout = 'fullscree
 			const nodes = getRandomNodes(allNodes, 2)
 			if (nodes.length) {
 				try {
-					await sendMessage(chatData.chatData.publicArmored, JSON.stringify(payload), privateKey, nodes)
+					await sendMessage(chatData.chatData.publicArmored, JSON.stringify(payload), privateKey, nodes, { recipientRouteArmored: chatData.chatData.routersArmoreds })
 				} catch (_) {}
 			}
 			await storageData()
@@ -914,7 +914,7 @@ export default function Chat({ onBack, chatData, privateKey, layout = 'fullscree
 			: { sendId, from: 'me' as const, text: t, createdAt: now }
 		let ok = false
 		try {
-			ok = !!(await sendMessage(chatData.chatData.publicArmored, JSON.stringify(payload), privateKey, nodes))
+			ok = !!(await sendMessage(chatData.chatData.publicArmored, JSON.stringify(payload), privateKey, nodes, { recipientRouteArmored: chatData.chatData.routersArmoreds }))
 		} catch {
 			ok = false
 		}

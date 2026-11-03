@@ -67,6 +67,7 @@ import {
 	refreshPeerNativeWakeable,
 	alignLiveGossipRouteToChain,
 } from '@/services/chat'
+import { nativeDialerCancelOutcome } from '@/utils/dialerCancelHandoff'
 import {
 	claimChatOnlineQuery,
 	releaseChatOnlineQuery,
@@ -86,7 +87,8 @@ import { useBeamioTagDatabase } from '@/providers/BeamioTagDatabaseProvider'
 import { fiatPrefix } from '@/services/currency'
 import { beginCallTiming, markCallTiming, timeCallStep } from '@/utils/callTiming'
 import { newVoiceLinkState, noteVoiceLinkRx, tickVoiceLink, type VoiceLinkState } from '@/utils/voiceLinkPolicy'
-import { dispatchNativeSystemCallAction, getCashTreesNativeNfcBridge, getCashTreesNativeNfcHost, isCashTreesNativeWebView, notifyNativeVoiceMicReady, openExternalUrl, requestNativeCameraCapture, requestNativePhotoPicker, saveFileToNative } from '@/utils/cashTreesNativeNfc'
+import { dispatchNativeSystemCallAction, getCashTreesNativeNfcBridge, getCashTreesNativeNfcHost, isCashTreesNativeWebView, nativeShellAcksDialer, notifyNativeVoiceMicReady, openExternalUrl, requestNativeCameraCapture, requestNativePhotoPicker, saveFileToNative } from '@/utils/cashTreesNativeNfc'
+import { NATIVE_DIALER_ACK_MS, nativeDialerAckOverdue } from '@/utils/nativeDialerAck'
 import { MessageSendReceiveCard } from "./components/messageSendReceiveCard"
 import { AaMultisigChatRequestCard } from '@/components/chat/AaMultisigChatRequestCard'
 import { ChatShareLinkPreviewCard } from '@/components/chat/ChatShareLinkPreviewCard'
@@ -148,6 +150,8 @@ import {
 	phoneCallStampMs,
 	phoneCallIdsOverlap,
 	findPhoneCallByIds,
+	phoneCallWasAnswered,
+	VOICE_CALL_MAX_DURATION_MS,
 	replacePhoneCallInRows,
 	normalizeVoiceTimestampMs,
 	markVoiceCallTerminal,
@@ -2090,6 +2094,68 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 		expiresAt?: number
 	} | null>(null)
 	const locallyEndedVoiceSessionsRef = useRef<Set<string>>(new Set())
+	// iOS shell: our dial waits for the shell's `callDialerStarted` (utils/nativeDialerAck.ts).
+	const nativeDialerAckRef = useRef<{
+		callId: string
+		sessionId: string
+		peerAddress: string
+		dispatchedAt: number
+	} | null>(null)
+	const nativeDialerAckTimerRef = useRef<number | null>(null)
+	const pageVisibleSinceRef = useRef(0)
+	useEffect(() => {
+		const onVisibility = () => {
+			if (document.visibilityState === 'visible') pageVisibleSinceRef.current = Date.now()
+		}
+		document.addEventListener('visibilitychange', onVisibility)
+		return () => {
+			document.removeEventListener('visibilitychange', onVisibility)
+			if (nativeDialerAckTimerRef.current !== null) window.clearTimeout(nativeDialerAckTimerRef.current)
+		}
+	}, [])
+	const clearNativeDialerAck = useCallback(() => {
+		nativeDialerAckRef.current = null
+		if (nativeDialerAckTimerRef.current !== null) {
+			window.clearTimeout(nativeDialerAckTimerRef.current)
+			nativeDialerAckTimerRef.current = null
+		}
+	}, [])
+	// The native dialer did not start, so nothing native will cancel or time out
+	// the offer: cancel it from the page (the callee would ring a full minute).
+	// endVoiceCall skips its own cancel when the shell already posted one.
+	const cancelDialWithoutNativeDialer = useCallback((
+		reason: string,
+		ids: { callId: string; sessionId: string; peerAddress: string },
+	) => {
+		clearNativeDialerAck()
+		console.info(`[voiceCall] native dialer ${reason}; page cancels callId=${ids.callId.slice(0, 8)}`)
+		void endVoiceCallRef.current?.('cancelled', true, {
+			callId: ids.callId,
+			sessionId: ids.sessionId,
+			peerAddress: ids.peerAddress,
+		})
+	}, [clearNativeDialerAck])
+	const checkNativeDialerAck = useCallback(function check() {
+		nativeDialerAckTimerRef.current = null
+		const pending = nativeDialerAckRef.current
+		if (!pending) return
+		// The call already ended or another one started.
+		if (voiceCallOfferRef.current?.callId !== pending.callId) {
+			nativeDialerAckRef.current = null
+			return
+		}
+		const { overdue, waitMs } = nativeDialerAckOverdue({
+			dispatchedAt: pending.dispatchedAt,
+			visibleSince: pageVisibleSinceRef.current,
+			now: Date.now(),
+			hidden: document.visibilityState === 'hidden',
+		})
+		if (overdue) {
+			cancelDialWithoutNativeDialer('did not answer', pending)
+			return
+		}
+		nativeDialerAckTimerRef.current = window.setTimeout(check, waitMs)
+	}, [cancelDialWithoutNativeDialer])
 	const voiceAcceptHandledRef = useRef<Set<string>>(new Set())
 	const [liveVoiceSessionId, setLiveVoiceSessionId] = useState('')
 	/**
@@ -2824,6 +2890,9 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 	const startVoiceCall = useCallback(async (event?: { timeStamp?: number }) => {
 		if (voiceCallStartingRef.current || voiceCallState !== 'idle') return
 		const timing = beginCallTiming(event?.timeStamp)
+		// The call screen covers the chat: close the keyboard. In the iOS shell an
+		// open keyboard during a lock hung the app snapshot and got the dial killed.
+		if (typeof document !== 'undefined') (document.activeElement as HTMLElement | null)?.blur?.()
 		// Inside the shell, show the native call screen ("Connecting…") before
 		// anything else runs on this tap: creating the audio context and the
 		// mic request below can each take a frame or more. Route lookup and the
@@ -3017,6 +3086,17 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 			})
 			nativeStarted = true
 			markCallTiming('start-dispatch')
+			if (nativeShellAcksDialer()) {
+				// Armed before the dispatch: the shell's answer may come back at once.
+				clearNativeDialerAck()
+				nativeDialerAckRef.current = {
+					callId: signal.callId,
+					sessionId,
+					peerAddress: typeof toAddress === 'string' ? toAddress.trim() : '',
+					dispatchedAt: Date.now(),
+				}
+				nativeDialerAckTimerRef.current = window.setTimeout(checkNativeDialerAck, NATIVE_DIALER_ACK_MS)
+			}
 			dispatchNativeSystemCallAction('startSystemCall', {
 				prepareId,
 				dialId: timing.dialId,
@@ -3042,7 +3122,7 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 			closePreparedScreen()
 			voiceCallStartingRef.current = false
 		}
-	}, [allNodes, armVoicePlayback, chatData, ensureCallTones, privateKey, toAddress, upsertPhoneCallRecord, voiceCallState])
+	}, [allNodes, armVoicePlayback, chatData, checkNativeDialerAck, clearNativeDialerAck, ensureCallTones, privateKey, toAddress, upsertPhoneCallRecord, voiceCallState])
 
 	// Browser PWA: first paint of the in-page call screen after a dial.
 	useEffect(() => {
@@ -3911,12 +3991,17 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 		const rowsSource = Array.isArray(CoNET_Data?.profiles?.[0]?.phoneCalls)
 			? CoNET_Data!.profiles[0].phoneCalls
 			: (Array.isArray(profiles?.[0]?.phoneCalls) ? profiles[0].phoneCalls : [])
+		// Without ids, fall back to this peer's open call from the last 15 minutes
+		// (a call never runs longer). With a callId the record must match it: an
+		// older open row of the same peer is another call, never this one.
+		const fallbackSince = Date.now() - VOICE_CALL_MAX_DURATION_MS
 		const previous = findPhoneCallByIds(rowsSource, { callId, sessionId: callSessionId || sessionId })
-			|| (hintPeer || toAddress
+			|| (!callId && (hintPeer || toAddress)
 				? [...rowsSource]
 					.filter((item: PhoneCallRecord) =>
 						(item.direction === 'outgoing' || item.direction === 'incoming') &&
 						(item.status === 'ringing' || item.status === 'answered') &&
+						phoneCallStampMs(item.createdAt) >= fallbackSince &&
 						String(item.peerAddress || '').toLowerCase() === String(hintPeer || toAddress).toLowerCase())
 					.sort((a, b) => Number(b.createdAt || 0) - Number(a.createdAt || 0))[0]
 				: undefined)
@@ -3938,16 +4023,24 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 		// after dialer already hid.
 		if (upsertId) {
 			const terminalAlready = isPhoneCallTerminalStatus(previous?.status)
+			// No row yet for a known call: the page never dialed it, so it is an
+			// incoming call whose offer the page has not read yet (the shell rang
+			// and ended it natively). Record it as incoming; never borrow the
+			// direction, start or duration of another call.
+			const unseenIncoming = !previous && Boolean(callId) && voiceCallState !== 'outgoing'
+			const unseenAnswered = unseenIncoming &&
+				phoneCallWasAnswered({ callId: upsertCallId, sessionId: upsertSessionId } as PhoneCallRecord)
 			const status = terminalAlready && (!requestedStatus || requestedStatus === 'ended' || requestedStatus === 'cancelled')
 				? previous!.status
 				: (requestedStatus
-					|| (previous?.status === 'ringing' ? 'cancelled' : previous?.status === 'missed' ? 'missed' : 'ended'))
+					|| (unseenIncoming ? (unseenAnswered ? 'ended' : 'cancelled')
+						: previous?.status === 'ringing' ? 'cancelled' : previous?.status === 'missed' ? 'missed' : 'ended'))
 			const endedAt = Date.now()
 			upsertPhoneCallRecord({
 				callId: upsertCallId || upsertId,
 				sessionId: upsertSessionId || upsertId,
-				peerAddress: previous?.peerAddress || hintPeer || toAddress,
-				direction: previous?.direction || 'outgoing',
+				peerAddress: previous?.peerAddress || hintPeer || (unseenIncoming ? '' : toAddress),
+				direction: previous?.direction || (unseenIncoming ? 'incoming' : 'outgoing'),
 				status,
 				createdAt: previous?.createdAt || endedAt,
 				endedAt,
@@ -3989,6 +4082,9 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 				if (hangupPeer) {
 					void (async () => {
 						try {
+							// The shell (iOS / Android) sends the ringing cancel itself.
+							const shellCancel = nativeDialerCancelOutcome(offerForHangup.callId)
+							if (shellCancel !== 'none') return
 							const chats = (profiles?.[0]?.chats || []) as Array<{
 								address?: string
 								chatData?: { publicArmored?: string; routersArmoreds?: string }
@@ -4412,6 +4508,28 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 				Boolean(voiceCallOfferRef.current) &&
 				((detail.sessionId && voiceCallOfferRef.current?.sessionId === detail.sessionId) ||
 					(detail.callId && voiceCallOfferRef.current?.callId === detail.callId))
+			if (detail.action === 'callDialerStarted' || detail.action === 'callDialerFailed') {
+				const dialCallId = String(detail.callId || '').trim()
+				const pending = nativeDialerAckRef.current
+				const pendingMatch = Boolean(pending && pending.callId === dialCallId)
+				if (detail.action === 'callDialerStarted') {
+					if (pendingMatch) clearNativeDialerAck()
+					return
+				}
+				// Failed: before the answer (attach) or later (CallKit refused the call).
+				if (!pendingMatch && !matchesOutgoing) return
+				cancelDialWithoutNativeDialer('failed to start', {
+					callId: dialCallId || voiceCallOfferRef.current?.callId || '',
+					sessionId: String(detail.sessionId || '').trim()
+						|| pending?.sessionId
+						|| voiceCallOfferRef.current?.sessionId
+						|| '',
+					peerAddress: pending?.peerAddress
+						|| voicePeerWalletRef.current
+						|| (typeof toAddress === 'string' ? toAddress.trim() : ''),
+				})
+				return
+			}
 			if (detail.action === 'callAnswered') {
 				const answeredCallId = String(detail.callId || '').trim()
 				const answeredSessionId = String(detail.sessionId || '').trim()
@@ -4651,7 +4769,8 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 				void endVoiceCall(undefined, wasLive, {
 					callId: endCallId || voiceCallOfferRef.current?.callId || nativeOffer?.callId,
 					sessionId: endSessionId || voiceCallOfferRef.current?.sessionId || nativeOffer?.sessionId,
-					peerAddress: String(nativeOffer?.from || toAddress || '').trim() || undefined,
+					// The open chat is the peer only for the call this page dialed.
+					peerAddress: String(nativeOffer?.from || (matchesOutgoing ? toAddress : '') || '').trim() || undefined,
 				})
 			}
 		}
@@ -4664,6 +4783,8 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 	}, [
 		acceptVoiceCall,
 		allNodes,
+		cancelDialWithoutNativeDialer,
+		clearNativeDialerAck,
 		endVoiceCall,
 		incomingVoiceOffer,
 		privateKey,

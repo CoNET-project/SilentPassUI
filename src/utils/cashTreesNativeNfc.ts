@@ -35,6 +35,8 @@ export type CashTreesNativeNfcBridge = {
 	requestCameraCapture?: (payload: { requestId?: string; mediaType?: 'video' }) => void
 	requestPhotoPicker?: (payload: { requestId?: string }) => void
 	startSystemCall?: (payload: Record<string, unknown>) => void
+	/** iOS: `startSystemCall` is answered with `callDialerStarted` / `callDialerFailed`. */
+	dialerAck?: boolean
 	reportIncomingSystemCall?: (payload: Record<string, unknown>) => void
 	endSystemCall?: (payload: Record<string, unknown>) => void
 	/** iOS WK bridge — object payload. Android `@JavascriptInterface` accepts a plain URL string (use `openExternalUrl`). */
@@ -736,6 +738,12 @@ export function requestNativePhotoPicker(payload: { requestId?: string }): boole
 		}
 	}
 	return false
+}
+
+/** The shell answers `startSystemCall` (see `utils/nativeDialerAck.ts`). Older shells do not. */
+export function nativeShellAcksDialer(): boolean {
+	const w = cashTreesNativeWindow()
+	return w?.CashTreesIOS?.dialerAck === true
 }
 
 export function dispatchNativeSystemCallAction(

@@ -35,6 +35,7 @@ import {
 import { ensureNativePushBoundForWallet, ensurePushDeviceTokenListener } from "@/utils/cashTreesPushBind"
 import { mirrorChatMessageToHistory, mergeHistoryEntriesIntoMessages } from "@/services/chatHistoryMirror"
 import { onHistoryBuffer, loadWorkerHistory, onDecryptedChatHistory, readDecryptedChatHistory, confirmInboundLines } from "@/services/chatWorkerBridge"
+import { dropTakenInboundLines } from "@/utils/inboundLineQueue"
 import type { HistoryEntry } from "@conet.project/chat-sdk"
 import { checkStorage, storeSystemData, storeSystemDataAndWait, runAutoBUnitFreeClaimIfEligible, handleNfcLinkAppDeepLinkScan, ensureProfilePrivateKeyArmorFromMnemonic, bootstrapProfileLocaleCurrencyIfUnset, mergeLocalLocaleLanguageOntoChainProfile } from "@/services/beamio"
 import { hasLocalPlaintextMnemonic } from "@/utils/consumerWalletGate"
@@ -2825,7 +2826,9 @@ function AppShell() {
 
 		// 新消息入队
 		pendingQueueRef.current.push(...charts)
-		setCharts([])
+		// Remove only the lines taken here; one that arrived after this render stays queued.
+		const taken = charts
+		setCharts((prev: string[]) => dropTakenInboundLines(prev, taken))
 
 		const processQueue = async () => {
 			if (runningRef.current) return

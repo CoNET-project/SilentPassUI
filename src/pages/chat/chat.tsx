@@ -1842,6 +1842,8 @@ type ChatProps = {
 	privateKey: string
 	autoVoiceCallAction?: 'accept' | 'reject' | null
 	onAutoVoiceCallActionHandled?: () => void
+	/** An auto "reject" has been sent (or there was nothing to reject). */
+	onAutoVoiceRejectDone?: () => void
 	onVoiceCallActive?: (active: boolean) => void
 	onShowThread?: () => void
 	threadHidden?: boolean
@@ -2012,7 +2014,7 @@ async function encodeSoftVideoJpeg(
 	return null
 }
 
-export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction, onAutoVoiceCallActionHandled, onVoiceCallActive, onShowThread, threadHidden = false }: ChatProps) {
+export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction, onAutoVoiceCallActionHandled, onAutoVoiceRejectDone, onVoiceCallActive, onShowThread, threadHidden = false }: ChatProps) {
 	const navigate = useNavigate()
 	const [text, setText] = useState("")
 	 
@@ -4288,6 +4290,7 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 			(offer.callId ? locallyEndedVoiceSessionsRef.current.has(String(offer.callId)) : false)
 		if (ended) {
 			onAutoVoiceCallActionHandled?.()
+			if (autoVoiceCallAction === 'reject') onAutoVoiceRejectDone?.()
 			return
 		}
 		const key = `${offer.sessionId}:${autoVoiceCallAction}`
@@ -4297,9 +4300,11 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 		if (autoVoiceCallAction === 'accept') {
 			void acceptVoiceCall()
 		} else {
-			void rejectVoiceCall()
+			// Decline from the call list card or the global window: the thread stays
+			// hidden; tell the parent once the reject is out so it can close it.
+			void rejectVoiceCall().finally(() => onAutoVoiceRejectDone?.())
 		}
-	}, [acceptVoiceCall, autoVoiceCallAction, incomingVoiceOffer, onAutoVoiceCallActionHandled, rejectVoiceCall])
+	}, [acceptVoiceCall, autoVoiceCallAction, incomingVoiceOffer, onAutoVoiceCallActionHandled, onAutoVoiceRejectDone, rejectVoiceCall])
 
 	useEffect(() => {
 		if (voiceCallState !== 'outgoing') return
@@ -7965,7 +7970,7 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 															: record.status === 'missed'
 																? record.direction === 'incoming' ? 'Missed call' : 'No answer'
 																: record.status === 'declined'
-																	? 'Recipient declined'
+																	? record.direction === 'incoming' ? 'Declined' : 'Recipient declined'
 																	: record.status === 'busy'
 																		? record.direction === 'incoming'
 																			? 'Missed call · While on another call'

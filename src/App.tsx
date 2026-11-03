@@ -2968,6 +2968,62 @@ function AppShell() {
 							setChatHomeItem(contact)
 							navigate('/chat', { state: { autoVoiceCallAction: action } })
 						}
+						// Decline here: record it and send the reject without opening the
+						// caller's conversation (same steps as the shells' Decline above).
+						const declineHere = async () => {
+							const offer = globalIncomingVoiceCall.signal
+							const caller = String(offer?.from || globalIncomingVoiceCall.from || '').trim()
+							setGlobalIncomingVoiceCall(null)
+							if (!offer?.callId || !offer.sessionId) return
+							markVoiceCallTerminal(offer.callId, offer.sessionId)
+							forgetIncomingVoiceOffer(offer.callId, offer.sessionId)
+							const dataProfiles = CoNET_Data?.profiles
+							const currentProfiles = Array.isArray(dataProfiles) && dataProfiles.length
+								? dataProfiles
+								: profilesForVoiceDeclineRef.current
+							const p0 = currentProfiles?.[0]
+							if (p0) {
+								const rows: PhoneCallRecord[] = Array.isArray(p0.phoneCalls) ? p0.phoneCalls : []
+								const existing = findPhoneCallByIds(rows, offer)
+								const merged = mergePhoneCallRecord(existing, {
+									callId: offer.callId,
+									sessionId: offer.sessionId,
+									peerAddress: existing?.peerAddress || caller,
+									direction: 'incoming',
+									status: 'declined',
+									createdAt: existing?.createdAt || Number(offer.createdAt) || Date.now(),
+									endedAt: Date.now(),
+								})
+								if (merged) {
+									const next = currentProfiles.slice()
+									next[0] = {
+										...p0,
+										phoneCalls: replacePhoneCallInRows(rows, merged)
+											.sort((a, b) => Number(b.createdAt || 0) - Number(a.createdAt || 0))
+											.slice(0, 200),
+									}
+									profilesForVoiceDeclineRef.current = next
+									setProfilesForVoiceRef.current(next)
+									if (CoNET_Data) CoNET_Data.profiles = next
+									void storeSystemData()
+								}
+							}
+							const privateKey = resolveSigningPrivateKeyArmor(p0)
+							if (!privateKey || !ethers.isAddress(caller)) return
+							const chats = (p0?.chats || []) as Array<{
+								address?: string
+								chatData?: { publicArmored?: string; routersArmoreds?: string }
+							}>
+							const { peerPgp, peerRoute } = await resolvePeerVoiceMaterialAsync(chats, caller, privateKey)
+							await declineIncomingVoiceOffer({
+								privateKey,
+								localCallId: new ethers.Wallet(privateKey).address,
+								peerEoa: caller,
+								peerPgp,
+								peerRoute,
+								allNodes: allNodesForVoiceDeclineRef.current || [],
+							}, offer)
+						}
 						return (
 							<div className="fixed inset-0 z-[250]">
 								<div className="absolute inset-0 bg-[#808080]/50" aria-hidden />
@@ -3015,7 +3071,7 @@ function AppShell() {
 									<div className="mt-3 grid grid-cols-2 gap-2">
 										<button
 											type="button"
-											onClick={() => openChatWithAction('reject')}
+											onClick={() => { void declineHere() }}
 											className="rounded-full bg-slate-100 px-4 py-2.5 text-sm font-semibold text-slate-700"
 										>
 											Decline

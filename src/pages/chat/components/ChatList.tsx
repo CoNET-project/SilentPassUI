@@ -15,6 +15,9 @@ import { useDaemonContext } from "@/providers/DaemonProvider"
 import { useBeamioTagDatabase } from "@/providers/BeamioTagDatabaseProvider"
 import { dedupeChatsByAddress, refreshChatRoutes } from '@/services/chat' 
 import {storeSystemData} from '@/services/beamio'
+import { BeamioAddressCapsule } from '@/components/BeamioAddressCapsule'
+import { localCallerAvatarDataUri } from '@/utils/callerAvatar'
+import { claimedVoiceCallerAddress, claimedVoiceCallerTag, formatLookedUpBeamioTag, VOICE_CALL_IDENTITY_WARNING, voiceCallClaimMismatchesKey } from '@/utils/voiceCallSession'
 import { tu } from '@/locale/beamioLocale'
 import { chatShareLinkListPreview } from '@/utils/chatShareLinkPreview'
 import { chatGenericLinkListPreview } from '@/utils/chatGenericLinkPreview'
@@ -226,7 +229,7 @@ export default function ChatList({
 	onOpen,
 }: ChatListProps) {
 	const { profiles, setProfiles } = useDaemonContext()
-	const { resolvePeerSearchResult, ensureProfilesForAddresses, profileMap } = useBeamioTagDatabase()
+	const { resolvePeerSearchResult, ensureProfilesForAddresses, searchRemoteAndIngest, profileMap } = useBeamioTagDatabase()
 	const routeRefreshAtRef = useRef(0)
 	const tagEnrichAtRef = useRef(0)
 	const [browserCallMuted, setBrowserCallMuted] = useState(false)
@@ -381,6 +384,41 @@ export default function ChatList({
 		return null
 	}, [items])
 
+	// Incoming card, same as the global incoming window: the caller's tag comes from
+	// the tag database, a stranger's from the API; the avatar is drawn locally from it.
+	const incomingCallerAddress = String(browserIncomingCall?.item.address || '').trim().toLowerCase()
+	const [incomingTagLookupDone, setIncomingTagLookupDone] = useState('')
+	const incomingCallerTag = incomingCallerAddress
+		? formatLookedUpBeamioTag(resolvePeerSearchResult(incomingCallerAddress)?.username)
+			|| formatLookedUpBeamioTag(browserIncomingCall?.item.beamio?.username)
+		: ''
+	useEffect(() => {
+		if (!incomingCallerAddress || incomingCallerTag || incomingTagLookupDone === incomingCallerAddress) return
+		let cancelled = false
+		void (async () => {
+			try {
+				await ensureProfilesForAddresses([incomingCallerAddress])
+				if (!formatLookedUpBeamioTag(resolvePeerSearchResult(incomingCallerAddress)?.username)) {
+					await searchRemoteAndIngest(incomingCallerAddress)
+				}
+			} catch {
+				// No tag: the card shows the address capsule only.
+			} finally {
+				if (!cancelled) setIncomingTagLookupDone(incomingCallerAddress)
+			}
+		})()
+		return () => {
+			cancelled = true
+		}
+	}, [ensureProfilesForAddresses, incomingCallerAddress, incomingCallerTag, incomingTagLookupDone, resolvePeerSearchResult, searchRemoteAndIngest])
+	const incomingIdentityWarning = browserIncomingCall
+		&& voiceCallClaimMismatchesKey(
+			browserIncomingCall.signal,
+			incomingCallerAddress,
+			incomingCallerTag,
+			incomingTagLookupDone === incomingCallerAddress,
+		)
+
 	// After recover / history restore, chats often only have EOA stubs — hydrate @beamioTag from Tag DB + remote.
 	useEffect(() => {
 		if (!items.length) return
@@ -492,12 +530,34 @@ export default function ChatList({
         <div className="pointer-events-none fixed inset-x-4 top-[max(5rem,calc(env(safe-area-inset-top)+4.5rem))] z-[130] mx-auto max-w-lg">
           <div className="pointer-events-auto rounded-3xl border border-[#dce2f7] bg-white/95 p-4 shadow-[0_18px_50px_rgba(15,23,42,0.22)] backdrop-blur-xl">
             <div className="flex items-center gap-3">
-              <Avatar address={browserIncomingCall.item.address} beamio={browserIncomingCall.item.beamio} online />
+              {/* Drawn locally from the verified tag; a call never fetches an avatar. */}
+              <img
+                src={localCallerAvatarDataUri(incomingCallerTag) || `${process.env.PUBLIC_URL}/beamio-call-mark.png`}
+                alt=""
+                className="h-12 w-12 shrink-0 rounded-full bg-[#e9edff] object-cover ring-2 ring-white"
+              />
               <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-bold text-slate-900">
-                  {formatChatListTitle(browserIncomingCall.item.beamio, browserIncomingCall.item.address)}
-                </p>
-                <p className="mt-0.5 text-xs text-slate-500">Incoming voice call</p>
+                <p className="truncate text-sm font-bold text-slate-900">{incomingCallerTag || 'Incoming voice call'}</p>
+                {incomingCallerAddress ? (
+                  <div className="mt-1">
+                    <BeamioAddressCapsule address={browserIncomingCall.item.address} />
+                  </div>
+                ) : null}
+                {incomingIdentityWarning ? (
+                  <div className="mt-2">
+                    <p className="truncate text-sm font-semibold text-red-600">{claimedVoiceCallerTag(browserIncomingCall.signal) || 'Unknown tag'}</p>
+                    {claimedVoiceCallerAddress(browserIncomingCall.signal) ? (
+                      <div className="mt-1">
+                        <BeamioAddressCapsule
+                          address={claimedVoiceCallerAddress(browserIncomingCall.signal)}
+                          className="border-red-200 bg-red-50 text-red-700"
+                          iconClassName="text-red-400"
+                        />
+                      </div>
+                    ) : null}
+                    <p className="mt-1 text-xs font-semibold text-red-600">{VOICE_CALL_IDENTITY_WARNING}</p>
+                  </div>
+                ) : null}
               </div>
               <button
                 type="button"

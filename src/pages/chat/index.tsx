@@ -19,6 +19,9 @@ type ChatRouteLocationState = {
 	autoVoiceCallAction?: 'accept' | 'reject'
 } | null
 
+/** Longest wait for a background Decline before the hidden thread is dropped anyway. */
+const BACKGROUND_REJECT_MAX_MS = 20_000
+
 const Home = () => {
 	const navigate = useNavigate()
 	const location = useLocation()
@@ -33,6 +36,9 @@ const Home = () => {
 	const [chatData, setChatData] = useState<chatData> ()
 	const [autoVoiceCallAction, setAutoVoiceCallAction] = useState<'accept' | 'reject' | null>(null)
 	const [voiceCallActive, setVoiceCallActive] = useState(false)
+	// Decline from the list's incoming card: the thread mounts hidden only to send
+	// the reject, so the caller's conversation never opens.
+	const [backgroundReject, setBackgroundReject] = useState(false)
 	const [threadHidden, setThreadHidden] = useState(false)
 	const [groupsOpen, setGroupsOpen] = useState(false)
 	const [privateKey, setPrivate] = useState('')
@@ -103,6 +109,24 @@ const Home = () => {
 		setShowFooter(false)
 	}
 
+	// The hidden thread has sent its Decline (or gave up): drop it; the list stays.
+	const finishBackgroundReject = () => {
+		if (!backgroundReject) return
+		setBackgroundReject(false)
+		setAutoVoiceCallAction(null)
+		setChatData(undefined)
+		setShowFooter(true)
+	}
+	const finishBackgroundRejectRef = useRef(finishBackgroundReject)
+	finishBackgroundRejectRef.current = finishBackgroundReject
+	const onBackgroundRejectDone = useRef(() => finishBackgroundRejectRef.current()).current
+
+	useEffect(() => {
+		if (!backgroundReject) return
+		const timer = window.setTimeout(() => finishBackgroundRejectRef.current(), BACKGROUND_REJECT_MAX_MS)
+		return () => window.clearTimeout(timer)
+	}, [backgroundReject])
+
 
   return (
 		<div className="w-full h-full min-h-0 h-screen bg-[#F1F8ED] overflow-hidden relative flex flex-col pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)]">
@@ -117,7 +141,7 @@ const Home = () => {
 				}}
 			/>
 		) : null}
-		{(!chatData || threadHidden) && !groupsOpen && (
+		{(!chatData || threadHidden || backgroundReject) && !groupsOpen && (
 			<>
 				{/* 与 Home / Wallet / Discover：Footer 同款图标 + 胶囊样式，随滚动渐隐 */}
 				<div
@@ -167,6 +191,11 @@ const Home = () => {
 							setAutoVoiceCallAction(options?.autoVoiceCallAction ?? null)
 							setChatData(item)
 							setThreadHidden(false)
+							if (options?.autoVoiceCallAction === 'reject') {
+								setBackgroundReject(true)
+								return
+							}
+							setBackgroundReject(false)
 							setShowFooter(false)
 						}}
 					/>
@@ -176,7 +205,7 @@ const Home = () => {
 
 		{/* ✅ 选中后：Chat 全屏浮层 */}
 		{chatData && (
-			<div className={threadHidden ? 'hidden' : 'contents'} aria-hidden={threadHidden}>
+			<div className={threadHidden || backgroundReject ? 'hidden' : 'contents'} aria-hidden={threadHidden || backgroundReject}>
 			<Chat
 				onBack={() => {
 					if (voiceCallActive) {
@@ -215,6 +244,7 @@ const Home = () => {
 				privateKey={privateKey}
 				autoVoiceCallAction={autoVoiceCallAction}
 				onAutoVoiceCallActionHandled={() => setAutoVoiceCallAction(null)}
+				onAutoVoiceRejectDone={onBackgroundRejectDone}
 			/>
 			</div>
 		)}

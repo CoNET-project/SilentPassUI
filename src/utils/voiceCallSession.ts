@@ -902,6 +902,23 @@ export const phoneCallWasAnswered = (record: PhoneCallRecord | null | undefined)
 	Boolean(record && (record.status === 'answered' || Number(record.answeredAt || 0) > 0 || nativeAnsweredAtFor(record) > 0))
 
 /**
+ * The page's fallback timers (ring window, offer expiry) may end a call as
+ * `timed_out` only while nobody has answered it. Any sign of an answer stops
+ * them: the page saw the accept (`answered`), the call record says answered,
+ * or the shell marked the call answered (it can take the accept before the page).
+ * Not "the call screen is up": that is true while it still rings.
+ */
+export const voiceRingTimeoutApplies = (call: {
+	answered: boolean
+	callId?: string
+	sessionId?: string
+	record?: PhoneCallRecord | null
+}): boolean =>
+	!call.answered
+	&& !phoneCallWasAnswered(call.record)
+	&& nativeAnsweredAtFor(call) === 0
+
+/**
  * Status for a `voice_end_v1` from the peer: the peer hung up a connected call
  * ("ended"), or the caller gave up before anyone answered ("cancelled").
  */

@@ -160,6 +160,7 @@ import {
 	phoneCallIdsOverlap,
 	findPhoneCallByIds,
 	phoneCallWasAnswered,
+	voiceRingTimeoutApplies,
 	VOICE_CALL_MAX_DURATION_MS,
 	replacePhoneCallInRows,
 	normalizeVoiceTimestampMs,
@@ -2185,6 +2186,9 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 	 * so any delay or failure in that write left "Ringing" up for a live call.
 	 */
 	const [voiceCallAnswered, setVoiceCallAnswered] = useState(false)
+	/** Same as `voiceCallAnswered`, for timers that fire after the render they were set in. */
+	const voiceCallAnsweredRef = useRef(false)
+	voiceCallAnsweredRef.current = voiceCallAnswered
 	/** Browser call: the media SSE went quiet and is being reopened. */
 	const [voiceReconnecting, setVoiceReconnecting] = useState(false)
 	/** Browser call link health (see the watchdog effect below). */
@@ -4397,24 +4401,45 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 		}))
 		return () => registerBrowserVoiceCallProbe(null)
 	}, [])
+	// Nobody answered yet? Also reads the call record and the shell's answered
+	// mark: inside the shell the accept can reach the shell before this page.
+	const ringTimeoutStillApplies = (offer: { callId?: string; sessionId?: string }): boolean => {
+		const rows = Array.isArray(CoNET_Data?.profiles?.[0]?.phoneCalls)
+			? CoNET_Data!.profiles[0].phoneCalls
+			: (Array.isArray(profiles?.[0]?.phoneCalls) ? profiles[0].phoneCalls : [])
+		return voiceRingTimeoutApplies({
+			answered: voiceCallAnsweredRef.current,
+			callId: offer.callId,
+			sessionId: offer.sessionId,
+			record: findPhoneCallByIds(rows, offer),
+		})
+	}
+	const ringTimeoutStillAppliesRef = useRef(ringTimeoutStillApplies)
+	ringTimeoutStillAppliesRef.current = ringTimeoutStillApplies
 	useEffect(() => {
-		if (voiceCallState !== 'outgoing') return
+		// Answered: the ring window is over; the cleanup below drops the timer.
+		if (voiceCallState !== 'outgoing' || voiceCallAnswered) return
 		const offer = voiceCallOfferRef.current
 		if (!offer?.sessionId) return
 		const started = Number(offer.timestamp || Date.now())
 		// The caller owns the ring window: time out exactly at its end. Inside the
 		// iOS / Android shell the shell times out first (it sends the timeout and
 		// tells us `callTimedOut`); this page timer is only the fallback there.
+		// The callee's page answers with the caller's offer, so it runs this too.
 		const shellSlackMs = isCashTreesNativeWebView() ? 10_000 : 0
 		const delay = Math.max(0, started + INCOMING_CALL_RING_TIMEOUT_MS + shellSlackMs - Date.now())
 		const timer = window.setTimeout(() => {
 			if (voiceCallOfferRef.current?.sessionId !== offer.sessionId) return
 			if (remoteRejectHandledRef.current === offer.sessionId) return
+			if (!ringTimeoutStillAppliesRef.current(offer)) {
+				console.info(`[voiceCall] ring window over, call answered; no timeout callId=${String(offer.callId || '').slice(0, 8)}`)
+				return
+			}
 			remoteRejectHandledRef.current = offer.sessionId
 			void endVoiceCallRef.current('timed_out', true)
 		}, delay)
 		return () => window.clearTimeout(timer)
-	}, [voiceCallState])
+	}, [voiceCallState, voiceCallAnswered])
 
 	/**
 	 * Browser dialer wake receipt. The callee's device sends `voice_call_ringing_v1`
@@ -4468,6 +4493,8 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 				if (current?.callId !== offer.callId) return
 				// Read the receipt map too: a receipt in the same tick has not rendered yet.
 				if (wasVoicePeerRinging(offer)) return
+				// An accept in the same tick has not rendered yet either.
+				if (!ringTimeoutStillAppliesRef.current(offer)) return
 				setVoicePeerWake((wake) => voicePeerWakeAfterTimer(wake, 'unreachable'))
 				// Record now (stops the ringback, survives a hang-up during the notice).
 				upsertPhoneCallRecordRef.current({
@@ -4481,6 +4508,7 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 				})
 				timers.push(window.setTimeout(() => {
 					if (voiceCallOfferRef.current?.callId !== offer.callId) return
+					if (!ringTimeoutStillAppliesRef.current(offer)) return
 					void endVoiceCallRef.current('unreachable', true)
 				}, VOICE_PEER_UNREACHABLE_NOTICE_MS))
 			}, Math.max(0, started + VOICE_PEER_UNREACHABLE_MS - Date.now())))
@@ -4942,7 +4970,8 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 			if (!callId) return
 			const current = (Array.isArray(profiles?.[0]?.phoneCalls) ? profiles[0].phoneCalls : [])
 				.find((item: PhoneCallRecord) => item.sessionId === outgoing?.sessionId)
-			if (current?.status === 'ringing') void endVoiceCall('timed_out', false)
+			// A row can still say "ringing" after the shell took the accept.
+			if (current?.status === 'ringing' && ringTimeoutStillAppliesRef.current(outgoing!)) void endVoiceCall('timed_out', false)
 		}, Math.max(0, expiresAt - Date.now()))
 
 		return () => window.clearTimeout(timer)

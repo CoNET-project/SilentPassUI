@@ -1,4 +1,4 @@
-import { planOwnChatRoute, readOwnChainState, recheckListenRoute, resolveCurrentMailbox } from './chatOwnRoutePlan'
+import { pickRecordedMailbox, planOwnChatRoute, readOwnChainState, recheckListenRoute, resolveCurrentMailbox } from './chatOwnRoutePlan'
 import type { OwnChainRead } from './chatOwnRoutePlan'
 import type { OwnChainRecord, OwnMailbox, OwnPrivateBlob } from './chatOwnRoutePlan'
 
@@ -227,5 +227,47 @@ describe('recheckListenRoute (airplane mode, then back online)', () => {
 		})
 		expect(r.result).toBe('gone')
 		expect(waits).toEqual([5_000, 15_000, 30_000, 60_000, 120_000, 300_000, 300_000, 300_000])
+	})
+})
+
+describe('pickRecordedMailbox (new mailbox only on a node AddressPGP recorded)', () => {
+	const nodes = [{ domain: '60F7767D9F2174CA' }, { domain: '01B67C184BE19C55' }, { domain: 'B6FF020087998A06' }, { domain: 'F36E92ECD8F5FCD1' }]
+	const recorded = new Set(['B6FF020087998A06', 'F36E92ECD8F5FCD1'])
+
+	it('skips unrecorded nodes (#570, #355) and takes the first recorded one', async () => {
+		const asked: string[] = []
+		const r = await pickRecordedMailbox({ candidates: nodes, routeKeyID: (n) => n.domain, isRecorded: async (id) => { asked.push(id); return recorded.has(id) } })
+		expect(r).toEqual({ status: 'ok', node: nodes[2], skipped: ['60F7767D9F2174CA', '01B67C184BE19C55'] })
+		expect(asked).toEqual(['60F7767D9F2174CA', '01B67C184BE19C55', 'B6FF020087998A06'])
+	})
+
+	it('a failed check (RPC error) picks nothing, even if later nodes would pass', async () => {
+		const r = await pickRecordedMailbox({
+			candidates: nodes,
+			routeKeyID: (n) => n.domain,
+			isRecorded: async (id) => { if (id === '01B67C184BE19C55') throw new Error('could not detect network'); return recorded.has(id) },
+		})
+		expect(r).toEqual({ status: 'error', reason: 'could not detect network', skipped: ['60F7767D9F2174CA'] })
+	})
+
+	it('a check that hangs times out as an error', async () => {
+		const r = await pickRecordedMailbox({ candidates: nodes, routeKeyID: (n) => n.domain, isRecorded: () => new Promise(() => {}), timeoutMs: 20 })
+		expect(r.status).toBe('error')
+	})
+
+	it('none recorded within maxChecks → none (caller does not register)', async () => {
+		const r = await pickRecordedMailbox({ candidates: nodes, routeKeyID: (n) => n.domain, isRecorded: async () => false, maxChecks: 3 })
+		expect(r).toEqual({ status: 'none', skipped: ['60F7767D9F2174CA', '01B67C184BE19C55', 'B6FF020087998A06'] })
+	})
+
+	it('ignores empty and duplicate route key IDs', async () => {
+		const asked: string[] = []
+		const r = await pickRecordedMailbox({
+			candidates: ['', '60f7767d9f2174ca', '60F7767D9F2174CA', 'B6FF020087998A06'],
+			routeKeyID: (id) => id,
+			isRecorded: async (id) => { asked.push(id); return recorded.has(id) },
+		})
+		expect(r.status).toBe('ok')
+		expect(asked).toEqual(['60f7767d9f2174ca', 'B6FF020087998A06'])
 	})
 })

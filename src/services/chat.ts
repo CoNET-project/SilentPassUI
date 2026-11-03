@@ -14,7 +14,7 @@ import { publishNativePwaLog } from '@/utils/cashTreesNativePwaLog'
 import { sendChatViaNativeDaemon, getWorkerGossipListenParams, getWorkerGossipRouteArmor, isWorkerGossipActive, isWorkerGossipBusy, isNativeChatListenOwner, pauseNativeChatListen, resumeNativeChatListen, retargetWorkerGossipRoute, startWorkerGossipListen, stopWorkerGossip } from '@/services/chatWorkerBridge'
 import { isCashTreesAndroidChatModuleAvailable, isCashTreesAndroidChatModuleRunning } from '@/utils/cashTreesAndroidConetChat'
 import { wrapArmorToMailboxWork } from '@conet.project/chat-sdk'
-import { planOwnChatRoute, readOwnChainState, recheckListenRoute, resolveCurrentMailbox } from '@/services/chatOwnRoutePlan'
+import { pickRecordedMailbox, planOwnChatRoute, readOwnChainState, recheckListenRoute, resolveCurrentMailbox } from '@/services/chatOwnRoutePlan'
 import type { OwnPrivateBlob } from '@/services/chatOwnRoutePlan'
 
 function chatBootLog(message: string, level: 'info' | 'warn' | 'error' = 'info'): void {
@@ -389,7 +389,23 @@ export const initChat = async (setProfiles: (val: profile[]) => void, setAllNode
 			scheduleChatRetry('own chain record unreadable', ownRouteRetryArgs)
 			return
 		} else {
-			const randomNode = plan.target === 'random' ? getRandomNode(allNodes) : null
+			let randomNode: nodeInfo | null = null
+			if (plan.target === 'random') {
+				// Only a node AddressPGP has recorded; a failed check picks nothing.
+				const pick = await pickRecordedMailbox({
+					candidates: getRandomNodes(allNodes || [], Math.min(8, (allNodes || []).length)),
+					routeKeyID: (n) => n.domain,
+					isRecorded: isMailboxNodeRecorded,
+				})
+				if (pick.skipped.length) chatBootLog(`new mailbox: skipped unrecorded nodes ${pick.skipped.join(',')}`, 'warn')
+				if (pick.status === 'error') {
+					chatBootLog(`new mailbox: node check failed (${pick.reason}); retrying later`, 'warn')
+					setGossip(false)
+					scheduleChatRetry('mailbox node check failed', ownRouteRetryArgs)
+					return
+				}
+				randomNode = pick.status === 'ok' ? pick.node : null
+			}
 			const target = plan.target !== 'random'
 				? plan.target
 				: randomNode ? { routeKeyID: randomNode.domain, routeArmor: randomNode.armoredPublicKey } : null
@@ -587,6 +603,13 @@ const readOwnChatChain = async (
 	})
 	if (own.read.status === 'error') chatBootLog(`own chain read failed: ${own.read.reason}`, 'warn')
 	return own
+}
+
+/** AddressPGP has recorded this node as a mailbox (`nodeKeyExists`). Throws on RPC error. */
+const isMailboxNodeRecorded = async (routeKeyID: string): Promise<boolean> => {
+	const contract = contracts.constPgpManager
+	const SC = new ethers.Contract(contract.address, contract.abi, conetDepinProvider)
+	return Boolean(await SC.nodeKeyExists(ethers.id(routeKeyID)))
 }
 
 /** Route key ID of a mailbox armor for logs (node domain = route key ID); '?' if not in the list. */

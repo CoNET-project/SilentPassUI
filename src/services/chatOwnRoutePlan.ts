@@ -225,3 +225,55 @@ export async function recheckListenRoute(deps: {
 		if (!(await deps.sleep(waitMs))) return { result: 'gone', read }
 	}
 }
+
+export type RecordedMailboxPick<T> =
+	| { status: 'ok'; node: T; skipped: string[] }
+	/** Every candidate checked was not recorded. */
+	| { status: 'none'; skipped: string[] }
+	/** A check failed (RPC error or timeout): pick nothing, retry later. */
+	| { status: 'error'; reason: string; skipped: string[] }
+
+/**
+ * A new mailbox for an account that never had one: only a node AddressPGP has
+ * recorded (`nodeKeyExists`). On an unrecorded node SI answers `not_my_route`
+ * to presence, ACK and push registration for every account on it (2026-11-02:
+ * #570 and #355 were never recorded). `candidates` come in random order. A
+ * failed check picks nothing, like a failed chain read: the caller retries
+ * later instead of using an unchecked node.
+ */
+export async function pickRecordedMailbox<T>(deps: {
+	candidates: readonly T[]
+	routeKeyID: (node: T) => string
+	/** Resolves AddressPGP `nodeKeyExists(keccak256(routeKeyID))`; throws on RPC error. */
+	isRecorded: (routeKeyID: string) => Promise<boolean>
+	maxChecks?: number
+	timeoutMs?: number
+}): Promise<RecordedMailboxPick<T>> {
+	const maxChecks = deps.maxChecks ?? 8
+	const timeoutMs = deps.timeoutMs ?? 8_000
+	const skipped: string[] = []
+	const seen = new Set<string>()
+	for (const node of deps.candidates) {
+		if (seen.size >= maxChecks) break
+		const id = String(deps.routeKeyID(node) || '').trim()
+		if (!id || seen.has(id.toUpperCase())) continue
+		seen.add(id.toUpperCase())
+		let recorded: boolean
+		let timer: ReturnType<typeof setTimeout> | undefined
+		try {
+			recorded = await Promise.race([
+				deps.isRecorded(id),
+				new Promise<never>((_, reject) => {
+					timer = setTimeout(() => reject(new Error('nodeKeyExists timeout')), timeoutMs)
+				}),
+			])
+		} catch (ex) {
+			return { status: 'error', reason: String((ex as Error)?.message || ex).slice(0, 120), skipped }
+		} finally {
+			clearTimeout(timer)
+		}
+		if (recorded) return { status: 'ok', node, skipped }
+		skipped.push(id)
+	}
+	return { status: 'none', skipped }
+}

@@ -94,7 +94,8 @@ import { beginCallTiming, markCallTiming, timeCallStep } from '@/utils/callTimin
 import { cachedWallet, prewarmDialKeys } from '@/utils/dialKeyCache'
 import { createDialStateGate } from '@/utils/dialPathHelpers'
 import { VOICE_LINK, newVoiceLinkState, noteVoiceLinkRx, tickVoiceLink, type VoiceLinkState } from '@/utils/voiceLinkPolicy'
-import { dispatchNativeSystemCallAction, getCashTreesNativeNfcBridge, getCashTreesNativeNfcHost, isCashTreesNativeWebView, nativeShellAcksDialer, notifyNativeVoiceMicReady, openExternalUrl, requestNativeCameraCapture, requestNativePhotoPicker, saveFileToNative } from '@/utils/cashTreesNativeNfc'
+import { androidShellOwnsCallAudio, dispatchNativeSystemCallAction, getCashTreesNativeNfcBridge, getCashTreesNativeNfcHost, isCashTreesNativeWebView, nativeShellAcksDialer, notifyNativeVoiceMicReady, openExternalUrl, requestNativeCameraCapture, requestNativePhotoPicker, saveFileToNative } from '@/utils/cashTreesNativeNfc'
+import { androidMicPrewarmMaxMs, shouldPrewarmAndroidMic, shouldReleaseAndroidMicPrewarm } from '@/utils/androidMicPrewarm'
 import { NATIVE_DIALER_ACK_MS, nativeDialerAckOverdue } from '@/utils/nativeDialerAck'
 import { MessageSendReceiveCard } from "./components/messageSendReceiveCard"
 import { AaMultisigChatRequestCard } from '@/components/chat/AaMultisigChatRequestCard'
@@ -3909,9 +3910,18 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 
 	// Android: open mic while Telecom is still RINGING (MODE_RINGTONE). Answer
 	// later flips MODE_IN_COMMUNICATION (~3.4s) and WebView getUserMedia NotFounds.
+	// Not in shells with the native voice channel: they record and end calls
+	// themselves, and the stream stayed open after the call (camera blocked).
 	useEffect(() => {
 		const sessionId = typeof incomingVoiceOffer?.sessionId === 'string' ? incomingVoiceOffer.sessionId : ''
-		if (getCashTreesNativeNfcHost() !== 'android' || !sessionId || !navigator.mediaDevices?.getUserMedia) {
+		if (
+			!shouldPrewarmAndroidMic({
+				host: getCashTreesNativeNfcHost(),
+				shellOwnsCallAudio: androidShellOwnsCallAudio(),
+				sessionId,
+				hasGetUserMedia: Boolean(navigator.mediaDevices?.getUserMedia),
+			})
+		) {
 			return
 		}
 		const liveSameSession =
@@ -3920,6 +3930,7 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 		if (liveSameSession) return
 
 		let cancelled = false
+		let expiry: number | undefined
 		const relay = (line: string) => {
 			try {
 				const w = window as Window & {
@@ -3949,6 +3960,12 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 				stopAndroidIncomingMicPrewarm()
 				androidIncomingMicPrewarmRef.current = stream
 				androidIncomingMicPrewarmSessionRef.current = sessionId
+				// Never outlive the ring window, whatever happens to the offer.
+				expiry = window.setTimeout(() => {
+					if (androidIncomingMicPrewarmSessionRef.current !== sessionId) return
+					relay(`[voice-mic] prewarm_expired ${JSON.stringify({ sessionId: 'set' })}`)
+					stopAndroidIncomingMicPrewarm(sessionId)
+				}, androidMicPrewarmMaxMs(INCOMING_CALL_RING_TIMEOUT_MS))
 				relay(
 					`[voice-mic] prewarm_ok ${JSON.stringify({
 						tracks: stream.getAudioTracks().map((t) => t.label || t.id).join(',') || '0',
@@ -3962,8 +3979,31 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 		})()
 		return () => {
 			cancelled = true
+			if (expiry !== undefined) window.clearTimeout(expiry)
+			// Offer cleared or replaced: an untaken stream for it is not needed.
+			// Answer takes it first (takeAndroidIncomingMicPrewarm), so this is a no-op then.
+			stopAndroidIncomingMicPrewarm(sessionId)
 		}
 	}, [incomingVoiceOffer?.sessionId, stopAndroidIncomingMicPrewarm])
+
+	// Page hidden with no ringing offer and no call: nothing will use the prewarm.
+	useEffect(() => {
+		if (getCashTreesNativeNfcHost() !== 'android') return
+		const releaseIfIdle = () => {
+			if (
+				shouldReleaseAndroidMicPrewarm({
+					pageHidden: document.visibilityState === 'hidden',
+					hasIncomingOffer: Boolean(incomingVoiceOffer?.sessionId),
+					callIdle: voiceCallState !== 'outgoing',
+				})
+			) {
+				stopAndroidIncomingMicPrewarm()
+			}
+		}
+		releaseIfIdle()
+		document.addEventListener('visibilitychange', releaseIfIdle)
+		return () => document.removeEventListener('visibilitychange', releaseIfIdle)
+	}, [incomingVoiceOffer?.sessionId, voiceCallState, stopAndroidIncomingMicPrewarm])
 
 	const rejectVoiceCall = useCallback(async (offerOverride?: VoiceCallSignal | null) => {
 		const offer = offerOverride || incomingVoiceOffer
@@ -4618,6 +4658,16 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 				sessionId?: string
 			}>).detail
 			if (!detail?.action || (!detail.callId && !detail.sessionId)) return
+			// The shell ended or refused the call: drop any prewarmed WebView mic.
+			if (
+				detail.action === 'callEnded' ||
+				detail.action === 'callRejected' ||
+				detail.action === 'callTimedOut' ||
+				detail.action === 'callBusy' ||
+				detail.action === 'callUnreachable'
+			) {
+				stopAndroidIncomingMicPrewarm()
+			}
 			const nativeShell = isCashTreesNativeWebView()
 			const nativeOffer = incomingVoiceOffer || lookupIncomingVoiceOffer(detail.callId || '', detail.sessionId || '')
 			const matchesIncoming =
@@ -4908,6 +4958,7 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 		allNodes,
 		cancelDialWithoutNativeDialer,
 		clearNativeDialerAck,
+		stopAndroidIncomingMicPrewarm,
 		endVoiceCall,
 		incomingVoiceOffer,
 		privateKey,

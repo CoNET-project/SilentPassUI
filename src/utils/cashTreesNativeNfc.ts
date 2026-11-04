@@ -441,6 +441,17 @@ export function notifyNativeVoiceMicReady(payload: {
 }
 
 /** Start the Android AudioRecord uplink. False when the shell has no bridge. */
+/**
+ * Android shell with the native voice channel: it records, answers, declines
+ * and ends calls itself, so the page must not open the WebView microphone.
+ */
+export function androidShellOwnsCallAudio(): boolean {
+	if (getCashTreesNativeNfcHost() !== 'android') return false
+	const w = cashTreesNativeWindow()
+	const android = w?.CashTreesAndroid as { setNativeVoiceRelayNodes?: unknown } | undefined
+	return typeof android?.setNativeVoiceRelayNodes === 'function'
+}
+
 export function startNativeVoiceMic(): boolean {
 	const w = cashTreesNativeWindow()
 	if (!w?.CashTreesAndroid || typeof w.CashTreesAndroid.startNativeVoiceMic !== 'function') {

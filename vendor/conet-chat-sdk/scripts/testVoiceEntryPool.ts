@@ -22,9 +22,12 @@ const n = (pairs: Array<[string, number]>) => new Map(pairs)
 	const ewma = ms([['a', 300], ['b', 320], ['c', 345], ['d', 395], ['e', 600], ['f', 700]])
 	const samples = n(entries.map((e) => [e, 5] as [string, number]))
 	assert.deepEqual(entryLatencyBand(entries, ewma, samples, 18).sort(), ['a', 'b', 'c'])
-	// Only the fastest is close: still keep two.
+	// A lone fast entry does not pull a slow partner in: the fastest close pair wins.
 	const lone = ms([['a', 200], ['b', 500], ['c', 520], ['d', 560], ['e', 600], ['f', 700]])
-	assert.deepEqual(entryLatencyBand(entries, lone, samples, 18), ['a', 'b'])
+	assert.deepEqual(entryLatencyBand(entries, lone, samples, 18), ['b', 'c'])
+	// No two entries close at all: the fastest two.
+	const spread = ms([['a', 200], ['b', 300], ['c', 400], ['d', 500], ['e', 600], ['f', 700]])
+	assert.deepEqual(entryLatencyBand(entries, spread, samples, 18), ['a', 'b'])
 	// Measured entries outside the band get no frames.
 	assert.deepEqual(entryLatencyBand(entries, ewma, samples, 3 * ENTRY_BAND_PROBE_EVERY - 1).sort(), ['a', 'b', 'c'])
 	// A new, unmeasured candidate gets one pick in eight until it is measured.
@@ -143,3 +146,17 @@ async function outOfOrder(useBand: boolean, callSeed: number): Promise<number> {
 }
 
 console.log('voice entry pool ok')
+
+{
+	// While looking for close entries the pool stays at most target + 2, and a call tries 12 at most.
+	seed = 21
+	const pool = new VoiceEntryPool<Node>(picker, rand)
+	let maxSize = 0
+	for (let i = 0; i < 600; i += 1) {
+		const node = await pool.next(new Set())
+		pool.record(node!.domain, means[node!.domain] + (rand() * 40 - 20), true)
+		maxSize = Math.max(maxSize, pool.size)
+	}
+	assert.ok(maxSize <= 8, `pool grew to ${maxSize}`)
+}
+console.log('voice entry pool size ok')

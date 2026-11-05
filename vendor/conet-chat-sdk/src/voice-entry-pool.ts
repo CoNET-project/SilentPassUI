@@ -10,8 +10,8 @@
  *
  * Privacy: the candidate set is narrowed per call to the measured fast entries
  * (random candidates, at most 12 tried per call, frames on entries within 50 ms
- * of the fastest); the entry still changes frame to frame (never twice in a
- * row) and the set is thrown away when the call ends.
+ * of each other, the fastest such group); the entry still changes frame to
+ * frame (never twice in a row) and the set is thrown away when the call ends.
  */
 
 /** Post-time samples an entry needs before it is judged. */
@@ -49,10 +49,8 @@ export function entryLatencyBand(
 	if (entries.length <= ENTRY_BAND_MIN_KEEP) return entries
 	const measured = entries.filter((e) => (samples.get(e) ?? 0) >= ENTRY_BAND_MIN_SAMPLES)
 	if (pickIndex < poolTarget * ENTRY_BAND_MIN_SAMPLES || measured.length < ENTRY_BAND_MIN_KEEP) return entries
-	const sorted = measured.slice().sort((a, b) => (ewma.get(a) ?? Infinity) - (ewma.get(b) ?? Infinity))
-	const limit = (ewma.get(sorted[0]) ?? 0) * ENTRY_BAND_RATIO + ENTRY_BAND_SLACK_MS
-	let keep = sorted.filter((e) => (ewma.get(e) ?? Infinity) <= limit)
-	if (keep.length < ENTRY_BAND_MIN_KEEP) keep = sorted.slice(0, ENTRY_BAND_MIN_KEEP)
+	const group = closeGroup(measured, ewma)
+	const keep = group.length >= ENTRY_BAND_MIN_KEEP ? group : sortedByTime(measured, ewma).slice(0, ENTRY_BAND_MIN_KEEP)
 	const unmeasured = entries.filter((e) => (samples.get(e) ?? 0) < ENTRY_BAND_MIN_SAMPLES)
 	if (unmeasured.length && pickIndex % ENTRY_BAND_PROBE_EVERY === ENTRY_BAND_PROBE_EVERY - 1) {
 		return [unmeasured[Math.floor(pickIndex / ENTRY_BAND_PROBE_EVERY) % unmeasured.length]]
@@ -60,7 +58,27 @@ export function entryLatencyBand(
 	return keep
 }
 
-/** Measured entries within the band limit (before the minimum-two rule). */
+function sortedByTime(entries: string[], ewma: ReadonlyMap<string, number>): string[] {
+	return entries.slice().sort((a, b) => (ewma.get(a) ?? Infinity) - (ewma.get(b) ?? Infinity))
+}
+
+/**
+ * The fastest group of entries whose times lie within the band of its first
+ * (fastest) member and that has at least two members; else the fastest alone.
+ * A lone fast entry does not pull a much slower partner into the band.
+ */
+function closeGroup(measured: string[], ewma: ReadonlyMap<string, number>): string[] {
+	const sorted = sortedByTime(measured, ewma)
+	for (let i = 0; i < sorted.length; i += 1) {
+		const anchor = ewma.get(sorted[i]) ?? Infinity
+		const limit = anchor * ENTRY_BAND_RATIO + ENTRY_BAND_SLACK_MS
+		const group = sorted.slice(i).filter((e) => (ewma.get(e) ?? Infinity) <= limit)
+		if (group.length >= ENTRY_BAND_MIN_KEEP) return group
+	}
+	return sorted.slice(0, 1)
+}
+
+/** Measured entries in the band (the close group; one entry when none pairs up). */
 export function entriesCloseToFastest(
 	entries: string[],
 	ewma: ReadonlyMap<string, number>,
@@ -68,8 +86,7 @@ export function entriesCloseToFastest(
 ): string[] {
 	const measured = entries.filter((e) => (samples.get(e) ?? 0) >= ENTRY_BAND_MIN_SAMPLES)
 	if (!measured.length) return []
-	const best = Math.min(...measured.map((e) => ewma.get(e) ?? Infinity))
-	return measured.filter((e) => (ewma.get(e) ?? Infinity) <= best * ENTRY_BAND_RATIO + ENTRY_BAND_SLACK_MS)
+	return closeGroup(measured, ewma)
 }
 
 /** Random member of `band`, not `last` when there is a choice. */
@@ -104,9 +121,9 @@ export class VoiceEntryPool<N extends { domain: string }> {
 	/** Entry for the next frame; never one in `exclude` (relay, mailboxes, already tried). */
 	async next(exclude: Set<string>): Promise<N | null> {
 		if (this.nodes.filter((n) => !exclude.has(n.domain)).length < ENTRY_POOL_MIN) {
-			await this.refill(exclude, ENTRY_POOL_TARGET)
+			await this.refill(exclude, false)
 		} else if (this.needsCloserEntries(exclude)) {
-			await this.refill(exclude, this.nodes.length + 2)
+			await this.refill(exclude, true)
 		}
 		const avail = this.nodes.filter((n) => !exclude.has(n.domain))
 		if (!avail.length) return null
@@ -154,10 +171,11 @@ export class VoiceEntryPool<N extends { domain: string }> {
 		return entriesCloseToFastest(avail, this.ewma, this.samples).length < ENTRY_BAND_WANT
 	}
 
-	private async refill(exclude: Set<string>, target: number): Promise<void> {
+	/** Back to the target size, or (`closer`) two more after dropping far entries. */
+	private async refill(exclude: Set<string>, closer: boolean): Promise<void> {
 		if (this.refilling) return this.refilling
 		this.refilling = (async () => {
-			if (this.nodes.length >= ENTRY_POOL_TARGET) {
+			if (closer && this.nodes.length >= ENTRY_POOL_TARGET) {
 				// Make room: drop measured entries outside the band (slowest first).
 				const close = new Set(entriesCloseToFastest(this.nodes.map((n) => n.domain), this.ewma, this.samples))
 				const far = this.nodes
@@ -170,7 +188,9 @@ export class VoiceEntryPool<N extends { domain: string }> {
 				}
 			}
 			const known = new Set<string>([...exclude, ...this.dropped, ...this.nodes.map((n) => n.domain)])
-			const want = Math.min(target - this.nodes.filter((n) => !exclude.has(n.domain)).length, ENTRY_POOL_MAX_TRIED - this.tried)
+			const avail = this.nodes.filter((n) => !exclude.has(n.domain)).length
+			const target = closer ? avail + 2 : ENTRY_POOL_TARGET
+			const want = Math.min(target - avail, ENTRY_POOL_MAX_TRIED - this.tried)
 			if (want <= 0) return
 			try {
 				const fresh = await this.pickCandidates(want, known)

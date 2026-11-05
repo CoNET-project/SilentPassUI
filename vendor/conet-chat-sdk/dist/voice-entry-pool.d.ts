@@ -10,8 +10,8 @@
  *
  * Privacy: the candidate set is narrowed per call to the measured fast entries
  * (random candidates, at most 12 tried per call, frames on entries within 50 ms
- * of the fastest); the entry still changes frame to frame (never twice in a
- * row) and the set is thrown away when the call ends.
+ * of each other, the fastest such group); the entry still changes frame to
+ * frame (never twice in a row) and the set is thrown away when the call ends.
  */
 /** Post-time samples an entry needs before it is judged. */
 export declare const ENTRY_BAND_MIN_SAMPLES = 3;
@@ -36,7 +36,7 @@ export declare const ENTRY_POOL_MAX_TRIED = 12;
  * Warm-up (first target × min-samples picks, or fewer than two measured): all.
  */
 export declare function entryLatencyBand(entries: string[], ewma: ReadonlyMap<string, number>, samples: ReadonlyMap<string, number>, pickIndex: number, poolTarget?: number): string[];
-/** Measured entries within the band limit (before the minimum-two rule). */
+/** Measured entries in the band (the close group; one entry when none pairs up). */
 export declare function entriesCloseToFastest(entries: string[], ewma: ReadonlyMap<string, number>, samples: ReadonlyMap<string, number>): string[];
 /** Random member of `band`, not `last` when there is a choice. */
 export declare function pickFromBand(band: string[], last: string | null, random?: () => number): string | null;
@@ -75,6 +75,7 @@ export declare class VoiceEntryPool<N extends {
      * outside the band then leave the pool so it stays small.
      */
     private needsCloserEntries;
+    /** Back to the target size, or (`closer`) two more after dropping far entries. */
     private refill;
 }
 //# sourceMappingURL=voice-entry-pool.d.ts.map

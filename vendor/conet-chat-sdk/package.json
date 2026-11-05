@@ -30,7 +30,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "spec:schema": "node scripts/genDaemonSchema.ts",
     "test:conformance": "tsc -p tsconfig.json && node scripts/genDaemonSchema.ts --check && node scripts/testDaemonConformance.ts",
-    "test:voice": "tsx scripts/testVoiceReorder.ts && tsx scripts/testVoicePeerWait.ts && tsx scripts/testInboundArmor.ts",
+    "test:voice": "tsx scripts/testVoiceReorder.ts && tsx scripts/testVoiceEntryPool.ts && tsx scripts/testVoicePeerWait.ts && tsx scripts/testInboundArmor.ts",
     "test": "npm run test:conformance && npm run test:voice"
   },
   "peerDependencies": {

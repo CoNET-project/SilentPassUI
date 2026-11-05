@@ -29,6 +29,7 @@ import { VOICE_KIND_AUDIO, VOICE_KIND_CONTROL, VOICE_KIND_VIDEO, aesDecryptV1, a
 import { buildVoiceListenV3 } from '../voice-v3.js';
 import { postUntilPeerChannel } from '../voice-peer-wait.js';
 import { DEFAULT_VIDEO_REORDER_DELAY_MS, DEFAULT_VOICE_REORDER_DELAY_MS, VoiceFrameReorderBuffer, } from '../voice-reorder.js';
+import { VoiceEntryPool } from '../voice-entry-pool.js';
 const GOSSIP_STOP_REASONS = new Set([
     'root_stop',
     'replaced_by_new_connection',
@@ -1230,7 +1231,7 @@ export class GossipCore {
         // still opening (it announces its relays first): post the chunk again.
         const result = await postUntilPeerChannel({
             seenBefore: st.txOk > 0,
-            post: () => this.postVoiceChunk(inner, exclude),
+            post: () => this.postVoiceChunk(inner, exclude, st.entryPool),
             sleep: (ms) => new Promise((done) => setTimeout(done, ms)),
             now: () => Date.now(),
             alive: () => this.voiceV3ForCall(st.cfg.callId) === st,
@@ -1240,6 +1241,11 @@ export class GossipCore {
                 this.emit.log('info', `voice v3 peer channel up after tries=${result.tries}`);
             if (++st.txOk === 1)
                 this.emit.log('info', 'voice v3 first chunk accepted');
+            if (st.txOk % 250 === 0) {
+                // Post times only (no entry names): how close the call's entries are.
+                const times = st.entryPool.snapshot().map((e) => (e.ms === null ? '-' : String(e.ms))).join(',');
+                this.emit.log('info', `voice v3 entries n=${st.entryPool.size} ms=${times}`);
+            }
             st.miss = 0;
             return true;
         }
@@ -1258,13 +1264,16 @@ export class GossipCore {
      * One entry POST for a v2 chunk (a second entry only on a network failure).
      * Reads the node's JSON so a refused chunk can fall back to v1.
      */
-    async postVoiceChunk(innerArmor, excludeDomains) {
+    async postVoiceChunk(innerArmor, excludeDomains, pool) {
         const tried = new Set(excludeDomains);
         for (let wave = 0; wave < 2; wave++) {
-            const [node] = await pickGossipEntryNodesForSend(this.nodes, 1, tried);
+            const node = pool
+                ? await pool.next(tried)
+                : (await pickGossipEntryNodesForSend(this.nodes, 1, tried))[0];
             if (!node)
                 return { ok: false, error: 'no_entry' };
             tried.add(node.domain);
+            const startedAt = Date.now();
             try {
                 const armored = this.cfg?.runtime.outerWrap === false
                     ? innerArmor
@@ -1277,9 +1286,11 @@ export class GossipCore {
                 }, 12000);
                 if (!res.ok) {
                     markGossipNodeBad(node.domain);
+                    pool?.record(node.domain, 0, false);
                     continue;
                 }
                 markGossipNodeHealthy(node.domain);
+                pool?.record(node.domain, Date.now() - startedAt, true);
                 const text = (await res.text()).trim();
                 try {
                     const body = JSON.parse(text.slice(text.indexOf('{')));
@@ -1291,6 +1302,7 @@ export class GossipCore {
             }
             catch {
                 markGossipNodeBad(node.domain);
+                pool?.record(node.domain, 0, false);
             }
         }
         return { ok: false, error: 'network' };
@@ -1420,6 +1432,7 @@ export class GossipCore {
             cfg: call, uiKey, avoidDomains, own, peer,
             relaysAnnounced: call.role === 'callee',
             announcing: false, txOk: 0, rx: 0, miss: 0, stopped: false,
+            entryPool: new VoiceEntryPool((count, exclude) => pickGossipEntryNodesForSend(this.nodes, count, exclude)),
         };
     }
     /**
@@ -1681,7 +1694,7 @@ export class GossipCore {
                         data: body,
                     });
                     const inner = await encryptVoiceChunkLiteral(literal, target.relay.armoredPublicKey);
-                    const result = await this.postVoiceChunk(inner, new Set([target.relay.domain, ...st.avoidDomains]));
+                    const result = await this.postVoiceChunk(inner, new Set([target.relay.domain, ...st.avoidDomains]), st.entryPool);
                     if (result.ok) {
                         stale = st.own.voice.relay.domain !== sentVoice || st.own.video.relay.domain !== sentVideo;
                         st.relaysAnnounced = !stale;

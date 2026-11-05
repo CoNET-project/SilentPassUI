@@ -963,6 +963,29 @@ export const phoneCallIdsOverlap = (
 	return false
 }
 
+/**
+ * Whether an end request names a call other than the one this page is on.
+ * `hint` carries the ids from a signal or a shell action; `activeIds` are all
+ * the ids the page's own call goes by (offer callId and sessionId, own and peer
+ * voice sessions). An end for another call, such as a replayed cancel of an
+ * older incoming offer, must never close the current call (2026-11-05: a dial
+ * was ended this way and the callee kept ringing).
+ * False when the hint names no call (the caller means the current call) or
+ * when no call is active. While a dial is still being set up it has no ids
+ * yet, so any named call is another one.
+ */
+export const endHintTargetsOtherCall = (
+	hint: { callId?: string; sessionId?: string } | null | undefined,
+	activeIds: readonly (string | null | undefined)[],
+	dialBeingSetUp = false,
+): boolean => {
+	const hintIds = [nonBlank(hint?.callId), nonBlank(hint?.sessionId)].filter(Boolean)
+	if (!hintIds.length) return false
+	const active = new Set(activeIds.map(nonBlank).filter(Boolean))
+	if (!active.size) return dialBeingSetUp
+	return !hintIds.some(id => active.has(id))
+}
+
 export const findPhoneCallByIds = (
 	rows: readonly PhoneCallRecord[] | null | undefined,
 	ids: { callId?: string; sessionId?: string },

@@ -178,6 +178,7 @@ import {
 	voicePeerRingingMatches,
 	wasVoicePeerRinging,
 	pageEndsSystemCall,
+	endHintTargetsOtherCall,
 	callWindowHoldMs,
 } from '@/utils/voiceCallSession'
 import {
@@ -4113,6 +4114,65 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 		notifyPeer = true,
 		idHint?: { callId?: string; sessionId?: string; peerAddress?: string },
 	) => {
+		// An end that names another call (a replayed cancel of an older incoming
+		// offer, a shell action for a call that is not ours) closes only that
+		// call's record, offer and system call. The current call, above all a
+		// dial that is still ringing, keeps going. A current call whose record
+		// already ended is stale state: the end then tears it down as before.
+		const currentOffer = voiceCallOfferRef.current
+		const callRows: PhoneCallRecord[] = Array.isArray(CoNET_Data?.profiles?.[0]?.phoneCalls)
+			? CoNET_Data!.profiles[0].phoneCalls
+			: (Array.isArray(profiles?.[0]?.phoneCalls) ? profiles[0].phoneCalls : [])
+		const currentRow = currentOffer ? findPhoneCallByIds(callRows, currentOffer) : undefined
+		const currentIds = isPhoneCallTerminalStatus(currentRow?.status)
+			? []
+			: [
+				currentOffer?.callId,
+				currentOffer?.sessionId,
+				voiceCallSessionRef.current,
+				voiceCallPeerSessionRef.current,
+			]
+		if (endHintTargetsOtherCall(idHint, currentIds, voiceCallStartingRef.current)) {
+			const otherCallId = String(idHint?.callId || '').trim()
+			const otherSessionId = String(idHint?.sessionId || '').trim()
+			const otherRow = findPhoneCallByIds(callRows, { callId: otherCallId, sessionId: otherSessionId })
+			const otherOffer = lookupIncomingVoiceOffer(otherCallId, otherSessionId)
+			console.info('[voice-end] other call, current call kept', {
+				callId: otherCallId.slice(0, 8),
+				status: requestedStatus || '',
+			})
+			if (otherSessionId) locallyEndedVoiceSessionsRef.current.add(otherSessionId)
+			if (otherCallId) locallyEndedVoiceSessionsRef.current.add(otherCallId)
+			markVoiceCallTerminal(otherCallId || otherSessionId, otherSessionId || otherCallId)
+			forgetIncomingVoiceOffer(otherCallId || otherSessionId, otherSessionId || otherCallId)
+			setIncomingVoiceOffer(previous =>
+				previous && phoneCallIdsOverlap(previous, { callId: otherCallId, sessionId: otherSessionId })
+					? null
+					: previous)
+			if (otherRow || otherOffer) {
+				const endedAt = Date.now()
+				const status = isPhoneCallTerminalStatus(otherRow?.status)
+					? otherRow!.status
+					: (requestedStatus || (otherRow?.status === 'answered' ? 'ended' : 'cancelled'))
+				upsertPhoneCallRecord({
+					callId: otherRow?.callId || otherCallId || otherSessionId,
+					sessionId: otherRow?.sessionId || otherSessionId || otherCallId,
+					peerAddress: otherRow?.peerAddress || otherOffer?.from || String(idHint?.peerAddress || '').trim(),
+					direction: otherRow?.direction || 'incoming',
+					status,
+					createdAt: otherRow?.createdAt || Number(otherOffer?.createdAt) || endedAt,
+					endedAt: isPhoneCallTerminalStatus(otherRow?.status) ? otherRow?.endedAt : endedAt,
+					durationMs: otherRow?.durationMs,
+				})
+			}
+			if (pageEndsSystemCall(requestedStatus, isCashTreesNativeWebView())) {
+				dispatchNativeSystemCallAction('endSystemCall', {
+					callId: otherCallId || otherSessionId,
+					sessionId: otherSessionId || otherCallId,
+				})
+			}
+			return
+		}
 		// Hang-up during a busy hold (or the hold's own end): no second close.
 		if (busyHoldTimerRef.current !== null) {
 			window.clearTimeout(busyHoldTimerRef.current)
@@ -4377,9 +4437,15 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 			signal?.type === 'voice_end_v1' &&
 			signal.sessionId === incomingVoiceOffer.sessionId
 		) {
+			// The caller cancelled this incoming call. End only that call (its ids
+			// below): a call this page dialed meanwhile must keep ringing.
 			markVoiceCallTerminal(signal.callId, signal.sessionId)
 			setIncomingVoiceOffer(null)
-			void endVoiceCall('cancelled', false)
+			void endVoiceCall('cancelled', false, {
+				callId: signal.callId || incomingVoiceOffer.callId,
+				sessionId: signal.sessionId,
+				peerAddress: incomingVoiceOffer.from,
+			})
 		}
 	}, [endVoiceCall, incomingVoiceOffer, messages])
 
@@ -4445,7 +4511,7 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 				remoteRejectHandledRef.current === signal.sessionId
 			) continue
 			remoteRejectHandledRef.current = signal.sessionId
-			void endVoiceCall(peerStatus, false)
+			void endVoiceCall(peerStatus, false, { callId: offer.callId, sessionId: offer.sessionId })
 			return
 		}
 	}, [endVoiceCall, messages, voiceCallState])
@@ -4471,7 +4537,7 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 				remoteEndHandledRef.current === offer.callId
 			) continue
 			remoteEndHandledRef.current = offer.callId
-			void endVoiceCall('ended', false)
+			void endVoiceCall('ended', false, { callId: offer.callId, sessionId: offer.sessionId })
 			return
 		}
 	}, [endVoiceCall, messages, voiceCallState])
@@ -4834,12 +4900,18 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 					callId: detailCallId,
 					sessionId: detailSessionId,
 				})
+				// Ids that name the incoming offer and not our call are that incoming
+				// call (callIds are unique), even while a dial or call is on: declining
+				// a waiting call must not record or end our own call.
 				const treatAsOutgoing = Boolean(
 					matchesOutgoing
-					|| voiceCallState === 'outgoing'
-					|| voiceCallOfferRef.current
 					|| matchedByIds?.direction === 'outgoing'
-					|| (!matchesIncoming && (detailCallId || detailSessionId)),
+					|| (!matchesIncoming && (
+						voiceCallState === 'outgoing'
+						|| voiceCallOfferRef.current
+						|| detailCallId
+						|| detailSessionId
+					)),
 				)
 				if (matchesIncoming && !treatAsOutgoing) {
 					if (nativeShell) {
@@ -4956,7 +5028,12 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 				})
 				setIncomingVoiceOffer(null)
 			} else if (detail.action === 'callTimedOut' && (matchesOutgoing || voiceCallState === 'outgoing')) {
-				void endVoiceCall('timed_out', false)
+				// Our dial rang out: tell the callee (ring timeout), so their phone
+				// stops ringing even when the shell's own cancel did not get out.
+				void endVoiceCall('timed_out', true, {
+					callId: String(detail.callId || '').trim() || voiceCallOfferRef.current?.callId,
+					sessionId: String(detail.sessionId || '').trim() || voiceCallOfferRef.current?.sessionId,
+				})
 			} else if (detail.action === 'callUnreachable' && (matchesOutgoing || voiceCallState === 'outgoing')) {
 				// No ringing receipt after five rings: the shell shows "Unreachable" and
 				// posts its ready cancel (`dialerCancelPosting` came first). The page
@@ -4967,7 +5044,10 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 				})
 			} else if (detail.action === 'callBusy' && (matchesOutgoing || voiceCallState === 'outgoing' || voiceCallOfferRef.current)) {
 				// The shell's dialer got the callee's busy reject and plays the busy tone itself.
-				void endVoiceCall('busy', false)
+				void endVoiceCall('busy', false, {
+					callId: String(detail.callId || '').trim() || voiceCallOfferRef.current?.callId,
+					sessionId: String(detail.sessionId || '').trim() || voiceCallOfferRef.current?.sessionId,
+				})
 			} else if (detail.action === 'callEnded') {
 				const endCallId = String(detail.callId || '').trim()
 				const endSessionId = String(detail.sessionId || '').trim()
@@ -5068,7 +5148,10 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 			const current = (Array.isArray(profiles?.[0]?.phoneCalls) ? profiles[0].phoneCalls : [])
 				.find((item: PhoneCallRecord) => item.sessionId === outgoing?.sessionId)
 			// A row can still say "ringing" after the shell took the accept.
-			if (current?.status === 'ringing' && ringTimeoutStillAppliesRef.current(outgoing!)) void endVoiceCall('timed_out', false)
+			// Our own dial rang out: tell the callee (ring timeout), never end it quietly.
+			if (current?.status === 'ringing' && ringTimeoutStillAppliesRef.current(outgoing!)) {
+				void endVoiceCall('timed_out', true, { callId, sessionId: outgoing?.sessionId })
+			}
 		}, Math.max(0, expiresAt - Date.now()))
 
 		return () => window.clearTimeout(timer)
@@ -5175,7 +5258,10 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 						return
 					}
 					remoteEndHandledRef.current = liveCallId
-					void endVoiceCall('ended', false)
+					void endVoiceCall('ended', false, {
+						callId: liveCallId,
+						sessionId: voiceCallOfferRef.current?.sessionId,
+					})
 					return
 				}
 				if (control?.type === 'voice_media_caps_v1') {

@@ -1947,6 +1947,14 @@ const SOFT_VIDEO_MAX_JPEG_BYTES = 8_800
 const SOFT_VIDEO_QUALITY_STEPS = [0.5, 0.4, 0.32, 0.25, 0.18]
 /** Remote video is shown this long after its fastest observed transit (≈ audio delay). */
 const REMOTE_VIDEO_PLAYOUT_DELAY_MS = 300
+/** Video posts allowed on the way at once; a new frame is skipped beyond this. */
+const SOFT_VIDEO_MAX_IN_FLIGHT = 3
+/**
+ * When to send `voice_media_caps_v1` after the call connects or video starts.
+ * Control frames share the audio seq, and a late one is dropped by the reorder
+ * buffer, so a single announcement was often lost.
+ */
+const MEDIA_CAPS_BURST_MS = [0, 1500, 4000, 8000]
 
 /** Browser counterpart of the shells' `[VideoStats]` 2 s window. */
 function newSoftVideoStats() {
@@ -1959,6 +1967,7 @@ function newSoftVideoStats() {
 		txEncodeMs: 0,
 		txSendMs: 0,
 		txOversize: 0,
+		txBusy: 0,
 		rxIn: 0,
 		rxShown: 0,
 		rxSuperseded: 0,
@@ -1977,7 +1986,7 @@ function flushSoftVideoStats(stats: ReturnType<typeof newSoftVideoStats>, peerCa
 		const fps = (n: number) => (n / Math.max(seconds, 0.1)).toFixed(1)
 		console.info([
 			`[VideoStats] mode=${peerCaps >= 2 ? 'v2' : 'v1'} peerCaps=${peerCaps}`,
-			`tx cap=${stats.txCap} sent=${stats.txSent} fail=${stats.txFail} oversize=${stats.txOversize} fps=${fps(stats.txSent)}`,
+			`tx cap=${stats.txCap} sent=${stats.txSent} fail=${stats.txFail} oversize=${stats.txOversize} busy=${stats.txBusy} fps=${fps(stats.txSent)}`,
 			`jpegAvg=${avg(stats.txJpegBytes, stats.txSent)}B encAvg=${avg(stats.txEncodeMs, stats.txCap)}ms sendAvg=${avg(stats.txSendMs, stats.txSent + stats.txFail)}ms`,
 			`| rx in=${stats.rxIn} shown=${stats.rxShown} superseded=${stats.rxSuperseded} fps=${fps(stats.rxShown)} bytesAvg=${avg(stats.rxBytes, stats.rxIn)}B`,
 			`latAvg=${avg(stats.rxLatSum, stats.rxLatN)}ms`,
@@ -2216,6 +2225,10 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 	const remoteVideoImgRef = useRef<HTMLImageElement | null>(null)
 	const remoteVideoHasFrameRef = useRef(false)
 	const sendMediaCapsRef = useRef<(reason: string) => void>(() => {})
+	/** Sends the caps several times (MEDIA_CAPS_BURST_MS) while this call stays live. */
+	const announceMediaCapsRef = useRef<(reason: string) => void>(() => {})
+	/** callId whose connect announcement already went out. */
+	const mediaCapsAnnouncedCallRef = useRef('')
 	const softVideoStatsRef = useRef(newSoftVideoStats())
 	const voiceCallStreamRef = useRef<MediaStream | null>(null)
 	/** Android: open mic while Telecom is still RINGING (MODE_RINGTONE). */
@@ -2586,6 +2599,13 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 			return
 		}
 		voiceMediaStartingRef.current = true
+		// Tell the peer once per call that this page takes split-seq video, even if
+		// neither side turns video on first (the peer otherwise sends the old format).
+		const connectedCallId = voiceCallOfferRef.current?.callId || ''
+		if (connectedCallId && mediaCapsAnnouncedCallRef.current !== connectedCallId) {
+			mediaCapsAnnouncedCallRef.current = connectedCallId
+			announceMediaCapsRef.current('connected')
+		}
 		const sleepMs = (ms: number) =>
 			new Promise<void>((resolve) => {
 				window.setTimeout(resolve, ms)
@@ -3345,6 +3365,17 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 		console.info('[voice-video] media caps sent', reason)
 	}
 
+	announceMediaCapsRef.current = (reason: string) => {
+		const callId = voiceCallOfferRef.current?.callId || ''
+		if (!callId) return
+		for (const delay of MEDIA_CAPS_BURST_MS) {
+			window.setTimeout(() => {
+				if (!voiceCallLiveRef.current || (voiceCallOfferRef.current?.callId || '') !== callId) return
+				sendMediaCapsRef.current(`${reason}+${delay}`)
+			}, delay)
+		}
+	}
+
 	const toggleSoftLocalVideo = useCallback(async () => {
 		if (softLocalVideoOn) {
 			const callId = voiceCallOfferRef.current?.callId || ''
@@ -3396,6 +3427,8 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 					timestamp: Date.now(),
 				}))
 				void sendSoftVoiceUplink(body)
+				// The enable above can be dropped like any late control frame.
+				announceMediaCapsRef.current('video-on')
 			}
 			const canvas = document.createElement('canvas')
 			const ctx = canvas.getContext('2d')
@@ -3406,6 +3439,7 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 			await probe.play().catch(() => {})
 			let cancelled = false
 			let timer: ReturnType<typeof setTimeout> | undefined
+			let videoInFlight = 0
 			const stop = () => {
 				// Cancel capture only — Soft PiP / MediaStream lifecycle is owned by
 				// stopSoftLocalVideo (do not stop tracks here or Soft preview dies early).
@@ -3427,6 +3461,12 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 						try {
 							if (!ctx) return
 							const stats = softVideoStatsRef.current
+							// Enough frames on the way: skip this one (no seq used), so a slow
+							// path costs frame rate instead of piling up stale frames.
+							if (videoInFlight >= SOFT_VIDEO_MAX_IN_FLIGHT) {
+								stats.txBusy += 1
+								return
+							}
 							const captureMs = Date.now()
 							stats.txCap += 1
 							// 320 px long edge and ≤ 8.8 KB, like the shells: the relay
@@ -3446,23 +3486,28 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 								? encodeBjp2Frame(jpeg, w, h, softVideoFrameIdRef.current, captureMs)
 								: encodeBjpgFrame(jpeg, w, h, softVideoFrameIdRef.current)
 							const seqOverride = split ? VOICE_VIDEO_SEQ_BASE + (++softVideoSeqRef.current) : undefined
+							const frameId = softVideoFrameIdRef.current
 							const sendStarted = Date.now()
-							const sent = await sendSoftVoiceUplink(framed, 'video', seqOverride)
-							stats.txSendMs += Date.now() - sendStarted
-							if (sent) {
-								stats.txSent += 1
-								stats.txJpegBytes += jpeg.length
-							} else {
-								stats.txFail += 1
-							}
-							softVideoStatsRef.current = flushSoftVideoStats(stats, peerVideoCapsRef.current)
-							notePeerVideo({
-								localSent: sent,
-								frameId: softVideoFrameIdRef.current,
-								w,
-								h,
-								jpegBytes: jpeg.length,
-							})
+							// Do not wait for the post: it takes about half a second, and
+							// waiting held the camera to under 1.5 frames per second.
+							videoInFlight += 1
+							void sendSoftVoiceUplink(framed, 'video', seqOverride)
+								.catch(() => false)
+								.then((sent) => {
+									const done = softVideoStatsRef.current
+									done.txSendMs += Date.now() - sendStarted
+									if (sent) {
+										done.txSent += 1
+										done.txJpegBytes += jpeg.length
+									} else {
+										done.txFail += 1
+									}
+									softVideoStatsRef.current = flushSoftVideoStats(done, peerVideoCapsRef.current)
+									notePeerVideo({ localSent: sent, frameId, w, h, jpegBytes: jpeg.length })
+								})
+								.finally(() => {
+									videoInFlight -= 1
+								})
 						} catch (error) {
 							notePeerVideo({
 								localCaptureFail: error instanceof Error ? error.message : String(error),

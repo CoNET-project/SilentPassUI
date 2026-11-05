@@ -1,5 +1,6 @@
 import { startNativeVoiceMic, stopNativeVoiceMic } from '@/utils/cashTreesNativeNfc'
 import { decryptVoiceFrame, encryptVoiceFrame } from '@/utils/voiceCallSession'
+import { VoicePlayoutLead } from './voicePlayoutLead'
 
 /** 16 kHz mono PCM. Both browsers and Android WebView can capture and play this. */
 export const VOICE_PCM_SAMPLE_RATE = 16_000
@@ -540,6 +541,9 @@ const resampleFloat32 = (input: Float32Array, fromRate: number, toRate: number):
 	return output
 }
 
+/** Audio queued beyond the lead is late; drop it rather than build up delay. */
+const PLAYOUT_LATENCY_HEADROOM_SEC = 1.0
+
 export class VoicePlaybackBuffer {
 	context: AudioContext | null
 	analyser: AnalyserNode | null
@@ -552,7 +556,13 @@ export class VoicePlaybackBuffer {
 	private pcmRate = VOICE_PCM_SAMPLE_RATE
 	private clipTail: Promise<void> = Promise.resolve()
 	private clipGeneration = 0
+	private clipsInFlight = 0
+	private clipsPlayed = 0
 	private flushTimer: number | null = null
+	/** Adaptive prebuffer for both output paths (WebAudio and the desktop <audio>). */
+	private readonly lead = new VoicePlayoutLead()
+	/** Frames dropped by the latency cap (diagnostics). */
+	droppedLate = 0
 	/** Speaker level. Earpiece uses a lower value; neither is mute. */
 	private outputGain = 4
 
@@ -598,8 +608,12 @@ export class VoicePlaybackBuffer {
 		const merged = new Float32Array(this.pcmPending.length + samples.length)
 		merged.set(this.pcmPending, 0)
 		merged.set(samples, this.pcmPending.length)
-		// ~80ms @16k — lower than 240ms so first inbound audio is audible sooner.
-		const flushAt = Math.floor(sampleRate * 0.08)
+		// ~80ms @16k while clips are playing. When the <audio> chain ran dry,
+		// collect the adaptive lead first so the restart does not stutter.
+		const idle = this.clipsInFlight === 0
+		if (idle && this.clipsPlayed > 0 && !this.pcmPending.length) this.lead.noteUnderrun(Date.now())
+		this.lead.maybeDecay(Date.now())
+		const flushAt = Math.floor(sampleRate * (idle ? Math.max(0.08, this.lead.sec) : 0.08))
 		if (merged.length < flushAt) {
 			this.pcmPending = merged
 			this.pcmRate = sampleRate
@@ -619,7 +633,7 @@ export class VoicePlaybackBuffer {
 			const rate = this.pcmRate
 			this.pcmPending = new Float32Array(0)
 			this.playSpeakerClip(pending, rate)
-		}, 80)
+		}, this.clipsInFlight === 0 ? Math.max(80, Math.round(this.lead.sec * 1000)) : 80)
 	}
 
 	private notePlayFail(detail: Record<string, unknown>): void {
@@ -645,6 +659,8 @@ export class VoicePlaybackBuffer {
 		}
 		const generation = this.clipGeneration
 		const url = URL.createObjectURL(encodeWavBlob(samples, sampleRate))
+		this.clipsInFlight += 1
+		this.clipsPlayed += 1
 		this.clipTail = this.clipTail.then(() => new Promise<void>((resolve) => {
 			if (generation !== this.clipGeneration) {
 				URL.revokeObjectURL(url)
@@ -656,6 +672,7 @@ export class VoicePlaybackBuffer {
 			const done = () => {
 				if (settled) return
 				settled = true
+				if (generation === this.clipGeneration) this.clipsInFlight = Math.max(0, this.clipsInFlight - 1)
 				window.clearTimeout(timer)
 				speaker.removeEventListener('ended', done)
 				speaker.removeEventListener('error', done)
@@ -697,10 +714,22 @@ export class VoicePlaybackBuffer {
 		if (!this.context || !this.analyser || !samples.length) return
 		this.resume()
 		const now = this.context.currentTime
-		if (this.nextTime < now) this.nextTime = now + 0.05
-		// A suspended context never advances currentTime, so a 2s cap would
-		// drop every frame after the first burst and the speaker stays quiet.
-		if (this.nextTime > now + 0.3) this.nextTime = now + 0.05
+		const nowMs = Date.now()
+		this.lead.maybeDecay(nowMs)
+		if (this.nextTime < now) {
+			// Ran dry (not the first frame): restart with a deeper lead.
+			if (this.nextTime > 0) this.lead.noteUnderrun(nowMs)
+			this.nextTime = now + this.lead.sec
+		}
+		if (this.context.state !== 'running') {
+			// A suspended context never advances currentTime, so a cap would
+			// drop every frame after the first burst and the speaker stays quiet.
+			if (this.nextTime > now + 0.3) this.nextTime = now + this.lead.sec
+		} else if (this.nextTime > now + this.lead.sec + PLAYOUT_LATENCY_HEADROOM_SEC) {
+			// Far behind: drop this frame instead of rewinding over queued audio.
+			this.droppedLate += 1
+			return
+		}
 		const resampled = resampleFloat32(samples, sampleRate, this.context.sampleRate)
 		const buffer = this.context.createBuffer(1, resampled.length, this.context.sampleRate)
 		buffer.getChannelData(0).set(resampled)
@@ -789,6 +818,10 @@ export class VoicePlaybackBuffer {
 	reset(): void {
 		this.key = null
 		this.nextTime = 0
+		this.lead.reset()
+		this.clipsInFlight = 0
+		this.clipsPlayed = 0
+		this.droppedLate = 0
 		this.pcmPending = new Float32Array(0)
 		this.clipGeneration += 1
 		this.clipTail = Promise.resolve()

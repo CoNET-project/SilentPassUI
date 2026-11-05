@@ -1,6 +1,16 @@
 import { VOICE_VIDEO_SEQ_BASE } from './types.js';
-/** Default voice jitter window (~1.5× 80ms PCM frames). */
-export const DEFAULT_VOICE_REORDER_DELAY_MS = 120;
+/**
+ * Default voice jitter window. Frames reach us through a different random entry
+ * each, 25–35 % out of order and up to ~0.3 s apart (2026-11-05 measurements);
+ * the old 120ms dropped 6–37 % of audio as "late".
+ */
+export const DEFAULT_VOICE_REORDER_DELAY_MS = 400;
+/** Adaptive ceiling for the voice wait. */
+export const DEFAULT_VOICE_REORDER_MAX_DELAY_MS = 1000;
+const DEFAULT_LATE_STEP_MS = 100;
+const DEFAULT_DECAY_STEP_MS = 50;
+const DEFAULT_DECAY_INTERVAL_MS = 10000;
+const SKIPPED_MEMORY = 128;
 /** Default wait for incomplete video fragment groups at nextSeq. */
 export const DEFAULT_VIDEO_REORDER_DELAY_MS = 200;
 const DEFAULT_MAX_PENDING_CHUNKS = 96;
@@ -41,6 +51,10 @@ export class VoiceFrameReorderBuffer {
         /** Split-seq video already delivered, per session (duplicate guard). */
         this.videoSeen = new Map();
         this.reorderDelayMs = options.reorderDelayMs ?? DEFAULT_VOICE_REORDER_DELAY_MS;
+        this.maxReorderDelayMs = Math.max(this.reorderDelayMs, options.maxReorderDelayMs ?? DEFAULT_VOICE_REORDER_MAX_DELAY_MS);
+        this.lateStepMs = options.lateStepMs ?? DEFAULT_LATE_STEP_MS;
+        this.decayStepMs = options.decayStepMs ?? DEFAULT_DECAY_STEP_MS;
+        this.decayIntervalMs = options.decayIntervalMs ?? DEFAULT_DECAY_INTERVAL_MS;
         this.videoReorderDelayMs = options.videoReorderDelayMs ?? DEFAULT_VIDEO_REORDER_DELAY_MS;
         this.maxPendingChunks = options.maxPendingChunks ?? DEFAULT_MAX_PENDING_CHUNKS;
         this.maxPendingPayloadUnits = options.maxPendingPayloadUnits ?? DEFAULT_MAX_PENDING_PAYLOAD_UNITS;
@@ -77,8 +91,12 @@ export class VoiceFrameReorderBuffer {
             this.emit({ type: 'frame', frame });
             return [frame];
         }
-        if (frame.seq < state.nextSeq)
+        if (frame.seq < state.nextSeq) {
+            if (state.skipped.delete(frame.seq))
+                this.noteLate(state, now);
             return [];
+        }
+        this.decayIfStable(state, now);
         if (state.pending.size >= this.maxPendingChunks || state.pendingPayloadUnits + frame.payload.length > this.maxPendingPayloadUnits) {
             // Advance past the stalled gap so live audio does not freeze on overflow.
             this.emit({ type: 'gap', gap: { type: 'voice_gap_v1', sessionId: frame.sessionId, direction: normalizeDirection(frame), missingSeq: [state.nextSeq], reason: 'buffer_overflow' } });
@@ -156,6 +174,11 @@ export class VoiceFrameReorderBuffer {
             gapStartedAt: null,
             gapWaitMs: this.reorderDelayMs,
             recentDelivered: new Map(),
+            waitMs: this.reorderDelayMs,
+            skipped: new Set(),
+            lastGrowAt: 0,
+            lastDecayAt: 0,
+            late: 0,
         };
         this.streams.set(key, state);
         return state;
@@ -176,8 +199,8 @@ export class VoiceFrameReorderBuffer {
      */
     afterPendingGap(key, state, now, sample) {
         const waitMs = isVideoFragment(sample) || this.nextSeqIsIncompleteVideo(state)
-            ? this.videoReorderDelayMs
-            : this.reorderDelayMs;
+            ? Math.max(this.videoReorderDelayMs, state.waitMs)
+            : state.waitMs;
         if (state.gapStartedAt === null) {
             state.gapStartedAt = now;
             state.gapWaitMs = waitMs;
@@ -226,7 +249,7 @@ export class VoiceFrameReorderBuffer {
         }
         if (!state.pending.size) {
             state.gapStartedAt = null;
-            state.gapWaitMs = this.reorderDelayMs;
+            state.gapWaitMs = state.waitMs;
             if (state.timer !== null)
                 clearTimeout(state.timer);
             state.timer = null;
@@ -256,6 +279,14 @@ export class VoiceFrameReorderBuffer {
             for (let seq = state.nextSeq; seq < firstPendingSeq; seq += 1)
                 missingSeq.push(seq);
             state.nextSeq = firstPendingSeq;
+            for (const seq of missingSeq)
+                state.skipped.add(seq);
+            while (state.skipped.size > SKIPPED_MEMORY) {
+                const oldest = state.skipped.values().next().value;
+                if (oldest === undefined)
+                    break;
+                state.skipped.delete(oldest);
+            }
         }
         const sample = [...state.pending.values()][0];
         this.emit({
@@ -270,7 +301,7 @@ export class VoiceFrameReorderBuffer {
             },
         });
         state.gapStartedAt = null;
-        state.gapWaitMs = this.reorderDelayMs;
+        state.gapWaitMs = state.waitMs;
         if (state.timer !== null)
             clearTimeout(state.timer);
         state.timer = null;
@@ -284,6 +315,29 @@ export class VoiceFrameReorderBuffer {
             state.timer = null;
             this.skipGap(state, 'timeout');
         }, wait);
+    }
+    /** Current adaptive audio wait (ms) for a session's inbound stream; for diagnostics and tests. */
+    currentWaitMs(sessionId, direction = 'inbound') {
+        return this.streams.get(`${sessionId}:${direction}`)?.waitMs ?? this.reorderDelayMs;
+    }
+    /** Frames that arrived after their gap was skipped, per stream. */
+    lateCount(sessionId, direction = 'inbound') {
+        return this.streams.get(`${sessionId}:${direction}`)?.late ?? 0;
+    }
+    noteLate(state, now) {
+        state.late += 1;
+        const next = Math.min(this.maxReorderDelayMs, state.waitMs + this.lateStepMs);
+        state.waitMs = next;
+        state.lastGrowAt = now;
+        state.lastDecayAt = now;
+    }
+    decayIfStable(state, now) {
+        if (state.waitMs <= this.reorderDelayMs)
+            return;
+        if (now - state.lastGrowAt < this.decayIntervalMs || now - state.lastDecayAt < this.decayIntervalMs)
+            return;
+        state.lastDecayAt = now;
+        state.waitMs = Math.max(this.reorderDelayMs, state.waitMs - this.decayStepMs);
     }
     emit(event) { this.onEvent?.(event); }
 }

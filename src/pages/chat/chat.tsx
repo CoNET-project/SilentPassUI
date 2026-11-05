@@ -204,6 +204,7 @@ import {
 	type VoiceCallController,
 } from '@/services/voiceCallController'
 import { useReliableTapHandler, RELIABLE_TAP_BUTTON_CLASS } from '@/utils/reliableTap'
+import { isCallToolsPanelBackgroundTap } from '@/utils/callToolsPanelTap'
 import {
 	createChatFileArchive,
 	decryptChatFileManifest,
@@ -7677,6 +7678,14 @@ export default function Chat({ onBack, chatData, privateKey, autoVoiceCallAction
 										? 'rounded-[1.75rem] bg-black/50 px-2 pb-3 pt-4 backdrop-blur-md'
 										: 'pb-3 pt-4'
 								}`}
+								data-testid="call-tools-panel"
+								onClick={event => {
+									// Over peer video, a tap on the panel outside its buttons
+									// collapses it, the same as the grabber.
+									if (!hasPeerVideoBackground) return
+									if (!isCallToolsPanelBackgroundTap(event.target, event.currentTarget)) return
+									setVoiceInCallToolsExpanded(false)
+								}}
 							>
 								{hasPeerVideoBackground ? (
 									<button

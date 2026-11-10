@@ -11,8 +11,11 @@
  * the fallback when that inline script did not run.
  */
 
-/** Lower-case names of query params that must never appear in a URL. */
-const SECRET_PARAM_NAMES = new Set(['masterkey'])
+/**
+ * Lower-case names of query params that must never appear in a URL. The
+ * Recovery Code alone restores the wallet, with or without a BeamioTag.
+ */
+const SECRET_PARAM_NAMES = new Set(['masterkey', 'recoverycode', 'recovercode'])
 
 /** Params removed together with a secret one (the restore link pairs them). */
 const LEGACY_RESTORE_COMPANION_PARAMS = new Set(['beamiotag'])
@@ -119,7 +122,10 @@ export function captureLegacyRestoreLink(): void {
 		const url = new URL(href)
 		const { query } = splitHash(url.hash)
 		const hashParams = new URLSearchParams(query)
-		const masterKey = readParam(url.searchParams, 'masterkey') || readParam(hashParams, 'masterkey')
+		let masterKey = ''
+		for (const name of Array.from(SECRET_PARAM_NAMES)) {
+			masterKey = masterKey || readParam(url.searchParams, name) || readParam(hashParams, name)
+		}
 		const beamioTag = readParam(url.searchParams, 'beamiotag') || readParam(hashParams, 'beamiotag')
 		if (masterKey && !pendingLegacyRestore) {
 			pendingLegacyRestore = { beamioTag: beamioTag.replace(/^@+/, ''), masterKey }

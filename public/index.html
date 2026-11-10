@@ -5,8 +5,9 @@
     <!-- Send no Referer anywhere (defence in depth: the page URL must never leave the device). -->
     <meta name="referrer" content="no-referrer" />
     <script>
-      /* Old builds put the Recovery Code in the URL (?beamioTag=…&MasterKey=…). Take it out
-         before any other script or request runs; the app reads it once from memory. */
+      /* Old builds put the Recovery Code in the URL (?beamioTag=…&MasterKey=…). It restores the
+         wallet on its own, so take it out (also recoveryCode / recoverCode) before any other script
+         or request runs; the app reads it once from memory. */
       (function () {
         try {
           var loc = window.location, found = null;
@@ -17,10 +18,10 @@
               var eq = parts[i].indexOf('='), name = eq < 0 ? parts[i] : parts[i].slice(0, eq);
               var value = eq < 0 ? '' : parts[i].slice(eq + 1), lower = '';
               try { lower = decodeURIComponent(name.replace(/\+/g, ' ')).toLowerCase(); } catch (e) { lower = name.toLowerCase(); }
-              if (lower === 'masterkey' || lower === 'beamiotag') {
+              if (lower === 'masterkey' || lower === 'recoverycode' || lower === 'recovercode' || lower === 'beamiotag') {
                 var decoded = value;
                 try { decoded = decodeURIComponent(value.replace(/\+/g, ' ')); } catch (e) {}
-                if (lower === 'masterkey') key = key || decoded; else tag = tag || decoded;
+                if (lower === 'beamiotag') tag = tag || decoded; else key = key || decoded;
               } else keep.push(parts[i]);
             }
             return { key: key, tag: tag, query: keep.join('&') };

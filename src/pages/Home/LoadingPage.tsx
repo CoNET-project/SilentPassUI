@@ -32,7 +32,6 @@ import { getUsdcBalanceFromApi, formatWithThousands, isStandalone } from "@/serv
 import { ethers } from "ethers"
 import { CCSA_Card_Address } from "@/utils/constants"
 import { BASE_MAINNET_FACTORIES } from "@/config/chainAddresses"
-import { updateManifestStartUrl } from "@/utils/updateManifestStartUrl"
 import { takeLegacyRestoreLink } from "@/utils/secretUrlParams"
 import { fiatPrefix, formatAmount } from "@/services/currency"
 import { ReactComponent as LightDrakMode } from "@/components/Footer/assets/dark-light-mode-grey.svg"
@@ -855,33 +854,31 @@ export default function BeamioOnboardingModal({ home, onInitComplete, requireWal
 	}, [])
 
 	/**
-	 * After onboarding: drop the used redeem params from the URL and refresh the
-	 * manifest start_url. The Recovery Code is never written into the URL or the
-	 * manifest; a home-screen PWA with its own storage unlocks with BeamioTag +
-	 * password or the Recovery Code instead.
+	 * After onboarding: drop the used redeem params from the URL. The Recovery
+	 * Code is never written into the URL, and the PWA keeps the static manifest
+	 * (start_url "/app/"); a home-screen PWA with its own storage unlocks with
+	 * BeamioTag + password, the Recovery Code or the recovery QR.
 	 */
-	const clearRedeemParamsAndRefreshManifest = () => {
+	const clearRedeemParamsFromUrl = () => {
 		if (typeof window === 'undefined') return
 		try {
 			const url = new URL(window.location.href)
 			;['beamiocard', 'Beamiocard', 'redeemcode', 'Redeemcode'].forEach(k => url.searchParams.delete(k))
 			const newHref = url.toString()
 			if (newHref !== window.location.href) window.history.replaceState(window.history.state, '', newHref)
-			updateManifestStartUrl(newHref)
 		} catch (_) {}
 	}
 
-	// Card Active! 或 Wallet Ready! 进入时：清掉兑换参数并刷新 manifest（不写入恢复码）
+	// Card Active! 或 Wallet Ready! 进入时：清掉兑换参数（不写入恢复码）
 	useEffect(() => {
 		if (typeof window === 'undefined') return
 		const isCardActive = redeemFromUrl && !redeeming && redeemResult?.success
 		const isWalletReady =
 			settingsOpen === 'WalletReadyScreen' || settingsOpen === 'OnboardingWelcomeScreen'
 		if ((isCardActive || isWalletReady) && beamioTag && recoveryCode) {
-			const t = setTimeout(clearRedeemParamsAndRefreshManifest, isCardActive ? 300 : 400)
+			const t = setTimeout(clearRedeemParamsFromUrl, isCardActive ? 300 : 400)
 			return () => clearTimeout(t)
 		}
-		if (isWalletReady) updateManifestStartUrl(window.location.href)
 	}, [settingsOpen, redeemFromUrl, redeeming, redeemResult?.success, beamioTag, recoveryCode])
 
 	// loading ready 后进入 home（防重复调用）；onboarding 子屏阶段不触发。

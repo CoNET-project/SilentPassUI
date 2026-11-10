@@ -21,6 +21,7 @@ import { formatGbDisplay } from '@/utils/formatGbDisplay'
 import { formatDigitalAssetDisplay } from '@/utils/formatDigitalAssetDisplay'
 import { fetchGenesisMemberSnapshot } from '@/services/genesisNodeReferral'
 import { gbBandwidthProvidedParts } from '@/services/validatorWalletNodeProfile'
+import { useTu } from '@/locale/beamioLocale'
 
 /**
  * Bounty Board — node rewards hub.
@@ -160,27 +161,28 @@ function ReferralStatCard({
 }
 
 function ReferToEarnBanner({ onExplore }: { onExplore: () => void }) {
+	const { tu } = useTu()
 	return (
 		<section className="relative isolate overflow-hidden rounded-[26px] border border-white bg-[radial-gradient(ellipse_at_100%_100%,rgba(131,227,212,0.6),transparent_60%),radial-gradient(ellipse_at_90%_0%,rgba(140,200,255,0.69),transparent_64%),linear-gradient(120deg,#edf7ff,#e0efff)] shadow-[0_9px_27px_rgba(68,125,182,0.09)] dark:border-[#4e708e] dark:bg-[radial-gradient(ellipse_at_100%_100%,rgba(40,107,100,0.6),transparent_60%),radial-gradient(ellipse_at_90%_0%,rgba(53,92,146,0.6),transparent_64%),linear-gradient(120deg,#1d314a,#233e5d)] dark:shadow-[0_9px_27px_rgba(0,0,0,0.09)]">
 			<div className="relative z-[1] flex items-end gap-1 px-3.5 py-5 sm:block sm:min-h-[278px] sm:px-[22px] sm:py-6 sm:pr-[168px]">
 				<div className="min-w-0 flex-1 sm:max-w-[230px]">
 					<h2 className="text-[28px] font-extrabold leading-none tracking-tight text-slate-900 dark:text-slate-50">
-						Refer to Earn
+						{tu('refer_to_earn_title')}
 					</h2>
 					<p className="mt-2 text-[15px] font-semibold leading-snug text-[#2563eb]">
-						Connect friends.
+						{tu('refer_to_earn_connect_friends')}
 						<br />
-						Earn merchant rewards.
+						{tu('refer_to_earn_merchant_rewards')}
 					</p>
 					<p className="mt-2 text-sm leading-snug text-slate-500 dark:text-slate-400">
-						Discover merchants offering referral tasks. Share an offer and earn when its conditions are met.
+						{tu('refer_to_earn_body')}
 					</p>
 					<button
 						type="button"
 						onClick={onExplore}
 						className="mt-4 inline-flex items-center gap-1 rounded-full bg-[#2563eb] px-4 py-2.5 text-sm font-semibold text-white"
 					>
-						Explore Offers
+						{tu('refer_to_earn_explore_offers')}
 						<ArrowUpRight className="h-4 w-4" aria-hidden />
 					</button>
 				</div>
@@ -206,9 +208,9 @@ function ReferToEarnBanner({ onExplore }: { onExplore: () => void }) {
 					$
 				</div>
 				<p className="absolute bottom-0 left-[22px] w-[132px] rotate-[5deg] rounded-[11px] border border-white bg-white/95 px-2.5 py-2 text-[10px] font-medium leading-[1.45] text-[#2666b2] shadow-[0_5px_15px_rgba(54,127,172,0.08)] dark:border-[#f1f8ff] dark:bg-[#edf5ff]/95 dark:text-[#1e588f]">
-					Refer a friend.
+					{tu('refer_to_earn_badge_line1')}
 					<br />
-					Earn a reward.
+					{tu('refer_to_earn_badge_line2')}
 				</p>
 				</div>
 			</div>
@@ -218,6 +220,7 @@ function ReferToEarnBanner({ onExplore }: { onExplore: () => void }) {
 }
 
 export default function BountyBoard() {
+	const { tu } = useTu()
 	const navigate = useNavigate()
 	const location = useLocation()
 	const { opacity: capsuleOpacity, onScroll: onCapsuleScroll, setRef: setScrollRef } = useScrollCapsuleOpacity(true)
@@ -673,8 +676,8 @@ export default function BountyBoard() {
 						<div className="space-y-6">
 							<section className="space-y-3">
 								<div>
-									<h2 className="text-[17px] font-semibold text-slate-900 dark:text-slate-50">Bring friends to Beamio</h2>
-									<p className="mt-1 text-sm text-slate-500 dark:text-slate-400">Share your invitation and see who joins.</p>
+									<h2 className="text-[17px] font-semibold text-slate-900 dark:text-slate-50">{tu('referrals_bring_friends_title')}</h2>
+									<p className="mt-1 text-sm text-slate-500 dark:text-slate-400">{tu('referrals_bring_friends_subtitle')}</p>
 								</div>
 								<InvitedByIntroducerChip refereeEoa={eoa || undefined} />
 								<div className={`${referralCardChrome} p-5`}>
@@ -683,9 +686,10 @@ export default function BountyBoard() {
 											<QrCode className="h-5 w-5" strokeWidth={2} aria-hidden />
 										</span>
 										<div className="min-w-0">
-											<h3 className="text-[15px] font-semibold text-slate-900 dark:text-slate-50">Your personal invitation</h3>
+											<h3 className="text-[15px] font-semibold text-slate-900 dark:text-slate-50">{tu('referrals_personal_invitation')}</h3>
 											<p className="mt-0.5 truncate text-[13px] text-slate-500 dark:text-slate-400">
-												{agentTag ? `@${agentTag} · ` : ''}One QR and link to share
+												{agentTag ? `@${agentTag} · ` : ''}
+												{tu('referrals_one_qr_and_link')}
 											</p>
 										</div>
 									</div>
@@ -694,33 +698,33 @@ export default function BountyBoard() {
 										onClick={openInviteQr}
 										className="mt-5 flex h-[50px] w-full items-center justify-center rounded-xl bg-gradient-to-r from-[#1d64f2] to-[#2a6ff5] px-4 text-sm font-semibold text-white shadow-[0_6px_16px_rgba(21,98,240,0.22)] transition active:scale-[0.99]"
 									>
-										Show QR &amp; link
+										{tu('referrals_show_qr_and_link')}
 									</button>
 								</div>
 							</section>
 
 							<section className="space-y-3" aria-label="Referral progress">
-								<h2 className="text-[17px] font-semibold text-slate-900 dark:text-slate-50">Referral progress</h2>
+								<h2 className="text-[17px] font-semibold text-slate-900 dark:text-slate-50">{tu('referrals_progress_title')}</h2>
 								<div className="grid grid-cols-2 gap-3">
 									<ReferralStatCard
-										label="Registered"
+										label={tu('referrals_registered')}
 										value={registeredThroughLinkCount.toLocaleString('en-US')}
-										caption="View invited people"
+										caption={tu('referrals_view_invited_people')}
 										onOpen={eoa ? openRefereesSheet : undefined}
-										ariaLabel={`${registeredThroughLinkCount.toLocaleString('en-US')} registered through your link. View invited people`}
+										ariaLabel={tu('referrals_registered_aria', { count: registeredThroughLinkCount.toLocaleString('en-US') } as Record<string, unknown>)}
 									/>
 									{/* No consumer-referral reward feed exists yet; show a dash rather than a made-up amount. */}
 									<ReferralStatCard
-										label="Rewards received"
+										label={tu('referrals_rewards_received')}
 										value="—"
 										unit="USDC"
-										caption="From consumer referrals"
+										caption={tu('referrals_from_consumer_referrals')}
 										onOpen={() => setAcrossNetworkOpen(true)}
-										ariaLabel="Rewards received from consumer referrals: not available yet. View how consumer referral rewards work"
+										ariaLabel={tu('referrals_rewards_received_aria')}
 									/>
 								</div>
 								<p className="text-[12px] leading-snug text-slate-500 dark:text-slate-400">
-									Registration alone does not generate a reward.
+									{tu('referrals_registration_no_reward')}
 								</p>
 							</section>
 
@@ -729,28 +733,27 @@ export default function BountyBoard() {
 							/>
 
 							<section className="space-y-3">
-								<h2 className="text-[17px] font-semibold text-slate-900 dark:text-slate-50">Consumer referral allocations</h2>
+								<h2 className="text-[17px] font-semibold text-slate-900 dark:text-slate-50">{tu('referrals_allocations_title')}</h2>
 								<div className={`${referralCardChrome} p-5`}>
 									<div className="flex items-center justify-between gap-3">
-										<h3 className="text-[15px] font-semibold text-slate-900 dark:text-slate-50">Across the network</h3>
+										<h3 className="text-[15px] font-semibold text-slate-900 dark:text-slate-50">{tu('referrals_across_network')}</h3>
 										<span className="shrink-0 rounded-full bg-[#eef2fa] px-3.5 py-2 text-[12px] font-medium text-slate-500 dark:bg-slate-800 dark:text-slate-400">
-											Role-based
+											{tu('referrals_role_based')}
 										</span>
 									</div>
 									<p className="mt-4 flex flex-wrap items-baseline gap-x-1.5">
 										<span className="text-[34px] font-semibold leading-none tracking-tight text-[#1562f0] dark:text-blue-300">3%</span>
-										<span className="text-[14px] text-slate-500 dark:text-slate-400">of the distributable balance</span>
+										<span className="text-[14px] text-slate-500 dark:text-slate-400">{tu('referrals_of_distributable_balance')}</span>
 									</p>
 									<p className="mt-3 text-[13px] leading-relaxed text-slate-500 dark:text-slate-400">
-										10% of each interaction&apos;s reward allocation, equivalent to 3% of the service amount after direct
-										costs. Paid from the network reward pool at eligible settlement.
+										{tu('referrals_allocation_body')}
 									</p>
 									<button
 										type="button"
 										onClick={() => setAcrossNetworkOpen(true)}
 										className="mt-5 flex h-[50px] w-full items-center justify-center rounded-xl border border-[#dbe5fb] bg-[#f3f7ff] px-4 text-sm font-medium text-[#1562f0] transition active:scale-[0.99] dark:border-slate-700 dark:bg-slate-800 dark:text-blue-300"
 									>
-										View roles &amp; calculation rules
+										{tu('referrals_view_roles_rules')}
 									</button>
 								</div>
 							</section>

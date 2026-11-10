@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
-import { ArrowUpRight, Check, ChevronRight, Copy, Gift, Hexagon, Network, Settings2, Share2, Store, TicketPlus, Users, Wallet } from 'lucide-react'
+import { ArrowUpRight, Check, ChevronRight, Copy, Gift, Hexagon, Network, QrCode, Settings2, Share2, Store, TicketPlus, Users, Wallet } from 'lucide-react'
 import { BeamioCircularBackButton } from '@/components/BeamioCircularBackButton'
 import { QrWithBeamioTagAvatar } from '@/components/QrWithBeamioTagAvatar'
 import { AgentBusinessInviteSheet } from '@/pages/BountyBoard/AgentBusinessInviteSheet'
@@ -112,50 +112,46 @@ function saveReferralProgressCountCache(eoa: string, count: number): void {
 	}
 }
 
-function ReferralProgressPanel({
-	registeredCount,
+function ReferralStatCard({
+	label,
+	value,
+	unit,
+	caption,
 	onOpen,
+	ariaLabel,
 }: {
-	registeredCount: number
+	label: string
+	value: string
+	unit?: string
+	caption: string
 	onOpen?: () => void
+	ariaLabel: string
 }) {
 	const interactive = typeof onOpen === 'function'
 	return (
-		<section
-			className={`${cardChrome} px-5 py-5${interactive ? ' cursor-pointer transition hover:border-slate-300 dark:hover:border-slate-600' : ''}`}
-			aria-label="Referral progress"
-			role={interactive ? 'button' : undefined}
-			tabIndex={interactive ? 0 : undefined}
-			onClick={interactive ? onOpen : undefined}
-			onKeyDown={
-				interactive
-					? (e) => {
-							if (e.key === 'Enter' || e.key === ' ') {
-								e.preventDefault()
-								onOpen()
-							}
-						}
-					: undefined
-			}
+		<button
+			type="button"
+			onClick={onOpen}
+			disabled={!interactive}
+			aria-label={ariaLabel}
+			className={`${cardChrome} flex min-w-0 flex-col p-3.5 text-left sm:p-4${
+				interactive ? ' transition hover:border-slate-300 active:scale-[0.99] dark:hover:border-slate-600' : ' cursor-default'
+			}`}
 		>
-			<div className="flex items-baseline justify-between gap-3">
-				<p className="text-[15px] font-medium text-slate-500 dark:text-slate-400">
-					Registered through your link
-				</p>
-				<div className="flex shrink-0 items-center gap-1.5">
-					<p className="text-[22px] font-bold tabular-nums tracking-tight text-[#0F172A] dark:text-slate-50">
-						{registeredCount.toLocaleString('en-US')}
-					</p>
-					{interactive ? (
-						<ChevronRight className="h-5 w-5 text-slate-300 dark:text-slate-600" aria-hidden />
-					) : null}
-				</div>
-			</div>
-			<div className="my-4 h-px w-full bg-slate-200/90 dark:bg-slate-700" aria-hidden />
-			<p className="text-[13px] leading-snug text-slate-400 dark:text-slate-500">
-				Registration alone does not create a reward. Eligibility follows each program&apos;s rules.
-			</p>
-		</section>
+			<span className="flex w-full items-center justify-between gap-1">
+				<span className="truncate whitespace-nowrap text-[12px] font-medium text-slate-500 sm:text-[13px] dark:text-slate-400">{label}</span>
+				{interactive ? (
+					<ChevronRight className="h-4 w-4 shrink-0 text-slate-400 dark:text-slate-500" aria-hidden />
+				) : null}
+			</span>
+			<span className="mt-3 flex min-w-0 items-baseline gap-1">
+				<span className="truncate text-[30px] font-bold leading-none tabular-nums tracking-tight text-[#1562f0] dark:text-blue-300">
+					{value}
+				</span>
+				{unit ? <span className="shrink-0 text-[12px] font-semibold text-[#1562f0] dark:text-blue-300">{unit}</span> : null}
+			</span>
+			<span className="mt-3 text-[12px] leading-snug text-slate-500 dark:text-slate-400">{caption}</span>
+		</button>
 	)
 }
 
@@ -670,41 +666,91 @@ export default function BountyBoard() {
 					) : null}
 
 					{hubView === 'referrals' ? (
-						<section className="space-y-4">
-							<div>
-								<h2 className="text-base font-semibold text-slate-900 dark:text-slate-50">Bring friends to Beamio</h2>
-								<p className="mt-1 text-sm text-slate-500 dark:text-slate-400">Share your invitation and see who joins.</p>
-							</div>
-							<InvitedByIntroducerChip refereeEoa={eoa || undefined} />
-							<div className={`${cardChrome} p-4`}>
-								<h3 className="text-sm font-semibold text-slate-900 dark:text-slate-50">Your personal invitation</h3>
-								<p className="mt-1 text-sm text-slate-500 dark:text-slate-400">One link to share. Registration follows each program’s rules.</p>
-								<button
-									type="button"
-									onClick={openInviteQr}
-									className="mt-4 inline-flex items-center justify-center gap-1.5 rounded-full bg-[#1562f0] px-4 py-2 text-sm font-semibold text-white"
-								>
-									<Share2 className="h-4 w-4" aria-hidden />
-									Show invite
-								</button>
-							</div>
-							<ReferralProgressPanel
-								registeredCount={registeredThroughLinkCount}
-								onOpen={eoa ? openRefereesSheet : undefined}
-							/>
+						<div className="space-y-6">
+							<section className="space-y-3">
+								<div>
+									<h2 className="text-[17px] font-semibold text-slate-900 dark:text-slate-50">Bring friends to Beamio</h2>
+									<p className="mt-1 text-sm text-slate-500 dark:text-slate-400">Share your invitation and see who joins.</p>
+								</div>
+								<InvitedByIntroducerChip refereeEoa={eoa || undefined} />
+								<div className={`${cardChrome} p-4`}>
+									<div className="flex items-start gap-3">
+										<span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[#eef3ff] text-[#1562f0] dark:bg-blue-950/50 dark:text-blue-300">
+											<QrCode className="h-5 w-5" strokeWidth={2} aria-hidden />
+										</span>
+										<div className="min-w-0">
+											<h3 className="text-[15px] font-semibold text-slate-900 dark:text-slate-50">Your personal invitation</h3>
+											<p className="mt-0.5 truncate text-[13px] text-slate-500 dark:text-slate-400">
+												{agentTag ? `@${agentTag} · ` : ''}One QR and link to share
+											</p>
+										</div>
+									</div>
+									<button
+										type="button"
+										onClick={openInviteQr}
+										className="mt-4 flex w-full items-center justify-center rounded-xl bg-[#1562f0] px-4 py-3 text-sm font-semibold text-white shadow-[0_6px_16px_rgba(21,98,240,0.25)] transition active:scale-[0.99]"
+									>
+										Show QR &amp; link
+									</button>
+								</div>
+							</section>
+
+							<section className="space-y-3" aria-label="Referral progress">
+								<h2 className="text-[17px] font-semibold text-slate-900 dark:text-slate-50">Referral progress</h2>
+								<div className="grid grid-cols-2 gap-3">
+									<ReferralStatCard
+										label="Registered"
+										value={registeredThroughLinkCount.toLocaleString('en-US')}
+										caption="View invited people"
+										onOpen={eoa ? openRefereesSheet : undefined}
+										ariaLabel={`${registeredThroughLinkCount.toLocaleString('en-US')} registered through your link. View invited people`}
+									/>
+									{/* No consumer-referral reward feed exists yet; show a dash rather than a made-up amount. */}
+									<ReferralStatCard
+										label="Rewards received"
+										value="—"
+										unit="USDC"
+										caption="From consumer referrals"
+										onOpen={() => setAcrossNetworkOpen(true)}
+										ariaLabel="Rewards received from consumer referrals: not available yet. View how consumer referral rewards work"
+									/>
+								</div>
+								<p className="text-[12px] leading-snug text-slate-500 dark:text-slate-400">
+									Registration alone does not generate a reward.
+								</p>
+							</section>
+
 							<ReferToEarnBanner
 								onExplore={() => navigate('/discover', { state: { referrerRewardOnly: true } })}
 							/>
-							<div id="referral-offers" className={`${cardChrome} p-4`}>
-								<h3 className="text-sm font-semibold text-slate-900 dark:text-slate-50">Lao Nong Tang</h3>
-								<p className="mt-1 text-2xl font-bold text-slate-900 dark:text-slate-50">
-									5% <span className="text-sm font-medium text-slate-500">referral reward</span>
-								</p>
-								<p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
-									Example offer. Qualifying top-ups made through your referral can earn this merchant-funded reward.
-								</p>
-							</div>
-						</section>
+
+							<section className="space-y-3">
+								<h2 className="text-[17px] font-semibold text-slate-900 dark:text-slate-50">Consumer referral allocations</h2>
+								<div className={`${cardChrome} p-5`}>
+									<div className="flex items-center justify-between gap-3">
+										<h3 className="text-[15px] font-semibold text-slate-900 dark:text-slate-50">Across the network</h3>
+										<span className="shrink-0 rounded-full bg-[#eef3ff] px-3 py-1 text-[12px] font-medium text-slate-500 dark:bg-slate-800 dark:text-slate-400">
+											Role-based
+										</span>
+									</div>
+									<p className="mt-4 flex flex-wrap items-baseline gap-x-1.5">
+										<span className="text-[32px] font-bold leading-none tracking-tight text-[#1562f0] dark:text-blue-300">3%</span>
+										<span className="text-[14px] text-slate-500 dark:text-slate-400">of the distributable balance</span>
+									</p>
+									<p className="mt-3 text-[13px] leading-relaxed text-slate-500 dark:text-slate-400">
+										10% of each interaction&apos;s reward allocation, equivalent to 3% of the service amount after direct
+										costs. Paid from the network reward pool at eligible settlement.
+									</p>
+									<button
+										type="button"
+										onClick={() => setAcrossNetworkOpen(true)}
+										className="mt-4 flex w-full items-center justify-center rounded-xl border border-[#dbe5fb] bg-[#f3f7ff] px-4 py-3 text-sm font-semibold text-[#1562f0] transition active:scale-[0.99] dark:border-slate-700 dark:bg-slate-800 dark:text-blue-300"
+									>
+										View roles &amp; calculation rules
+									</button>
+								</div>
+							</section>
+						</div>
 					) : null}
 
 					{hubView === 'merchants' ? (

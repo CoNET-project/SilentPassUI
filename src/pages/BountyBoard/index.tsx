@@ -36,6 +36,10 @@ const capsuleChrome =
 const cardChrome =
 	'rounded-2xl border border-slate-200/80 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-900'
 
+/** Referrals tab cards: larger radius, lighter border and shadow (per the design). */
+const referralCardChrome =
+	'rounded-[24px] border border-[#e6ebf4] bg-white shadow-[0_6px_20px_rgba(36,65,109,0.05)] dark:border-slate-700 dark:bg-slate-900'
+
 type RewardsHubView = 'overview' | 'referrals' | 'merchants' | 'nodes' | 'earnings'
 
 const HUB_TABS: { id: Exclude<RewardsHubView, 'earnings'>; label: string }[] = [
@@ -134,7 +138,7 @@ function ReferralStatCard({
 			onClick={onOpen}
 			disabled={!interactive}
 			aria-label={ariaLabel}
-			className={`${cardChrome} flex min-w-0 flex-col p-3.5 text-left sm:p-4${
+			className={`${referralCardChrome} flex min-w-0 flex-col rounded-[20px] p-4 text-left sm:px-[18px] sm:py-5${
 				interactive ? ' transition hover:border-slate-300 active:scale-[0.99] dark:hover:border-slate-600' : ' cursor-default'
 			}`}
 		>
@@ -673,9 +677,9 @@ export default function BountyBoard() {
 									<p className="mt-1 text-sm text-slate-500 dark:text-slate-400">Share your invitation and see who joins.</p>
 								</div>
 								<InvitedByIntroducerChip refereeEoa={eoa || undefined} />
-								<div className={`${cardChrome} p-4`}>
-									<div className="flex items-start gap-3">
-										<span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[#eef3ff] text-[#1562f0] dark:bg-blue-950/50 dark:text-blue-300">
+								<div className={`${referralCardChrome} p-5`}>
+									<div className="flex items-start gap-3.5">
+										<span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-[#eef3ff] text-[#1562f0] dark:bg-blue-950/50 dark:text-blue-300">
 											<QrCode className="h-5 w-5" strokeWidth={2} aria-hidden />
 										</span>
 										<div className="min-w-0">
@@ -688,7 +692,7 @@ export default function BountyBoard() {
 									<button
 										type="button"
 										onClick={openInviteQr}
-										className="mt-4 flex w-full items-center justify-center rounded-xl bg-[#1562f0] px-4 py-3 text-sm font-semibold text-white shadow-[0_6px_16px_rgba(21,98,240,0.25)] transition active:scale-[0.99]"
+										className="mt-5 flex h-[50px] w-full items-center justify-center rounded-xl bg-gradient-to-r from-[#1d64f2] to-[#2a6ff5] px-4 text-sm font-semibold text-white shadow-[0_6px_16px_rgba(21,98,240,0.22)] transition active:scale-[0.99]"
 									>
 										Show QR &amp; link
 									</button>
@@ -726,15 +730,15 @@ export default function BountyBoard() {
 
 							<section className="space-y-3">
 								<h2 className="text-[17px] font-semibold text-slate-900 dark:text-slate-50">Consumer referral allocations</h2>
-								<div className={`${cardChrome} p-5`}>
+								<div className={`${referralCardChrome} p-5`}>
 									<div className="flex items-center justify-between gap-3">
 										<h3 className="text-[15px] font-semibold text-slate-900 dark:text-slate-50">Across the network</h3>
-										<span className="shrink-0 rounded-full bg-[#eef3ff] px-3 py-1 text-[12px] font-medium text-slate-500 dark:bg-slate-800 dark:text-slate-400">
+										<span className="shrink-0 rounded-full bg-[#eef2fa] px-3.5 py-2 text-[12px] font-medium text-slate-500 dark:bg-slate-800 dark:text-slate-400">
 											Role-based
 										</span>
 									</div>
 									<p className="mt-4 flex flex-wrap items-baseline gap-x-1.5">
-										<span className="text-[32px] font-bold leading-none tracking-tight text-[#1562f0] dark:text-blue-300">3%</span>
+										<span className="text-[34px] font-semibold leading-none tracking-tight text-[#1562f0] dark:text-blue-300">3%</span>
 										<span className="text-[14px] text-slate-500 dark:text-slate-400">of the distributable balance</span>
 									</p>
 									<p className="mt-3 text-[13px] leading-relaxed text-slate-500 dark:text-slate-400">
@@ -744,7 +748,7 @@ export default function BountyBoard() {
 									<button
 										type="button"
 										onClick={() => setAcrossNetworkOpen(true)}
-										className="mt-4 flex w-full items-center justify-center rounded-xl border border-[#dbe5fb] bg-[#f3f7ff] px-4 py-3 text-sm font-semibold text-[#1562f0] transition active:scale-[0.99] dark:border-slate-700 dark:bg-slate-800 dark:text-blue-300"
+										className="mt-5 flex h-[50px] w-full items-center justify-center rounded-xl border border-[#dbe5fb] bg-[#f3f7ff] px-4 text-sm font-medium text-[#1562f0] transition active:scale-[0.99] dark:border-slate-700 dark:bg-slate-800 dark:text-blue-300"
 									>
 										View roles &amp; calculation rules
 									</button>

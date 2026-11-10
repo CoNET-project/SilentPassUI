@@ -1474,7 +1474,7 @@ export default function BeamioOnboardingModal({ home, onInitComplete, requireWal
 											setSettingsOpen('')
 											setRestoreFromUrlMasterKey('')
 										}}
-										onRestore={async ({ temp, qrDataUrl, recoveryCode, beamioTag }) => {
+										onRestore={async ({ temp, beamioTag }) => {
 											setRestoreFromUrlMasterKey('')
 											if (!hasLocalPlaintextMnemonic(temp)) {
 												return
@@ -1490,11 +1490,30 @@ export default function BeamioOnboardingModal({ home, onInitComplete, requireWal
 												home()
 												return
 											}
+											// A restored Beamio ID keeps its existing Recovery Code, so skip
+											// "Save your Recovery Code": save locally, then show You're All Set.
+											const restoredTag = beamioTag || temp?.beamio?.accountName || ''
+											try {
+												await init(temp, { dontClose: true, deferChat: true, accountName: restoredTag })
+											} catch (ex) {
+												console.error('[LoadingPage] restore init persist failed:', ex)
+												window.alert(
+													ex instanceof Error
+														? ex.message
+														: 'Could not save your wallet locally. Please try again.',
+												)
+												return
+											}
 											setTemp(temp)
-											setQrDataUrl(qrDataUrl)
-											setRecoveryCode(recoveryCode)
-											setBeamioTag(beamioTag || temp?.beamio?.accountName || '')
-											setSettingsOpen('RecoveryQRScreen')
+											setBeamioTag(restoredTag)
+											if (peekPendingDiscoverMerchantIntent()) {
+												merchantDeepLinkRoutingRef.current = true
+												setSettingsOpen('')
+												home()
+												routePendingMerchantDeepLink()
+												return
+											}
+											setSettingsOpen('OnboardingWelcomeScreen')
 										}}
 									/>
 								)

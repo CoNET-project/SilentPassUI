@@ -1,7 +1,7 @@
 import { IpfsImg } from '@/components/IpfsImg';
 import { FormEvent, useEffect, useState } from 'react'
 import { AppButton } from '@/components/button/AppButton'
-import { RegenerateRecover, onWalletEvent, restoreWithRedeem, restoreWithUserPin } from '@/services/beamio'
+import { onWalletEvent, restoreWithRedeem, restoreWithUserPin } from '@/services/beamio'
 import { warmArgon2Worker } from '@/services/argon2WorkerBridge'
 import ScanBtn from '@/components/scanBtn/ScanButton'
 import { useDaemonContext } from '@/providers/DaemonProvider'
@@ -25,7 +25,6 @@ const APP_LOGO_SRC = `${process.env.PUBLIC_URL ?? ''}/logo192.png`
 /** Align step chrome with CreateUsernamePinScreen passport loading. */
 const RESTORE_LOADING_STEPS = [
 	{ id: 0, titleKey: 'restoring_wallet', descKey: 'decrypting_your_secure_vault' },
-	{ id: 1, titleKey: 'preparing_security_backup', descKey: 'creating_your_local_recovery_package' },
 ] as const
 const RESTORE_STEP_DURATION_MS = 2000
 
@@ -71,10 +70,9 @@ function scanRecoveryQrWithIosBridge() {
 	})
 }
 
+/** Restore never creates a new Recovery Code; the existing one stays valid. */
 export type RestoreWalletFlowPayload = {
 	temp: encrypt_keys_object
-	qrDataUrl: string
-	recoveryCode: string
 	beamioTag: string
 }
 
@@ -219,16 +217,8 @@ export default function RestoreWalletUnifiedScreen({
 				return
 			}
 
-			const regenerated = await RegenerateRecover(mnemonicPhrase, beamioProfile, password, privateKey)
-			if (!regenerated?.recoverCode || !regenerated?.qrCode) {
-				setLoginError(tu('failed_to_prepare_security_backup'))
-				return
-			}
-
 			await onRestore({
 				temp: canRestore,
-				qrDataUrl: regenerated.qrCode,
-				recoveryCode: regenerated.recoverCode,
 				beamioTag: beamioProfile.accountName || trimmed,
 			})
 		} catch {
@@ -254,8 +244,6 @@ export default function RestoreWalletUnifiedScreen({
 			}
 			await onRestore({
 				temp: canRestore,
-				qrDataUrl: recoveryCode.trim(),
-				recoveryCode: recoveryCode.trim(),
 				beamioTag: canRestore?.beamio?.accountName || '',
 			})
 		} catch {

@@ -398,21 +398,14 @@ export default function WalletOverview() {
 					</section>
 
 					<section className="relative mt-4 min-h-[132px] overflow-hidden rounded-[21px] bg-[radial-gradient(circle_at_80%_45%,rgba(89,161,255,0.25),transparent_34%),linear-gradient(110deg,#edf7ff_0%,#e1f0ff_55%,#cfe5ff_100%)]">
-						<div className="relative z-[3] px-[22px] py-[18px]">
-							<span className="inline-flex items-center rounded-full bg-[#0866ff] px-3 py-1 text-[11px] font-bold tracking-[0.6px] text-white">
+						<div className="relative z-[3] flex min-h-[132px] flex-col justify-center px-[22px] py-[20px]">
+							<span className="inline-flex self-start items-center rounded-full bg-[#0866ff] px-3 py-1 text-[11px] font-bold tracking-[0.6px] text-white">
 								COMING SOON
 							</span>
 							<h2 className="m-0 mt-2 text-[22px] font-extrabold tracking-[-0.8px] text-[#080817]">DeFi on Beamio</h2>
-							<p className="mb-3 mt-1 pr-[110px] text-[15px] tracking-[-0.3px] text-[#777da8]">
+							<p className="m-0 mt-1 pr-[110px] text-[15px] tracking-[-0.3px] text-[#777da8]">
 								Explore new ways to use your USDC.
 							</p>
-							<button
-								type="button"
-								onClick={() => navigate('/BountyBoard')}
-								className="border-0 bg-transparent p-0 text-[17px] font-medium text-[#0878f9]"
-							>
-								Explore DeFi
-							</button>
 						</div>
 						<div className="pointer-events-none absolute inset-0" aria-hidden>
 							<span className="absolute -top-8 right-[115px] h-[78px] w-[78px] rounded-full bg-[rgba(112,174,255,0.14)]" />

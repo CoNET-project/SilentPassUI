@@ -23,6 +23,7 @@ import FuelView from '@/components/Home/FuelView'
 import WalletAssetDetail, { type WalletAssetActionId, type WalletAssetKind } from '@/pages/Wallet/WalletAssetDetail'
 import storeCreditsLogo from '@/assets/store-credits-logo.png'
 import rewardPtLogo from '@/assets/reward-pt-logo.png'
+import { tu } from '@/locale/beamioLocale'
 
 const headerCircleButtonClass =
 	'flex h-[47px] w-[47px] shrink-0 items-center justify-center rounded-full border border-[rgba(210,224,241,0.75)] bg-white/75 text-[#080817] shadow-[0_8px_24px_rgba(84,126,170,0.07)] backdrop-blur-[16px] transition-transform active:scale-[0.98] dark:border-slate-700 dark:bg-slate-800/80'
@@ -400,11 +401,11 @@ export default function WalletOverview() {
 					<section className="relative mt-4 min-h-[132px] overflow-hidden rounded-[21px] bg-[radial-gradient(circle_at_80%_45%,rgba(89,161,255,0.25),transparent_34%),linear-gradient(110deg,#edf7ff_0%,#e1f0ff_55%,#cfe5ff_100%)]">
 						<div className="relative z-[3] flex min-h-[132px] flex-col justify-center px-[22px] py-[20px]">
 							<span className="inline-flex self-start items-center rounded-full bg-[#0866ff] px-3 py-1 text-[11px] font-bold tracking-[0.6px] text-white">
-								COMING SOON
+								{tu('wallet_defi_coming_soon')}
 							</span>
-							<h2 className="m-0 mt-2 text-[22px] font-extrabold tracking-[-0.8px] text-[#080817]">DeFi on Beamio</h2>
+							<h2 className="m-0 mt-2 text-[22px] font-extrabold tracking-[-0.8px] text-[#080817]">{tu('wallet_defi_title')}</h2>
 							<p className="m-0 mt-1 pr-[110px] text-[15px] tracking-[-0.3px] text-[#777da8]">
-								Explore new ways to use your USDC.
+								{tu('wallet_defi_subtitle')}
 							</p>
 						</div>
 						<div className="pointer-events-none absolute inset-0" aria-hidden>

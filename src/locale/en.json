@@ -786,7 +786,16 @@
     "rewards_hub_tab_overview": "Overview",
     "rewards_hub_tab_referrals": "Referrals",
     "rewards_hub_tab_business": "Business",
-    "rewards_hub_tab_node": "Node"
+    "rewards_hub_tab_node": "Node",
+    "home_offer_spend_earn_title": "Spend & Earn Points",
+    "home_offer_spend_earn_accent": "Earn rewards. Explore more possibilities.",
+    "home_offer_spend_earn_body": "Earn Reward Points on eligible purchases at participating merchants. Redeem them for offers, benefits, or store credit, subject to each programme's rules.",
+    "home_offer_spend_earn_feature_merchants": "Earn with participating merchants",
+    "home_offer_spend_earn_feature_cross_store": "Explore cross-store rewards",
+    "home_offer_explore_offers": "Explore Offers",
+    "wallet_defi_coming_soon": "COMING SOON",
+    "wallet_defi_title": "DeFi on Beamio",
+    "wallet_defi_subtitle": "Explore new ways to use your USDC."
   },
   "errors": {
     "generic": "Something went wrong. Please try again.",

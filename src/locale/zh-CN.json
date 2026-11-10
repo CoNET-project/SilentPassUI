@@ -786,7 +786,16 @@
     "rewards_hub_tab_overview": "概览",
     "rewards_hub_tab_referrals": "推荐",
     "rewards_hub_tab_business": "商户",
-    "rewards_hub_tab_node": "节点"
+    "rewards_hub_tab_node": "节点",
+    "home_offer_spend_earn_title": "消费赚积分",
+    "home_offer_spend_earn_accent": "赚取奖励，发现更多可能。",
+    "home_offer_spend_earn_body": "您在参与活动的商户进行符合条件的消费，即可获得奖励积分，并可兑换优惠、权益或店铺储值，具体以各计划规则为准。",
+    "home_offer_spend_earn_feature_merchants": "在参与活动的商户赚取积分",
+    "home_offer_spend_earn_feature_cross_store": "探索跨店奖励",
+    "home_offer_explore_offers": "浏览优惠",
+    "wallet_defi_coming_soon": "即将推出",
+    "wallet_defi_title": "Beamio 上的 DeFi",
+    "wallet_defi_subtitle": "探索使用您的 USDC 的新方式。"
   },
   "errors": {
     "generic": "出了点问题，请重试。",

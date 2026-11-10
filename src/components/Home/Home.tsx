@@ -495,14 +495,16 @@ function HomeHeroQrRings() {
 	)
 }
 
+/** Copy fields are i18n keys under `ui.`; read with `tu()` at render time. */
 type HomeOfferPanel = {
 	id: string
 	art: string
-	title: string
-	accent: string
-	body: string
-	/** Text for the two tags drawn in the art; overlaid to replace the baked-in words. */
-	features: [string, string]
+	titleKey: string
+	accentKey: string
+	bodyKey: string
+	/** Keys for the two tags drawn in the art; overlaid to replace the baked-in words. */
+	featureKeys: [string, string]
+	ctaKey: string
 }
 
 /** Add another object to show another swipeable home offer. */
@@ -510,10 +512,11 @@ const HOME_OFFER_PANELS: HomeOfferPanel[] = [
 	{
 		id: 'spend-to-earn',
 		art: spendToEarnNetworkArt,
-		title: 'Spend & Earn Points',
-		accent: 'Earn rewards. Explore more possibilities.',
-		body: "Earn Reward Points on eligible purchases at participating merchants. Redeem them for offers, benefits, or store credit, subject to each programme's rules.",
-		features: ['Earn with participating merchants', 'Explore cross-store rewards'],
+		titleKey: 'home_offer_spend_earn_title',
+		accentKey: 'home_offer_spend_earn_accent',
+		bodyKey: 'home_offer_spend_earn_body',
+		featureKeys: ['home_offer_spend_earn_feature_merchants', 'home_offer_spend_earn_feature_cross_store'],
+		ctaKey: 'home_offer_explore_offers',
 	},
 ]
 
@@ -3558,26 +3561,26 @@ const Home = (_props: HomeProps) => {
 											    The text stays right of the copy column when a tall card zooms the art. */}
 											<div className="pointer-events-none absolute inset-y-0 -right-8 w-[70%] overflow-hidden [container-type:size]">
 												<p className="m-0 absolute right-[18.8cqh] top-[7.5%] flex h-[24%] w-[min(38cqh,calc(100%_-_18.8cqh))] items-center justify-end rounded-[2cqh] bg-[#eef6fd] text-[11px] font-semibold leading-[1.15] text-[#1557d6] shadow-[0_0_4px_3px_#eef6fd] [font-size:min(4.2cqh,13px)]">
-													<span className="w-[min(100%,calc(74cqw_+_26px_-_18.8cqh))]">{panel.features[0]}</span>
+													<span className="w-[min(100%,calc(74cqw_+_26px_-_18.8cqh))]">{tu(panel.featureKeys[0])}</span>
 												</p>
 												<p className="m-0 absolute right-[20.9cqh] top-[65.7%] flex h-[24%] w-[min(47.4cqh,calc(100%_-_20.9cqh))] items-center justify-end rounded-[2cqh] bg-[#eef6fd] text-[11px] font-semibold leading-[1.15] text-[#1557d6] shadow-[0_0_4px_3px_#eef6fd] [font-size:min(5cqh,15px)]">
-													<span className="w-[min(100%,calc(74cqw_+_26px_-_20.9cqh))]">{panel.features[1]}</span>
+													<span className="w-[min(100%,calc(74cqw_+_26px_-_20.9cqh))]">{tu(panel.featureKeys[1])}</span>
 												</p>
 											</div>
 											<div className="relative z-10 flex min-h-[232px] w-[48%] flex-col justify-center py-5 pl-5 pr-1">
 												<h2 className="m-0 text-[22px] font-extrabold leading-[1.05] tracking-[-0.5px] text-[#07064d]">
-													{panel.title}
+													{tu(panel.titleKey)}
 												</h2>
 												<p className="mt-1 text-[15px] font-extrabold leading-tight text-[#0768ff]">
-													{panel.accent}
+													{tu(panel.accentKey)}
 												</p>
-												<p className="mt-2 text-[12px] leading-snug text-[#62709d]">{panel.body}</p>
+												<p className="mt-2 text-[12px] leading-snug text-[#62709d]">{tu(panel.bodyKey)}</p>
 												<button
 													type="button"
 													onClick={() => navigate('/discover', { state: { rewardPtUsdcOnly: true } })}
 													className="mt-3 inline-flex w-fit items-center rounded-full bg-[#0866ff] px-4 py-2 text-[14px] font-semibold text-white"
 												>
-													Explore Offers
+													{tu(panel.ctaKey)}
 												</button>
 											</div>
 										</article>

@@ -501,6 +501,8 @@ type HomeOfferPanel = {
 	title: string
 	accent: string
 	body: string
+	/** Text for the two tags drawn in the art; overlaid to replace the baked-in words. */
+	features: [string, string]
 }
 
 /** Add another object to show another swipeable home offer. */
@@ -508,9 +510,10 @@ const HOME_OFFER_PANELS: HomeOfferPanel[] = [
 	{
 		id: 'spend-to-earn',
 		art: spendToEarnNetworkArt,
-		title: 'Spend to Earn',
-		accent: 'Earn Reward PT. Use Anywhere.',
-		body: 'Get Reward PT when you spend at participating merchants, and use your Reward PT at any merchant across the network.',
+		title: 'Spend & Earn Points',
+		accent: 'Earn rewards. Explore more possibilities.',
+		body: "Earn Reward Points on eligible purchases at participating merchants. Redeem them for offers, benefits, or store credit, subject to each programme's rules.",
+		features: ['Earn with participating merchants', 'Explore cross-store rewards'],
 	},
 ]
 
@@ -3551,6 +3554,16 @@ const Home = (_props: HomeProps) => {
 												className="pointer-events-none absolute inset-y-0 left-0 w-[52%] bg-gradient-to-r from-[#e7f4ff] from-40% via-[#e7f4ff]/95 to-transparent"
 												aria-hidden
 											/>
+											{/* Same box as the art (cover, right-anchored), so the tags cover the words drawn on its cards.
+											    The text stays right of the copy column when a tall card zooms the art. */}
+											<div className="pointer-events-none absolute inset-y-0 -right-8 w-[70%] overflow-hidden [container-type:size]">
+												<p className="m-0 absolute right-[18.8cqh] top-[7.5%] flex h-[24%] w-[min(38cqh,calc(100%_-_18.8cqh))] items-center justify-end rounded-[2cqh] bg-[#eef6fd] text-[11px] font-semibold leading-[1.15] text-[#1557d6] shadow-[0_0_4px_3px_#eef6fd] [font-size:min(4.2cqh,13px)]">
+													<span className="w-[min(100%,calc(74cqw_+_26px_-_18.8cqh))]">{panel.features[0]}</span>
+												</p>
+												<p className="m-0 absolute right-[20.9cqh] top-[65.7%] flex h-[24%] w-[min(47.4cqh,calc(100%_-_20.9cqh))] items-center justify-end rounded-[2cqh] bg-[#eef6fd] text-[11px] font-semibold leading-[1.15] text-[#1557d6] shadow-[0_0_4px_3px_#eef6fd] [font-size:min(5cqh,15px)]">
+													<span className="w-[min(100%,calc(74cqw_+_26px_-_20.9cqh))]">{panel.features[1]}</span>
+												</p>
+											</div>
 											<div className="relative z-10 flex min-h-[232px] w-[48%] flex-col justify-center py-5 pl-5 pr-1">
 												<h2 className="m-0 text-[22px] font-extrabold leading-[1.05] tracking-[-0.5px] text-[#07064d]">
 													{panel.title}

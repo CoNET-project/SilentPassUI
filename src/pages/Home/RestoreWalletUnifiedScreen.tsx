@@ -3,8 +3,7 @@ import { FormEvent, useEffect, useState } from 'react'
 import { AppButton } from '@/components/button/AppButton'
 import { onWalletEvent, restoreWithRedeem, restoreWithUserPin } from '@/services/beamio'
 import { warmArgon2Worker } from '@/services/argon2WorkerBridge'
-import ScanBtn from '@/components/scanBtn/ScanButton'
-import { useDaemonContext } from '@/providers/DaemonProvider'
+import RecoveryQrScanPanel from './RecoveryQrScanPanel'
 import { getCashTreesNativeNfcBridge, getCashTreesNativeNfcHost } from '@/utils/cashTreesNativeNfc'
 import {
 	AlertCircle,
@@ -20,7 +19,8 @@ import { VerraFloatingNavChrome } from './VerraFloatingNavChrome'
 import { APP_FLOATING_CHROME_MAIN_TOP_PT, APP_TITLE_BLOCK_TO_FIRST_CONTROL_MB } from '@/ui/appContentSpacing'
 import { useTu } from '@/locale/beamioLocale'
 
-type RestoreTab = 'login' | 'recovery'
+/** Three screens: Unlock (ID & password) → Use Recovery Code → Scan Recovery QR. */
+type RestoreTab = 'login' | 'recovery' | 'scan'
 const APP_LOGO_SRC = `${process.env.PUBLIC_URL ?? ''}/logo192.png`
 /** Align step chrome with CreateUsernamePinScreen passport loading. */
 const RESTORE_LOADING_STEPS = [
@@ -98,7 +98,6 @@ export default function RestoreWalletUnifiedScreen({
 	const { tu } = useTu()
 	const prefillTag = normalizeBeamioTagInput(initialBeamioTag)
 	const [tab, setTab] = useState<RestoreTab>(initialRecoveryCode ? 'recovery' : 'login')
-	const { scanRef, scanData } = useDaemonContext()
 
 	// —— Recovery —
 	const [recoveryCode, setRecoveryCode] = useState(initialRecoveryCode)
@@ -142,18 +141,6 @@ export default function RestoreWalletUnifiedScreen({
 		setUsername(tag)
 		if (!initialRecoveryCode) setTab('login')
 	}, [initialBeamioTag, initialRecoveryCode])
-
-	useEffect(() => {
-		const run = async () => {
-			if (!scanData || /^http/i.test(scanData)) {
-				if (scanData && /^http/i.test(scanData)) setRecoveryError(tu('invalid_recovery_code_format'))
-				return
-			}
-			setRecoveryCode(scanData)
-			setRecoveryError('')
-		}
-		run()
-	}, [scanData, tu])
 
 	useEffect(() => {
 		const off = onWalletEvent('scan:url', (url: string) => {
@@ -253,21 +240,19 @@ export default function RestoreWalletUnifiedScreen({
 		}
 	}
 
-	const onOpenScanner = async () => {
+	/** A scanned or picked QR fills the code field and returns to Use Recovery Code. */
+	const onScannedCode = (code: string) => {
+		setTab('recovery')
+		if (/^http/i.test(code)) {
+			setRecoveryError(tu('invalid_recovery_code_format'))
+			return
+		}
+		setRecoveryCode(code)
 		setRecoveryError('')
-		const nativeResult = await scanRecoveryQrWithIosBridge()
-		if (nativeResult.status === 'scanned') {
-			setRecoveryCode(nativeResult.code)
-			return
-		}
-		if (nativeResult.status === 'failed') {
-			if (nativeResult.error && nativeResult.error !== 'cancelled') {
-				setRecoveryError(tu('unable_to_scan_recovery_qr'))
-			}
-			return
-		}
-		scanRef.current?.start({ hideModeSwitcher: true })
 	}
+
+	const iosNativeScan =
+		getCashTreesNativeNfcHost() === 'ios' && typeof getCashTreesNativeNfcBridge()?.scanRecoveryQr === 'function'
 
 	if (loginLoading) {
 		return (
@@ -401,217 +386,207 @@ export default function RestoreWalletUnifiedScreen({
 		)
 	}
 
-	/** Match Create your Beamio ID field chrome (`CreateUsernamePinScreen`). */
-	const fieldLabelClass =
-		'block px-4 text-xs font-bold uppercase tracking-widest text-[#424655]'
+	const fieldLabelClass = 'block px-1 text-xs font-bold uppercase tracking-[0.14em] text-[#1a1c1f]'
 	/** `ring-inset`: outer focus ring is clipped by parent `overflow-x-hidden` (left/right only). */
-	const fieldInputClass =
-		'w-full rounded-lg border-none bg-[#e2e2e7] text-base font-semibold text-[#1a1c1f] outline-none transition-all placeholder:text-[#737687]/50 focus:ring-2 focus:ring-inset focus:ring-[#004bc3]/40 disabled:opacity-70'
+	const fieldBoxClass =
+		'w-full rounded-2xl border bg-white text-[15px] font-medium text-[#1a1c1f] outline-none transition-all placeholder:text-[#8a8fa3] focus:border-[#1562f0] focus:ring-2 focus:ring-inset focus:ring-[#1562f0]/15 disabled:opacity-70'
+	const primaryButtonClass =
+		'h-12 rounded-full text-[16px] font-semibold !bg-[#1562f0] !text-white shadow-[0_8px_24px_rgba(21,98,240,0.25)] hover:!bg-[#0f52d4] active:!scale-[0.98] focus-visible:!ring-2 focus-visible:!ring-[#004bc3]/40'
+	const errorLine = (message: string) => (
+		<div className="flex items-center gap-2 px-1 text-orange-600">
+			<AlertCircle className="h-4 w-4 shrink-0" strokeWidth={2.5} aria-hidden />
+			<span className="text-[13px] font-semibold leading-snug">{message}</span>
+		</div>
+	)
+
+	const title = tab === 'login' ? tu('unlock_your_beamio_id') : tab === 'recovery' ? tu('use_recovery_code') : tu('scan_recovery_qr')
+	const subtitle = tab === 'login' ? tu('welcome_back_subtitle') : tab === 'recovery' ? tu('enter_your_code_or_scan_your_recovery_qr') : ''
+
+	const onBack = () => {
+		if (tab === 'scan') {
+			setTab('recovery')
+			return
+		}
+		if (tab === 'recovery') {
+			setTab('login')
+			setRecoveryError('')
+			return
+		}
+		onClose()
+	}
 
 	return (
-		<div className="relative flex h-full min-h-0 flex-col overflow-hidden bg-[#f3f3f8] font-[Inter,system-ui,sans-serif] text-[#1a1c1f]">
-			<VerraFloatingNavChrome onBack={onClose} tone="restore" />
+		<div className="relative flex h-full min-h-0 flex-col overflow-hidden bg-[#f3f4fb] font-[Inter,system-ui,sans-serif] text-[#1a1c1f]">
+			<VerraFloatingNavChrome onBack={onBack} tone="restore" />
 
 			<div
 				className={`flex min-h-0 flex-1 flex-col overflow-hidden px-6 pb-[max(0.75rem,env(safe-area-inset-bottom))] [@media(max-height:560px)]:px-5 ${APP_FLOATING_CHROME_MAIN_TOP_PT}`}
 			>
 				<div className={`shrink-0 text-center ${APP_TITLE_BLOCK_TO_FIRST_CONTROL_MB}`}>
-					<h1 className="text-3xl font-extrabold tracking-tight text-[#1a1c1f] sm:text-3xl">{tu('welcome_back')}</h1>
+					<h1 className="text-[28px] font-extrabold leading-tight tracking-tight text-[#151c3a]">{title}</h1>
+					{subtitle ? <p className="mt-2 text-[15px] font-medium text-[#6b7186]">{subtitle}</p> : null}
 				</div>
 
-				<div className="hidden" aria-hidden>
-					<ScanBtn />
-				</div>
-
-				<div className="relative mt-4 flex min-h-0 flex-1 flex-col overflow-y-auto overflow-x-hidden">
+				<div className="relative -mx-6 mt-2 flex min-h-0 flex-1 flex-col overflow-y-auto overflow-x-hidden px-6 pb-6 [@media(max-height:560px)]:-mx-5 [@media(max-height:560px)]:px-5">
 					{tab === 'login' ? (
-						<form onSubmit={handleLoginSubmit} className="flex flex-col" noValidate>
-							<div className="flex flex-col gap-3 [@media(max-height:700px)]:gap-2.5 [@media(max-height:640px)]:gap-2">
-								<div className="space-y-2">
-									<label htmlFor="welcome-back-beamio-id" className={fieldLabelClass}>
-										{tu('beamio_id')}
-									</label>
-									<div className="relative">
-										<div className="pointer-events-none absolute inset-y-0 left-5 flex items-center [@media(max-height:560px)]:left-4">
-											<span className="text-lg font-bold text-[#004bc3] [@media(max-height:560px)]:text-base">@</span>
-										</div>
-										<input
-											id="welcome-back-beamio-id"
-											type="text"
-											autoCapitalize="none"
-											autoCorrect="off"
-											spellCheck={false}
-											autoComplete="username"
-											enterKeyHint="next"
-											className={[
-												fieldInputClass,
-												'rounded-[10px] py-2.5 pl-12 pr-5 text-[15px] [@media(max-height:560px)]:pl-10 [@media(max-height:560px)]:pr-4',
-												loginError && !username.trim()
-													? 'ring-2 ring-inset ring-orange-400/80 focus:ring-orange-400/40'
-													: '',
-											].join(' ')}
-											placeholder={tu('username')}
-											value={username}
-											onChange={e => {
-												setUsername(e.target.value.replace(/@/g, ''))
-												setLoginError('')
-											}}
-										/>
+						<form onSubmit={handleLoginSubmit} className="flex flex-col gap-5" noValidate>
+							<div className="space-y-2">
+								<label htmlFor="welcome-back-beamio-id" className={fieldLabelClass}>
+									{tu('beamiotag')}
+								</label>
+								<div className="relative">
+									<div className="pointer-events-none absolute inset-y-0 left-4 flex items-center">
+										<span className="text-xl font-semibold text-[#1562f0]">@</span>
 									</div>
+									<input
+										id="welcome-back-beamio-id"
+										type="text"
+										autoCapitalize="none"
+										autoCorrect="off"
+										spellCheck={false}
+										autoComplete="username"
+										enterKeyHint="next"
+										className={[
+											fieldBoxClass,
+											'h-12 pl-11 pr-4',
+											loginError && !username.trim() ? 'border-orange-400' : 'border-[#c9d4f2]',
+										].join(' ')}
+										placeholder={tu('yourtag')}
+										value={username}
+										onChange={e => {
+											setUsername(e.target.value.replace(/@/g, ''))
+											setLoginError('')
+										}}
+									/>
 								</div>
-								<div className="space-y-2">
-									<label htmlFor="welcome-back-password" className={fieldLabelClass}>
-										{tu('password')}
-									</label>
-									<div className="relative">
-										<input
-											id="welcome-back-password"
-											type={peekPin ? 'text' : 'password'}
-											autoComplete="current-password"
-											autoCapitalize="none"
-											autoCorrect="off"
-											spellCheck={false}
-											enterKeyHint="done"
-											className={[
-												fieldInputClass,
-												'rounded-[10px] py-2.5 pl-5 pr-14 text-[15px] [@media(max-height:560px)]:pl-4 [@media(max-height:560px)]:pr-12',
-												loginError && !pin.trim()
-													? 'ring-2 ring-inset ring-orange-400/80 focus:ring-orange-400/40'
-													: '',
-											].join(' ')}
-											placeholder="••••••••••••"
-											value={pin}
-											onChange={e => {
-												setPin(e.target.value)
-												setLoginError('')
-											}}
-										/>
-										<button
-											type="button"
-											tabIndex={-1}
-											className="absolute inset-y-0 right-5 flex items-center rounded-lg p-1 text-[#424655] transition-colors hover:text-[#1a1c1f] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#004bc3]/30 [@media(max-height:560px)]:right-4"
-											onClick={() => setPeekPin(p => !p)}
-											aria-label={peekPin ? tu('hide_password') : tu('show_password')}
-										>
-											{peekPin ? (
-											<EyeOff className="h-5 w-5 [@media(max-height:560px)]:h-4 [@media(max-height:560px)]:w-4" strokeWidth={2} />
-											) : (
-												<Eye className="h-5 w-5 [@media(max-height:560px)]:h-4 [@media(max-height:560px)]:w-4" strokeWidth={2} />
-											)}
-										</button>
-									</div>
-								</div>
-								{loginError ? (
-									<div className="flex items-center gap-2 px-4 text-orange-600">
-										<AlertCircle className="h-4 w-4 shrink-0" strokeWidth={2.5} aria-hidden />
-										<span className="text-[13px] font-semibold leading-snug">{loginError}</span>
-									</div>
-								) : null}
-								<div className="shrink-0 pt-1">
-									<AppButton
-										type="submit"
-										fullWidth
-										disabled={loginLoading}
-										loading={loginLoading}
-									className="h-10 rounded-full text-[15px] font-bold !bg-gradient-to-br !from-[#004bc3] !to-[#1562f0] !text-white shadow-[0_4px_24px_rgba(21,98,240,0.15)] hover:!opacity-90 active:!scale-[0.98] focus-visible:!ring-2 focus-visible:!ring-[#004bc3]/40"
+							</div>
+							<div className="space-y-2">
+								<label htmlFor="welcome-back-password" className={fieldLabelClass}>
+									{tu('password')}
+								</label>
+								<div className="relative">
+									<input
+										id="welcome-back-password"
+										type={peekPin ? 'text' : 'password'}
+										autoComplete="current-password"
+										autoCapitalize="none"
+										autoCorrect="off"
+										spellCheck={false}
+										enterKeyHint="done"
+										className={[
+											fieldBoxClass,
+											'h-12 pl-4 pr-12',
+											loginError && !pin.trim() ? 'border-orange-400' : 'border-[#c9d4f2]',
+										].join(' ')}
+										placeholder="••••••••••••"
+										value={pin}
+										onChange={e => {
+											setPin(e.target.value)
+											setLoginError('')
+										}}
+									/>
+									<button
+										type="button"
+										tabIndex={-1}
+										className="absolute inset-y-0 right-3 flex items-center rounded-lg p-1 text-[#1a1c1f] transition-colors hover:text-[#1562f0] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#004bc3]/30"
+										onClick={() => setPeekPin(p => !p)}
+										aria-label={peekPin ? tu('hide_password') : tu('show_password')}
 									>
-									<span className="inline-flex items-center gap-2">
-										{tu('unlock')}
-										<ArrowRight className="h-4 w-4" strokeWidth={2.25} aria-hidden />
-									</span>
-									</AppButton>
+										{peekPin ? <EyeOff className="h-5 w-5" strokeWidth={2} /> : <Eye className="h-5 w-5" strokeWidth={2} />}
+									</button>
 								</div>
-							<div className="mt-1 flex flex-col items-center gap-2">
-								<div className="flex w-full items-center gap-2 text-[11px] text-[#727786]">
-									<div className="h-px flex-1 bg-[#d9dce6]" />
-									<span>{tu('or')}</span>
-									<div className="h-px flex-1 bg-[#d9dce6]" />
-								</div>
-								<span className="text-[13px] font-medium text-[#004bc3]">
-									{tu('forgot_password')}
+							</div>
+							{loginError ? errorLine(loginError) : null}
+							<AppButton type="submit" fullWidth disabled={loginLoading} loading={loginLoading} className={primaryButtonClass}>
+								<span className="inline-flex items-center gap-2">
+									{tu('unlock')}
+									<ArrowRight className="h-5 w-5" strokeWidth={2.25} aria-hidden />
 								</span>
-								<button
-									type="button"
-									tabIndex={-1}
-									className="flex h-9 w-full items-center justify-center gap-2 rounded-[10px] border border-[#d9e0f3] bg-[#f0f3ff] text-[13px] font-medium text-[#243b8f] transition-colors hover:bg-[#e7edff] active:scale-[0.98]"
-									onClick={() => {
-										setTab('recovery')
-										setRecoveryError('')
-									}}
+							</AppButton>
+							<div className="flex items-center gap-4 px-2 text-[13px] font-semibold text-[#727786]">
+								<div className="h-px flex-1 bg-[#d3d8e8]" />
+								<span>{tu('or')}</span>
+								<div className="h-px flex-1 bg-[#d3d8e8]" />
+							</div>
+							<button
+								type="button"
+								className="flex h-12 w-full items-center justify-center gap-2.5 rounded-2xl border border-[#c9d4f2] bg-white text-[15px] font-semibold text-[#1d3fa8] transition-colors hover:bg-[#f3f6ff] active:scale-[0.98]"
+								onClick={() => {
+									setTab('recovery')
+									setRecoveryError('')
+								}}
+							>
+								<KeyRound className="h-5 w-5 text-[#1562f0]" strokeWidth={2.25} aria-hidden />
+								{tu('use_recovery_code')}
+							</button>
+						</form>
+					) : tab === 'recovery' ? (
+						<form onSubmit={handleRecoverySubmit} className="flex flex-col gap-5" noValidate>
+							<div className="space-y-2">
+								<label htmlFor="welcome-back-recovery-code" className={fieldLabelClass}>
+									{tu('recovery_code_label')}
+								</label>
+								<div
+									className={[
+										'flex h-14 w-full items-center gap-3 rounded-2xl border bg-white pl-4 pr-1.5 transition focus-within:border-[#1562f0] focus-within:ring-2 focus-within:ring-[#1562f0]/15',
+										recoveryError ? 'border-orange-400' : 'border-[#c9d4f2]',
+									].join(' ')}
 								>
-									<KeyRound className="h-4 w-4 text-[#1562f0]" strokeWidth={2.25} aria-hidden />
-									{tu('restore_with_recovery_code')}
-								</button>
+									<input
+										id="welcome-back-recovery-code"
+										type="text"
+										className="min-w-0 flex-1 bg-transparent text-[15px] font-medium text-[#1a1c1f] outline-none placeholder:text-[#8a8fa3]"
+										placeholder={tu('enter_or_paste_your_code')}
+										value={recoveryCode}
+										onChange={e => {
+											setRecoveryCode(e.target.value)
+											setRecoveryError('')
+										}}
+										autoCapitalize="none"
+										autoCorrect="off"
+										spellCheck={false}
+										autoComplete="off"
+									/>
+									<div className="h-7 w-px shrink-0 bg-[#d3d8e8]" aria-hidden />
+									<button
+										type="button"
+										onClick={() => {
+											setRecoveryError('')
+											setTab('scan')
+										}}
+										aria-label={tu('scan_recovery_qr')}
+										className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[#e6edff] text-[#1562f0] transition-colors hover:bg-[#dce5fb] active:scale-[0.96]"
+									>
+										<QrCode className="h-5 w-5" strokeWidth={2.25} aria-hidden />
+									</button>
+								</div>
 							</div>
-							</div>
+							{recoveryError ? errorLine(recoveryError) : null}
+							<AppButton
+								type="submit"
+								fullWidth
+								disabled={recoveryLoading || !recoveryCode.trim()}
+								loading={recoveryLoading}
+								className={`${primaryButtonClass} disabled:!opacity-50`}
+							>
+								<span className="inline-flex items-center gap-2">
+									{tu('unlock')}
+									<ArrowRight className="h-5 w-5" strokeWidth={2.25} aria-hidden />
+								</span>
+							</AppButton>
+							<p className="text-center text-[14px] font-medium text-[#6b7186]">{tu('keep_your_recovery_code_private')}</p>
 						</form>
 					) : (
-						<form onSubmit={handleRecoverySubmit} className="flex flex-col" noValidate>
-							<div className="flex flex-col gap-5 [@media(max-height:700px)]:gap-4 [@media(max-height:640px)]:gap-3">
-								<div className="flex w-full shrink-0 flex-col gap-2">
-									<label htmlFor="welcome-back-recovery-code" className="sr-only">
-										{tu('enter_recovery_code')}
-									</label>
-									<div
-										className={[
-											'flex min-h-14 w-full items-center gap-3 rounded-2xl border bg-white px-4 py-2.5 shadow-sm transition focus-within:border-[#004bc3] focus-within:ring-2 focus-within:ring-[#004bc3]/10',
-											recoveryError ? 'border-orange-400 ring-2 ring-orange-400/15' : 'border-[#d9e0f3]',
-										].join(' ')}
-									>
-										<KeyRound className="h-5 w-5 shrink-0 text-[#1562f0]" strokeWidth={2.25} aria-hidden />
-										<input
-											id="welcome-back-recovery-code"
-											type="text"
-											className="min-w-0 flex-1 bg-transparent text-[15px] font-medium text-[#1a1c1f] outline-none placeholder:text-[#727786]"
-											placeholder={tu('enter_recovery_code')}
-											value={recoveryCode}
-											onChange={e => {
-												setRecoveryCode(e.target.value)
-												setRecoveryError('')
-											}}
-											autoComplete="off"
-										/>
-										<button
-											type="button"
-											onClick={onOpenScanner}
-											aria-label={tu('tap_to_scan_recovery_qr')}
-											tabIndex={-1}
-											className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[#e9edfb] text-[#1562f0] transition-colors hover:bg-[#dce5fb] active:scale-[0.96]"
-										>
-											<QrCode className="h-5 w-5" strokeWidth={2.25} aria-hidden />
-										</button>
-									</div>
-									{recoveryError ? (
-										<div className="flex items-center gap-2 px-4 text-orange-600">
-											<AlertCircle className="h-4 w-4 shrink-0" strokeWidth={2.5} aria-hidden />
-											<span className="text-[13px] font-semibold leading-snug">{recoveryError}</span>
-										</div>
-									) : null}
-									<div className="shrink-0 pt-1">
-										<AppButton
-											type="submit"
-											fullWidth
-											disabled={recoveryLoading || !recoveryCode.trim()}
-											loading={recoveryLoading}
-											className={`!flex !items-center !justify-center !py-0 h-14 rounded-full text-base font-bold leading-none transition active:!scale-[0.98] focus-visible:!ring-2 focus-visible:!ring-[#004bc3]/40 ${
-												!recoveryCode.trim() && !recoveryLoading
-													? '!cursor-not-allowed !bg-slate-300 !text-slate-500 !shadow-none'
-													: '!bg-[#004bc3] !text-white shadow-[0_8px_30px_rgb(0,75,195,0.2)] hover:!bg-[#1562f0]'
-											}`}
-										>
-											<span className="flex h-full items-center justify-center leading-none">{tu('restore')}</span>
-											<ArrowRight className="h-5 w-5" strokeWidth={2.25} aria-hidden />
-										</AppButton>
-									</div>
-									<p className="pt-1 text-center text-xs font-medium text-[#727786]">
-										{tu('recovery_password_after_restore')}
-									</p>
-								</div>
-							</div>
-						</form>
+						<div className="flex flex-col gap-4">
+							<RecoveryQrScanPanel
+								onCode={onScannedCode}
+								onError={message => setRecoveryError(message)}
+								nativeScan={iosNativeScan ? scanRecoveryQrWithIosBridge : undefined}
+							/>
+							{recoveryError ? errorLine(recoveryError) : null}
+						</div>
 					)}
 				</div>
-
 			</div>
 		</div>
 	)

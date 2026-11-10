@@ -43,11 +43,11 @@ const referralCardChrome =
 
 type RewardsHubView = 'overview' | 'referrals' | 'merchants' | 'nodes' | 'earnings'
 
-const HUB_TABS: { id: Exclude<RewardsHubView, 'earnings'>; label: string }[] = [
-	{ id: 'overview', label: 'Overview' },
-	{ id: 'referrals', label: 'Referrals' },
-	{ id: 'merchants', label: 'Business' },
-	{ id: 'nodes', label: 'Node' },
+const HUB_TABS: { id: Exclude<RewardsHubView, 'earnings'>; labelKey: string }[] = [
+	{ id: 'overview', labelKey: 'rewards_hub_tab_overview' },
+	{ id: 'referrals', labelKey: 'rewards_hub_tab_referrals' },
+	{ id: 'merchants', labelKey: 'rewards_hub_tab_business' },
+	{ id: 'nodes', labelKey: 'rewards_hub_tab_node' },
 ]
 
 const FALLBACK_RATES: Record<string, number> = { USD: 1, CAD: 1.35, JPY: 150, EUR: 0.92, CNY: 7.2, HKD: 7.8, TWD: 31, SGD: 1.35 }
@@ -443,7 +443,7 @@ export default function BountyBoard() {
 						>
 							<Gift className="h-5 w-5" strokeWidth={2.25} aria-hidden />
 						</div>
-						<span className="text-[15px] font-bold tracking-tight text-[#0F172A] dark:text-slate-100">Rewards Hub</span>
+						<span className="text-[15px] font-bold tracking-tight text-[#0F172A] dark:text-slate-100">{tu('rewards_hub_title')}</span>
 					</div>
 					{eoa ? (
 						<div className="flex shrink-0 items-center gap-2" style={{ pointerEvents: capsulePointer }}>
@@ -517,7 +517,7 @@ export default function BountyBoard() {
 												: 'text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-100'
 										}`}
 									>
-										{tab.label}
+										{tu(tab.labelKey)}
 									</button>
 								)
 							})}

@@ -781,7 +781,12 @@
     "refer_to_earn_body": "Discover merchants offering referral tasks. Share an offer and earn when its conditions are met.",
     "refer_to_earn_explore_offers": "Explore Offers",
     "refer_to_earn_badge_line1": "Refer a friend.",
-    "refer_to_earn_badge_line2": "Earn a reward."
+    "refer_to_earn_badge_line2": "Earn a reward.",
+    "rewards_hub_title": "Rewards Hub",
+    "rewards_hub_tab_overview": "Overview",
+    "rewards_hub_tab_referrals": "Referrals",
+    "rewards_hub_tab_business": "Business",
+    "rewards_hub_tab_node": "Node"
   },
   "errors": {
     "generic": "Something went wrong. Please try again.",

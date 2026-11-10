@@ -774,7 +774,12 @@
     "refer_to_earn_body": "发现提供推荐任务的商户。分享优惠，满足条件即可获得奖励。",
     "refer_to_earn_explore_offers": "浏览优惠",
     "refer_to_earn_badge_line1": "推荐好友，",
-    "refer_to_earn_badge_line2": "赢取奖励。"
+    "refer_to_earn_badge_line2": "赢取奖励。",
+    "rewards_hub_title": "奖励中心",
+    "rewards_hub_tab_overview": "概览",
+    "rewards_hub_tab_referrals": "推荐",
+    "rewards_hub_tab_business": "商户",
+    "rewards_hub_tab_node": "节点"
   },
   "errors": {
     "generic": "出了点问题，请重试。",

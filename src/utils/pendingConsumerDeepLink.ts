@@ -9,6 +9,7 @@ import {
 	isRedeemDeepLink,
 	parseCouponOpenClaimFromParams,
 } from '@/utils/beamioDeepLinkParams'
+import { isSecretUrlParamName } from '@/utils/secretUrlParams'
 import { parseDiscoverMerchantFromParams } from '@/utils/discoverMerchantShare'
 
 const STORAGE_KEY = 'beamio:pendingConsumerDeepLink:v1'
@@ -123,6 +124,8 @@ export function applyPendingConsumerDeepLinkIfNeeded(): boolean {
 		const flat = collectDeepLinkSearchParams(pending)
 		flat.forEach((value, key) => {
 			if (key === 'v' || key === 'target') return
+			// Never copy a Recovery Code (or its paired tag) from a stashed link into the URL.
+			if (isSecretUrlParamName(key) || key.toLowerCase() === 'beamiotag') return
 			next.searchParams.set(key, value)
 		})
 		window.history.replaceState(window.history.state, '', next.toString())

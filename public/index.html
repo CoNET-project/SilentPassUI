@@ -2,6 +2,44 @@
 <html lang="en">
 <head>
     <meta charset="utf-8" />
+    <!-- Send no Referer anywhere (defence in depth: the page URL must never leave the device). -->
+    <meta name="referrer" content="no-referrer" />
+    <script>
+      /* Old builds put the Recovery Code in the URL (?beamioTag=…&MasterKey=…). Take it out
+         before any other script or request runs; the app reads it once from memory. */
+      (function () {
+        try {
+          var loc = window.location, found = null;
+          function scrub(query) {
+            var parts = query.split('&'), keep = [], key = '', tag = '';
+            for (var i = 0; i < parts.length; i++) {
+              if (!parts[i]) continue;
+              var eq = parts[i].indexOf('='), name = eq < 0 ? parts[i] : parts[i].slice(0, eq);
+              var value = eq < 0 ? '' : parts[i].slice(eq + 1), lower = '';
+              try { lower = decodeURIComponent(name.replace(/\+/g, ' ')).toLowerCase(); } catch (e) { lower = name.toLowerCase(); }
+              if (lower === 'masterkey' || lower === 'beamiotag') {
+                var decoded = value;
+                try { decoded = decodeURIComponent(value.replace(/\+/g, ' ')); } catch (e) {}
+                if (lower === 'masterkey') key = key || decoded; else tag = tag || decoded;
+              } else keep.push(parts[i]);
+            }
+            return { key: key, tag: tag, query: keep.join('&') };
+          }
+          var search = scrub(loc.search.replace(/^\?/, ''));
+          var hash = loc.hash, hashPath = hash, hashQuery = null;
+          var q = hash.indexOf('?');
+          if (q >= 0) { hashPath = hash.slice(0, q); hashQuery = scrub(hash.slice(q + 1)); }
+          var key = search.key || (hashQuery && hashQuery.key) || '';
+          if (!key) return;
+          var tag = search.tag || (hashQuery && hashQuery.tag) || '';
+          found = { beamioTag: tag.replace(/^@+/, ''), masterKey: key };
+          var nextHash = hashQuery ? hashPath + (hashQuery.query ? '?' + hashQuery.query : '') : hash;
+          var next = loc.pathname + (search.query ? '?' + search.query : '') + nextHash;
+          window.history.replaceState(window.history.state, '', next);
+          window.__beamioLegacyRestoreLink = found;
+        } catch (e) {}
+      })();
+    </script>
     <link rel="icon" href="%PUBLIC_URL%/favicon.ico" />
     <meta name="theme-color" content="#f8f9fa" />
     <meta name="description" content="Web site created using create-react-app" />

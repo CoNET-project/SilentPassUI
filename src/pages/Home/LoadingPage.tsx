@@ -33,6 +33,7 @@ import { ethers } from "ethers"
 import { CCSA_Card_Address } from "@/utils/constants"
 import { BASE_MAINNET_FACTORIES } from "@/config/chainAddresses"
 import { updateManifestStartUrl } from "@/utils/updateManifestStartUrl"
+import { takeLegacyRestoreLink } from "@/utils/secretUrlParams"
 import { fiatPrefix, formatAmount } from "@/services/currency"
 import { ReactComponent as LightDrakMode } from "@/components/Footer/assets/dark-light-mode-grey.svg"
 import { ReactComponent as LightDrakModeBlue } from "@/components/Footer/assets/dark-light-mode-blue.svg"
@@ -540,6 +541,8 @@ export default function BeamioOnboardingModal({ home, onInitComplete, requireWal
 	const [hasCheckedUrl, setHasCheckedUrl] = useState(false)
 	/** 从 URL 的 MasterKey 参数进入的 recover 模式，restore 失败时预填恢复码 */
 	const [restoreFromUrlMasterKey, setRestoreFromUrlMasterKey] = useState('')
+	/** BeamioTag from a legacy restore link; the URL no longer carries it. */
+	const [restoreFromUrlBeamioTag, setRestoreFromUrlBeamioTag] = useState('')
 	const [redeemDetails, setRedeemDetails] = useState<import('@/services/BeamioCard').RedeemDetailsForDisplay | null>(null)
 	const [redeemDetailsLoading, setRedeemDetailsLoading] = useState(false)
 	const [redeeming, setRedeeming] = useState(false)
@@ -774,6 +777,9 @@ export default function BeamioOnboardingModal({ home, onInitComplete, requireWal
 	useEffect(() => {
 		if (!first) return
 		first = false
+		// Legacy `?beamioTag=…&MasterKey=…` link: index.tsx already took both out of
+		// the URL and keeps them in memory for this one restore attempt.
+		const legacyRestore = takeLegacyRestoreLink()
 		const run = async () => {
 			const ephemeralReady = await ensureEphemeralWalletForCouponClaim()
 			if (ephemeralReady) {
@@ -794,21 +800,21 @@ export default function BeamioOnboardingModal({ home, onInitComplete, requireWal
 				}
 			}
 			const urlParams = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null
-			const beamioTagParam = urlParams?.get('beamioTag')
-			const masterKeyParam = urlParams?.get('MasterKey')
+			const beamioTagParam = legacyRestore?.beamioTag || urlParams?.get('beamioTag')
+			const masterKeyParam = legacyRestore?.masterKey || ''
 			// beamioTag 优先于 beamiocard：若有 beamioTag，忽略 beamiocard/redeemcode，进入恢复 wallet 流程
-			if (beamioTagParam) {
+			if (beamioTagParam || masterKeyParam) {
 				if (masterKeyParam) {
 					try {
 						const restored = await restoreWithRedeem(masterKeyParam, '')
 						if (restored) {
 							await init(restored)
-							// 保持 beamioTag、MasterKey 参数在 URL 中，不删除
 							return
 						}
 					} catch (_) {}
 					setIsInitialEntry(true)
 					setRestoreFromUrlMasterKey(masterKeyParam)
+					setRestoreFromUrlBeamioTag((beamioTagParam || '').replace(/^@+/, ''))
 					setSettingsOpen('RestoreWalletScreen')
 					setHasCheckedUrl(true)
 					onInitComplete?.()
@@ -848,28 +854,31 @@ export default function BeamioOnboardingModal({ home, onInitComplete, requireWal
 		setHasCheckedUrl(true)
 	}, [])
 
-	/** 往 PWA 传递参数的通用逻辑：更新 URL（beamioTag + MasterKey，移除 redeem 参数）+ 刷新 manifest start_url */
-	const applyPwaUrlParams = (tag: string, key: string) => {
-		if (!tag || !key || typeof window === 'undefined') return
+	/**
+	 * After onboarding: drop the used redeem params from the URL and refresh the
+	 * manifest start_url. The Recovery Code is never written into the URL or the
+	 * manifest; a home-screen PWA with its own storage unlocks with BeamioTag +
+	 * password or the Recovery Code instead.
+	 */
+	const clearRedeemParamsAndRefreshManifest = () => {
+		if (typeof window === 'undefined') return
 		try {
 			const url = new URL(window.location.href)
-			url.searchParams.set('beamioTag', tag)
-			url.searchParams.set('MasterKey', key)
 			;['beamiocard', 'Beamiocard', 'redeemcode', 'Redeemcode'].forEach(k => url.searchParams.delete(k))
 			const newHref = url.toString()
-			window.history.replaceState({}, '', newHref)
+			if (newHref !== window.location.href) window.history.replaceState(window.history.state, '', newHref)
 			updateManifestStartUrl(newHref)
 		} catch (_) {}
 	}
 
-	// Card Active! 或 Wallet Ready! 进入时：更新 URL 并刷新 manifest（PWA 添加到主屏幕时携带 beamioTag、MasterKey）
+	// Card Active! 或 Wallet Ready! 进入时：清掉兑换参数并刷新 manifest（不写入恢复码）
 	useEffect(() => {
 		if (typeof window === 'undefined') return
 		const isCardActive = redeemFromUrl && !redeeming && redeemResult?.success
 		const isWalletReady =
 			settingsOpen === 'WalletReadyScreen' || settingsOpen === 'OnboardingWelcomeScreen'
 		if ((isCardActive || isWalletReady) && beamioTag && recoveryCode) {
-			const t = setTimeout(() => applyPwaUrlParams(beamioTag, recoveryCode), isCardActive ? 300 : 400)
+			const t = setTimeout(clearRedeemParamsAndRefreshManifest, isCardActive ? 300 : 400)
 			return () => clearTimeout(t)
 		}
 		if (isWalletReady) updateManifestStartUrl(window.location.href)
@@ -1465,6 +1474,7 @@ export default function BeamioOnboardingModal({ home, onInitComplete, requireWal
 									<RestoreWalletUnifiedScreen
 										initialRecoveryCode={restoreFromUrlMasterKey}
 										initialBeamioTag={
+											restoreFromUrlBeamioTag ||
 											beamioTagFromUrlSearch() ||
 											knownBeamioAccountNameFromStorage(CoNET_Data) ||
 											beamioTag.trim().replace(/^@+/, '')
@@ -1473,9 +1483,11 @@ export default function BeamioOnboardingModal({ home, onInitComplete, requireWal
 											if (requireWalletRecover || consumerAppNeedsWalletRecover(CoNET_Data)) return
 											setSettingsOpen('')
 											setRestoreFromUrlMasterKey('')
+											setRestoreFromUrlBeamioTag('')
 										}}
 										onRestore={async ({ temp, beamioTag }) => {
 											setRestoreFromUrlMasterKey('')
+											setRestoreFromUrlBeamioTag('')
 											if (!hasLocalPlaintextMnemonic(temp)) {
 												return
 											}

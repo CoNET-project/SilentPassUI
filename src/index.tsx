@@ -1,5 +1,7 @@
 //	index.tsx
 
+// Must stay the first import: takes a legacy Recovery Code out of the URL.
+import './utils/legacyRestoreLinkBoot'
 import './utils/ignoreResizeObserverLoopError'
 import React from 'react';
 import ReactDOM from 'react-dom/client';
@@ -15,7 +17,6 @@ import { BeamioTagDatabaseProvider } from './providers/BeamioTagDatabaseProvider
 import { IpfsImageLibraryProvider } from './providers/IpfsImageLibraryProvider'
 import { HashRouter as Router } from 'react-router-dom'
 import { applyPendingConsumerDeepLinkIfNeeded } from './utils/pendingConsumerDeepLink'
-
 void loadApiExcludedUserCards()
 applyPendingConsumerDeepLinkIfNeeded()
 

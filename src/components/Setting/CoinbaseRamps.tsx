@@ -8,7 +8,7 @@ import {useAutoFocus} from '@/components/input/useAutoFocus'
 import {BuyWithCoinbaseButton} from './BuyWithCoinbaseButton'
 import { tu } from '@/locale/beamioLocale'
 
-const remote = 'https://beamio.app'
+const remote = 'https://beamio.ca'
 
 type RampMode = "onramp" | "offramp";
 const formatMoney = (n: number) =>

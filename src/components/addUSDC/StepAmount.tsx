@@ -15,7 +15,7 @@ import {
 export type RampMode = "onramp" | "offramp"
 
 
-const remote = 'https://beamio.app'
+const remote = 'https://beamio.ca'
 
 const formatMoney = (n: number) =>
 		n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })

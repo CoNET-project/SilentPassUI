@@ -25,7 +25,7 @@ import { conetDepinProvider } from '@/utils/constants'
 import { withBaseRpc } from '@/utils/baseRpc'
 import { WALLET_USDC_DEPOSIT_WORKFLOW } from '@/utils/fuelPackUsdcTopupUrl'
 
-const BEAMIO_API = 'https://beamio.app'
+const BEAMIO_API = 'https://beamio.ca'
 
 const ERC20_ABI = [
 	'function balanceOf(address account) view returns (uint256)',

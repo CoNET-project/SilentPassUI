@@ -20,7 +20,7 @@ import { QRCodeCanvas } from "qrcode.react"
 import bIcon from '@/components/assets/32x32.svg'
 import StepAmount,{RampMode} from './StepAmount'
 import { AppButton } from "../button/AppButton";
-const remote = 'https://beamio.app'
+const remote = 'https://beamio.ca'
 
 
 type Screen = "hub" | "coinbase" | "coinbase_error" | "transfer" | "receive" | "profile_qr" | 'coinbase_next'

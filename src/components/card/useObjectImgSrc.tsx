@@ -1,36 +1,19 @@
 import { useEffect, useState } from 'react'
-import {
-	isIpfsFragmentImageUrl,
-	resolveIpfsImageUrlToObjectUrl,
-} from '@/utils/ipfsImageLibrary'
+import { resolveIpfsImageUrlToObjectUrl } from '@/utils/ipfsImageLibrary'
+import { syncImgSrcFor } from '@/utils/legacyAwareImgSrc'
 
 export { resolveIpfsImageUrlToObjectUrl as urlToObjectUrl } from '@/utils/ipfsImageLibrary'
 
 export const useObjectImgSrc = (src?: string) => {
-  const [imgSrc, setImgSrc] = useState(() => {
-    const s = String(src || '').trim()
-    if (!s) return ''
-    if (s.startsWith('data:image/') || s.startsWith('blob:')) return s
-    if (!isIpfsFragmentImageUrl(s)) return s
-    return ''
-  })
+  const [imgSrc, setImgSrc] = useState(() => syncImgSrcFor(src) ?? '')
 
   useEffect(() => {
+    const sync = syncImgSrcFor(src)
+    if (sync !== null) {
+      setImgSrc(sync)
+      return
+    }
     const s = String(src || '').trim()
-    if (!s) {
-      setImgSrc('')
-      return
-    }
-
-    if (s.startsWith('data:image/') || s.startsWith('blob:')) {
-      setImgSrc(s)
-      return
-    }
-
-    if (!isIpfsFragmentImageUrl(s)) {
-      setImgSrc(s)
-      return
-    }
 
     let alive = true
     let objUrl = ''

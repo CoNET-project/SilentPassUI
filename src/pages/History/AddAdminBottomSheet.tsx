@@ -2,6 +2,7 @@
  * AddAdminBottomSheet - Card owner 添加 admin（EOA 地址）
  * 流程：选择卡 → 输入新 admin 地址（须为 EOA，AA 不允许）→ 选择 threshold → 签名 → 提交 API cardAddAdmin → 显示 tx hash
  */
+import { outboundSrc } from '@/utils/legacyBeamioLinks'
 import React, { useState, useEffect } from 'react'
 import { ethers } from 'ethers'
 import { UserPlus, Loader, ChevronRight, AlertCircle, CheckCircle, ExternalLink } from 'lucide-react'
@@ -130,7 +131,7 @@ export default function AddAdminBottomSheet({ userCards, onClose, onSuccess }: P
                     <div className="w-full max-w-[320px] mb-6">
                         <p className="text-[11px] font-semibold tracking-wider uppercase text-slate-500 dark:text-slate-400 mb-1">Tx Hash</p>
                         <a
-                            href={`${BASE_EXPLORER}${txHash}`}
+                            href={outboundSrc(`${BASE_EXPLORER}${txHash}`)}
                             target="_blank"
                             rel="noopener noreferrer"
                             className="flex items-center gap-2 p-3 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-mono text-xs break-all hover:bg-slate-200 dark:hover:bg-slate-700"

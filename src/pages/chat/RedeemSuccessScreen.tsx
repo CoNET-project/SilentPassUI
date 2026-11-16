@@ -1,3 +1,4 @@
+import { outboundSrc } from '@/utils/legacyBeamioLinks'
 import { IpfsImg } from '@/components/IpfsImg';
 import {ethers} from 'ethers'
 import base_ex_dark from '@/components/assets/base-ex-dark.svg'
@@ -97,7 +98,7 @@ const RedeemSuccessScreen = ({amount, myAddress, hash, note, viewClose}: Prof) =
 							</span>
 
 							<a
-							href={`https://basescan.org/address/${BeamioBaseAddress}`}
+							href={outboundSrc(`https://basescan.org/address/${BeamioBaseAddress}`)}
 							target="_blank"
 							rel="noreferrer"
 							className="inline-flex items-center justify-center rounded-md border border-blue-500 px-1.5 py-0.5 hover:bg-blue-600 hover:text-white transition-colors"
@@ -125,7 +126,7 @@ const RedeemSuccessScreen = ({amount, myAddress, hash, note, viewClose}: Prof) =
 							</span>
 
 							<a
-							href={`https://basescan.org/address/${myAddress}`}
+							href={outboundSrc(`https://basescan.org/address/${myAddress}`)}
 							target="_blank"
 							rel="noreferrer"
 							className="inline-flex items-center justify-center rounded-md border border-blue-500 px-1.5 py-0.5 hover:bg-blue-600 hover:text-white transition-colors"
@@ -160,7 +161,7 @@ const RedeemSuccessScreen = ({amount, myAddress, hash, note, viewClose}: Prof) =
 						<span className="font-mono text-[11px] text-slate-800">{fmtAddr(hash)}</span>
 
 						<a
-						href={`https://basescan.org/tx/${hash}`}
+						href={outboundSrc(`https://basescan.org/tx/${hash}`)}
 						target="_blank"
 						rel="noreferrer"
 						className="inline-flex items-center justify-center rounded-md border border-blue-500 px-1.5 py-0.5 hover:bg-blue-600 hover:text-white transition-colors"

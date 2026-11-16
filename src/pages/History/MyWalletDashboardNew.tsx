@@ -1,3 +1,4 @@
+import { outboundSrc } from '@/utils/legacyBeamioLinks'
 import { IpfsImg } from '@/components/IpfsImg';
 import { resolveOutboundHref } from '@/utils/legacyBeamioLinks';
 //		`https://beamio.ca/app/?beamiocard=${cardaddress}&redeemcode=${redeemcode}`
@@ -2844,7 +2845,7 @@ export default function MyWalletDashboardNew() {
 											</button>
 											{newNftImageUrl ? (
 												<>
-													<a href={resolveOutboundHref(newNftImageUrl) ?? undefined} target="_blank" rel="noopener noreferrer" className="text-xs text-[#1562f0] truncate max-w-[140px]" title={newNftImageUrl}>链接</a>
+													<a href={outboundSrc(resolveOutboundHref(newNftImageUrl) ?? undefined)} target="_blank" rel="noopener noreferrer" className="text-xs text-[#1562f0] truncate max-w-[140px]" title={newNftImageUrl}>链接</a>
 													<button type="button" onClick={() => setNewNftImageUrl('')} className="p-1.5 rounded-lg hover:bg-red-100 dark:hover:bg-red-900/30 text-red-600 dark:text-red-400" aria-label="Remove image">
 														<Trash2 className="w-4 h-4" />
 													</button>
@@ -3204,7 +3205,7 @@ export default function MyWalletDashboardNew() {
 										<div className="flex items-center justify-between pt-2 border-t border-slate-200 dark:border-slate-700">
 											<span className="text-xs text-slate-500 dark:text-slate-400"># REF</span>
 											<a
-												href={`https://basescan.org/tx/${redeemSuccessTx}`}
+												href={outboundSrc(`https://basescan.org/tx/${redeemSuccessTx}`)}
 												target="_blank"
 												rel="noopener noreferrer"
 												className="text-xs font-mono text-slate-900 dark:text-slate-100 hover:underline"

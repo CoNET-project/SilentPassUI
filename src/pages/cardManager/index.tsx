@@ -1,3 +1,4 @@
+import { outboundSrc } from '@/utils/legacyBeamioLinks'
 import { IpfsImg } from '@/components/IpfsImg';
 // CardManager - Form for creating BeamioUserCard
 // Key params: cardOwner, currency, unitPriceHuman (human-readable, backend converts to priceInCurrencyE6), initCode (built by backend)
@@ -533,7 +534,7 @@ export default function CardManager({ onClose, embedded, onCreated }: CardManage
 							<p className="text-sm text-white/80 font-mono break-all">{result.cardAddress}</p>
 							{result.hash && (
 								<a
-									href={`https://basescan.org/tx/${result.hash}`}
+									href={outboundSrc(`https://basescan.org/tx/${result.hash}`)}
 									target="_blank"
 									rel="noopener noreferrer"
 									className="mt-2 inline-block text-sm text-emerald-400 hover:underline"

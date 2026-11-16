@@ -1,3 +1,4 @@
+import { outboundSrc } from '@/utils/legacyBeamioLinks'
 import React, { useState } from 'react'
 import { Link2, Layers, Copy, X } from 'lucide-react'
 import { fiatPrefix, formatAmount } from '@/services/currency'
@@ -286,7 +287,7 @@ export default function ActionItemDetail({ item, memberNo, onClose }: ActionItem
           <div className="inline-flex items-center gap-1.5">
             {txIdFull ? (
               <a
-                href={`${BASESCAN_TX_URL}${txIdFull}`}
+                href={outboundSrc(`${BASESCAN_TX_URL}${txIdFull}`)}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-[14px] font-medium text-blue-600 hover:underline"

@@ -1,4 +1,4 @@
-import { mapLegacyBeamioLink, resolveBeamioHttpHref, resolveBeamioLinkInput, resolveBeamioUrl, resolveOutboundHref } from './legacyBeamioLinks'
+import { mapLegacyBeamioLink, resolveBeamioHttpHref, resolveBeamioLinkInput, resolveBeamioUrl, resolveOutboundHref, outboundSrc } from './legacyBeamioLinks'
 
 describe('mapLegacyBeamioLink: legacy beamio.app links map to beamio.ca', () => {
 	test.each([
@@ -266,5 +266,24 @@ describe('F7: legacy links with credentials or a non-default port are refused, n
 	test('the outbound helper returns null for refused legacy links', () => {
 		expect(resolveOutboundHref('https://beamio.app:8443/x')).toBeNull()
 		expect(resolveOutboundHref('https://user:pw@beamio.app/x')).toBeNull()
+	})
+})
+
+describe('outboundSrc: raw img, video, iframe and anchor sources', () => {
+	test.each([
+		[undefined, undefined],
+		[null, undefined],
+		['', ''],
+		['https://beamio.app/uploads/a.png', 'https://beamio.ca/uploads/a.png'],
+		[`https://beamio.app/api/fragment?hash=0x${'ab'.repeat(32)}`, `https://beamio.ca/api/fragment?hash=0x${'ab'.repeat(32)}`],
+		['https://beamio.app/media/v.mp4', 'https://beamio.ca/media/v.mp4'],
+		['https://cashtrees.beamio.app/v.mp4', undefined],
+		['https://beamio.app:8443/v.mp4', undefined],
+		['https://basescan.org/tx/0xabc', 'https://basescan.org/tx/0xabc'],
+		['data:image/png;base64,AAAA', 'data:image/png;base64,AAAA'],
+		['blob:https://beamio.ca/1234', 'blob:https://beamio.ca/1234'],
+		['https://www.youtube.com/embed/abc?rel=0', 'https://www.youtube.com/embed/abc?rel=0'],
+	])('%j -> %j', (input, expected) => {
+		expect(outboundSrc(input as string | null | undefined)).toBe(expected)
 	})
 })

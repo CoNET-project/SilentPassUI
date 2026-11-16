@@ -1,3 +1,4 @@
+import { outboundSrc } from '@/utils/legacyBeamioLinks'
 import { IpfsImg } from '@/components/IpfsImg';
 import { useEffect, useMemo, useState, useRef } from "react"
 import { Copy, Check, MessageCircle, Share2, Plus, Wallet, CreditCard } from "lucide-react"
@@ -406,7 +407,7 @@ export default function BeamioPayMe(props: BeamioPayMeProps) {
 													)}
 													{accountingStatus === 'success' && accountingSyncTx && (
 														<a
-															href={`https://mainnet.conet.network/tx/${accountingSyncTx}`}
+															href={outboundSrc(`https://mainnet.conet.network/tx/${accountingSyncTx}`)}
 															target="_blank"
 															rel="noopener noreferrer"
 															className="text-blue-600 dark:text-blue-400 hover:underline text-sm font-medium truncate max-w-[180px] sm:max-w-[220px]"

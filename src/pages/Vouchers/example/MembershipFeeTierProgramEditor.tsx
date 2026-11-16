@@ -4,6 +4,7 @@
  * Live Card Preview uses MerchantProgramPassFace (global merchant pass render).
  * Card Style = Color XOR Image (same product model as Basic Info → Card background).
  */
+import { outboundSrc } from '@/utils/legacyBeamioLinks'
 import React, { type Ref, type RefObject } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import {
@@ -531,7 +532,7 @@ export function MembershipFeeTierProgramEditor({
                                       }`}
                                     >
                                       <img
-                                        src={image}
+                                        src={outboundSrc(image)}
                                         alt=""
                                         className="h-full w-full object-cover"
                                       />

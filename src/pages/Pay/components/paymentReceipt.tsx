@@ -1,3 +1,4 @@
+import { outboundSrc } from '@/utils/legacyBeamioLinks'
 import { useMemo, useState } from "react"
 import {
   CheckCircle2,
@@ -450,7 +451,7 @@ export default function PaymentReceipt({
 
                 {explorerUrl ? (
                   <a
-                    href={explorerUrl}
+                    href={outboundSrc(explorerUrl)}
                     target="_blank"
                     rel="noreferrer"
                     className="inline-flex items-center gap-2 text-[14px] font-extrabold text-blue-600 hover:text-blue-700"

@@ -1,3 +1,4 @@
+import { outboundSrc } from '@/utils/legacyBeamioLinks'
 import React, {
   Fragment,
   useState,
@@ -4981,7 +4982,7 @@ function WalletSendUsdcSheet(props: {
                 {formatAmount(Number(sendAmount), 'USDC')} USDC
               </p>
               <a
-                href={`https://basescan.org/tx/${successTx}`}
+                href={outboundSrc(`https://basescan.org/tx/${successTx}`)}
                 target="_blank"
                 rel="noopener noreferrer"
                 className={`mt-4 inline-flex items-center gap-2 text-xs font-bold text-[#0051d1] underline-offset-2 hover:underline ${bizFocusRingClass}`}
@@ -10504,7 +10505,7 @@ function ProgramSocialOnChainTxLink({ txHash }: { txHash: string | null }) {
   }
   return (
     <a
-      href={href}
+      href={outboundSrc(href)}
       target="_blank"
       rel="noopener noreferrer"
       className={`inline-flex items-center gap-1 rounded-full border border-[#dce2f7] bg-[#e9edff] px-2 py-0.5 font-mono text-[10px] font-medium text-[#0051d1] transition hover:bg-[#dde4ff] ${bizFocusRingClass}`}
@@ -10591,7 +10592,7 @@ const AddressCapsule = ({
       <div className={shellClass}>
         {leadingIcon ? <span className="shrink-0">{leadingIcon}</span> : null}
         <a
-          href={explorerUrl}
+          href={outboundSrc(explorerUrl)}
           target="_blank"
           rel="noopener noreferrer"
           className="min-w-0 truncate hover:underline"
@@ -11078,7 +11079,7 @@ function renderSmartReceiptLedgerAlignedPrimaryCard(a: SmartReceiptLedgerAligned
             <div className="flex shrink-0 flex-col items-start gap-2 sm:min-w-[140px]">
               {(tx.type.includes('Top-Up') || tx.type === 'Charge') && baseScanTxHash ? (
                 <a
-                  href={`https://mainnet.conet.network/tx/${baseScanTxHash}`}
+                  href={outboundSrc(`https://mainnet.conet.network/tx/${baseScanTxHash}`)}
                   target="_blank"
                   rel="noopener noreferrer"
                   onClick={(ev) => ev.stopPropagation()}
@@ -12216,7 +12217,7 @@ function CardPassBackgroundImage({
         </>
       )}
       {isLocal ? (
-        <img src={src} alt="" className={mediaClass} draggable={false} />
+        <img src={outboundSrc(src)} alt="" className={mediaClass} draggable={false} />
       ) : (
         <IpfsImg key={`${src}:${fit}`} src={src} alt="" className={mediaClass} draggable={false} />
       )}
@@ -37900,7 +37901,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                              <div className="flex shrink-0 flex-col items-start gap-2 sm:min-w-[140px]">
                                {isCouponNftLedgerTxType(tx.type) && baseScanTxHash ? (
                                  <a
-                                   href={`https://mainnet.conet.network/tx/${baseScanTxHash}`}
+                                   href={outboundSrc(`https://mainnet.conet.network/tx/${baseScanTxHash}`)}
                                    target="_blank"
                                    rel="noopener noreferrer"
                                    onClick={(ev) => ev.stopPropagation()}
@@ -37918,7 +37919,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                  </a>
                                ) : (tx.type === 'In-Store Top-Up' || tx.type === 'Charge') && baseScanTxHash ? (
                                  <a
-                                   href={`https://basescan.org/tx/${baseScanTxHash}`}
+                                   href={outboundSrc(`https://basescan.org/tx/${baseScanTxHash}`)}
                                    target="_blank"
                                    rel="noopener noreferrer"
                                    onClick={(ev) => ev.stopPropagation()}
@@ -38081,7 +38082,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                             Go to Dashboard
                           </button>
                           <a
-                            href={BEAMIO_APP_URL}
+                            href={outboundSrc(BEAMIO_APP_URL)}
                             target="_blank"
                             rel="noopener noreferrer"
                             className="rounded-full bg-[#dfe3e6] px-6 py-2 font-bold text-[#2c2f31] transition-colors hover:bg-[#d0d5d8]"
@@ -38390,7 +38391,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
 
                      {baseScanTxHash ? (
                        <a
-                         href={`https://mainnet.conet.network/tx/${baseScanTxHash}`}
+                         href={outboundSrc(`https://mainnet.conet.network/tx/${baseScanTxHash}`)}
                          target="_blank"
                          rel="noopener noreferrer"
                          className="mb-6 flex items-center justify-center gap-2 rounded-full border border-[#abadaf]/40 py-3 text-sm font-bold text-[#595c5e] transition-colors hover:bg-[#eef1f3]"
@@ -42480,7 +42481,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                        <p className="font-mono text-xs break-all text-emerald-950/90">{cardIssuanceCreateResult.cardAddress}</p>
                        {cardIssuanceCreateResult.hash ? (
                          <a
-                           href={`https://basescan.org/tx/${cardIssuanceCreateResult.hash}`}
+                           href={outboundSrc(`https://basescan.org/tx/${cardIssuanceCreateResult.hash}`)}
                            target="_blank"
                            rel="noopener noreferrer"
                            className="inline-flex items-center gap-1 text-[#1562f0] hover:underline font-bold"
@@ -44488,7 +44489,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                                     ) : null}
                                     {couponNftExplorerLink ? (
                                       <a
-                                        href={couponNftExplorerLink.url}
+                                        href={outboundSrc(couponNftExplorerLink.url)}
                                         target="_blank"
                                         rel="noopener noreferrer"
                                         className={`inline-flex shrink-0 items-center gap-1 rounded-full border border-[#cbd5e1] bg-white px-2.5 py-1 text-[10px] font-bold tracking-tight text-[#334155] transition-colors hover:border-[#94a3b8] hover:bg-[#f8fafc] ${bizFocusRingClass}`}
@@ -50933,7 +50934,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                     ) : null}
                     {marketRefuelSuccess != null && marketRefuelSuccess.startsWith('0x') && (
                       <a
-                        href={`https://basescan.org/tx/${marketRefuelSuccess}`}
+                        href={outboundSrc(`https://basescan.org/tx/${marketRefuelSuccess}`)}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-white/5 border border-white/10 text-[12px] font-mono text-[#1562f0] hover:bg-white/10 transition-colors"
@@ -51619,7 +51620,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                   {cardIssuanceCouponShareUrlCopied ? tu('programs_share_copied') : tu('programs_share_copy_url')}
                 </button>
                 <a
-                  href={cardIssuanceCouponShareUrl}
+                  href={outboundSrc(cardIssuanceCouponShareUrl)}
                   target="_blank"
                   rel="noopener noreferrer"
                   className={`inline-flex items-center gap-2 rounded-full border border-[#1562f0]/20 bg-[#1562f0]/10 px-3 py-2 text-xs font-bold text-[#1562f0] transition-colors hover:bg-[#1562f0]/15 ${bizFocusRingClass}`}
@@ -51772,7 +51773,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                   {cardIssuanceCouponRedeemShareUrlCopied ? tu('programs_share_copied') : tu('programs_share_copy_url')}
                 </button>
                 <a
-                  href={cardIssuanceCouponRedeemShareUrl}
+                  href={outboundSrc(cardIssuanceCouponRedeemShareUrl)}
                   target="_blank"
                   rel="noopener noreferrer"
                   className={`inline-flex items-center gap-2 rounded-full border border-[#1562f0]/20 bg-[#1562f0]/10 px-3 py-2 text-xs font-bold text-[#1562f0] transition-colors hover:bg-[#1562f0]/15 ${bizFocusRingClass}`}
@@ -52051,7 +52052,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                       {cardIssuanceProductionRedeemShareUrlCopied ? tu('programs_share_copied') : tu('programs_share_copy_url')}
                     </button>
                     <a
-                      href={cardIssuanceProductionRedeemShareUrl}
+                      href={outboundSrc(cardIssuanceProductionRedeemShareUrl)}
                       target="_blank"
                       rel="noopener noreferrer"
                       className={`inline-flex items-center gap-2 rounded-full border border-[#ea580c]/20 bg-[#ea580c]/10 px-3 py-2 text-xs font-bold text-[#ea580c] transition-colors hover:bg-[#ea580c]/15 ${bizFocusRingClass}`}
@@ -52177,7 +52178,7 @@ const topUpsIssuedLifetime = adminLifetime ? adminLifetime.vouchers : 0;
                       {cardIssuanceProductionShareUrlCopied ? tu('programs_share_copied') : tu('programs_share_copy_url')}
                     </button>
                     <a
-                      href={cardIssuanceProductionShareUrl}
+                      href={outboundSrc(cardIssuanceProductionShareUrl)}
                       target="_blank"
                       rel="noopener noreferrer"
                       className={`inline-flex items-center gap-2 rounded-full border border-[#ea580c]/20 bg-[#ea580c]/10 px-3 py-2 text-xs font-bold text-[#ea580c] transition-colors hover:bg-[#ea580c]/15 ${bizFocusRingClass}`}

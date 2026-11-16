@@ -3,6 +3,7 @@
  * (aspect 408/260, tier gradient/scrim, logo top-left, discount top-right,
  * brand + tier bottom-left, Starting from bottom-right).
  */
+import { outboundSrc } from '@/utils/legacyBeamioLinks'
 import React from 'react'
 import { Store } from 'lucide-react'
 import { IpfsImg } from '@/components/IpfsImg'
@@ -55,7 +56,7 @@ function PassBackgroundImage({ src, fit }: { src: string; fit: CardBackgroundIma
         </>
       )}
       {isLocal ? (
-        <img src={src} alt="" className={mediaClass} draggable={false} />
+        <img src={outboundSrc(src)} alt="" className={mediaClass} draggable={false} />
       ) : (
         <IpfsImg key={`${src}:${fit}`} src={src} alt="" className={mediaClass} draggable={false} />
       )}

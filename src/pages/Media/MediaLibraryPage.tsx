@@ -1,3 +1,4 @@
+import { outboundSrc } from '@/utils/legacyBeamioLinks'
 import { AnimatePresence, motion } from 'framer-motion'
 import { Check, FileVideo, ImagePlus, Images, Loader2, Trash2, UploadCloud, Video, X } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
@@ -225,12 +226,12 @@ export function MediaLibraryPage({ cardAddress, initialMedia = [] }: MediaLibrar
 							<div className="aspect-[4/3] bg-slate-100">
 								{item.kind === 'video' ? (
 								item.thumbnailUrl ? (
-									<img src={item.thumbnailUrl} alt={item.name} className="h-full w-full object-contain" />
+									<img src={outboundSrc(item.thumbnailUrl)} alt={item.name} className="h-full w-full object-contain" />
 								) : (
-									<video src={item.url} controls className="h-full w-full object-contain" />
+									<video src={outboundSrc(item.url)} controls className="h-full w-full object-contain" />
 								)
 								) : (
-									<img src={item.url} alt={item.name} className="h-full w-full object-contain" />
+									<img src={outboundSrc(item.url)} alt={item.name} className="h-full w-full object-contain" />
 								)}
 							</div>
 							<div className="flex items-center gap-3 p-3">
@@ -360,7 +361,7 @@ export function MediaLibraryPage({ cardAddress, initialMedia = [] }: MediaLibrar
 								<span className="mb-2 block aspect-[4/3] w-full overflow-hidden rounded-xl bg-[#0f172a]" aria-hidden>
 									{selectedFile.type.startsWith('video/') ? (
 										<video
-											src={selectedPreviewUrl}
+											src={outboundSrc(selectedPreviewUrl)}
 											className="h-full w-full object-contain"
 											muted
 											autoPlay
@@ -369,7 +370,7 @@ export function MediaLibraryPage({ cardAddress, initialMedia = [] }: MediaLibrar
 										/>
 									) : (
 										<img
-											src={selectedPreviewUrl}
+											src={outboundSrc(selectedPreviewUrl)}
 											alt=""
 											className="h-full w-full object-contain"
 										/>

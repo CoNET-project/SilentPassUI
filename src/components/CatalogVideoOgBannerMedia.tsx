@@ -1,3 +1,4 @@
+import { outboundSrc } from '@/utils/legacyBeamioLinks'
 import type { CSSProperties, ReactNode } from 'react';
 import { IpfsImg } from '@/components/IpfsImg';
 import { CatalogVideoOgPlayOverlay } from '@/components/CatalogVideoOgPlayOverlay';
@@ -113,7 +114,7 @@ export function CatalogVideoOgBannerMedia(props: CatalogVideoOgBannerMediaProps)
     return (
       <CatalogVideoOgBannerShell className={slotClassName} style={slotStyle}>
         <video
-          src={videoSrc}
+          src={outboundSrc(videoSrc)}
           className={mediaClassName}
           muted
           playsInline

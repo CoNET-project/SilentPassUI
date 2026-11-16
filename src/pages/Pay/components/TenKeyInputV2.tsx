@@ -1,3 +1,4 @@
+import { outboundSrc } from '@/utils/legacyBeamioLinks'
 import { resolveBeamioUrl } from '@/utils/legacyBeamioLinks'
 import { IpfsImg } from '@/components/IpfsImg';
 import React, { useState, useEffect, useRef, useMemo } from 'react'
@@ -306,7 +307,7 @@ function SmartRoutingAnalysis({ steps, onAbandon, onRetry, successTxHash }: { st
 							</span>
 							{' · '}
 							<a
-								href={`${BASE_EXPLORER_TX}${successTxHash}`}
+								href={outboundSrc(`${BASE_EXPLORER_TX}${successTxHash}`)}
 								target="_blank"
 								rel="noopener noreferrer"
 								className="text-blue-600 dark:text-blue-400 hover:underline"
@@ -677,7 +678,7 @@ function PaymentSuccessView({ data, onDone }: { data: PaymentSuccessData; onDone
 									{h.slice(0, 6)}…{h.slice(-4)}
 									<Copy className="w-3.5 h-3.5 flex-shrink-0" />
 								</button>
-								<a href={`${BASE_EXPLORER_TX}${h}`} target="_blank" rel="noopener noreferrer" className="p-1.5 rounded-md text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-blue-600" title="在 BaseScan 查看">
+								<a href={outboundSrc(`${BASE_EXPLORER_TX}${h}`)} target="_blank" rel="noopener noreferrer" className="p-1.5 rounded-md text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-blue-600" title="在 BaseScan 查看">
 									<ExternalLink className="w-4 h-4" />
 								</a>
 							</div>
@@ -737,7 +738,7 @@ function PaymentSuccessView({ data, onDone }: { data: PaymentSuccessData; onDone
 					</button>
 					{data.txHash && (
 						<a
-							href={`${BASE_EXPLORER_TX}${data.txHash}`}
+							href={outboundSrc(`${BASE_EXPLORER_TX}${data.txHash}`)}
 							target="_blank"
 							rel="noopener noreferrer"
 							className="p-1.5 rounded-md text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
@@ -890,7 +891,7 @@ function NfcTopupBottomSheet({
 								<Check className="w-12 h-12 text-emerald-500 mx-auto mb-2" />
 								<p className="font-semibold text-emerald-600 dark:text-emerald-400">Topup successful</p>
 								{txHash && (
-									<a href={`https://basescan.org/tx/${txHash}`} target="_blank" rel="noopener noreferrer" className="text-sm text-blue-600 mt-2 block">
+									<a href={outboundSrc(`https://basescan.org/tx/${txHash}`)} target="_blank" rel="noopener noreferrer" className="text-sm text-blue-600 mt-2 block">
 										{txHash.slice(0, 10)}…{txHash.slice(-8)}
 									</a>
 								)}

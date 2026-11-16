@@ -1,3 +1,4 @@
+import { outboundSrc } from '@/utils/legacyBeamioLinks'
 import { IpfsImg } from '@/components/IpfsImg';
 import { useMemo, useState, useEffect } from 'react'
 import usdcIcon from '@/components/assets/usdc.png'
@@ -165,7 +166,7 @@ export function ConformSignInfo({
 					</span>
 
 					<a
-						href={`https://basescan.org/address/${messageData?.showPayToAddress || messageData?.payTo}`}
+						href={outboundSrc(`https://basescan.org/address/${messageData?.showPayToAddress || messageData?.payTo}`)}
 						target="_blank"
 						rel="noreferrer"
 						className="inline-flex items-center justify-center rounded-md border border-blue-500 px-1.5 py-0.5 hover:bg-blue-600 hover:text-white transition-colors"

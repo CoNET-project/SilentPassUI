@@ -1,3 +1,4 @@
+import { outboundSrc } from '@/utils/legacyBeamioLinks'
 import { resolveBeamioUrl } from '@/utils/legacyBeamioLinks'
 import React, { useState, useEffect, useRef, useMemo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
@@ -276,7 +277,7 @@ function SmartRoutingAnalysis({ steps, onAbandon, onRetry, successTxHash }: { st
 							</span>
 							{' · '}
 							<a
-								href={`${BASE_EXPLORER_TX}${successTxHash}`}
+								href={outboundSrc(`${BASE_EXPLORER_TX}${successTxHash}`)}
 								target="_blank"
 								rel="noopener noreferrer"
 								className="text-blue-600 dark:text-blue-400 hover:underline"
@@ -593,7 +594,7 @@ function PaymentSuccessView({ data, onDone }: { data: PaymentSuccessData; onDone
 					</button>
 					{data.txHash && (
 						<a
-							href={`${BASE_EXPLORER_TX}${data.txHash}`}
+							href={outboundSrc(`${BASE_EXPLORER_TX}${data.txHash}`)}
 							target="_blank"
 							rel="noopener noreferrer"
 							className="p-1.5 rounded-md text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"

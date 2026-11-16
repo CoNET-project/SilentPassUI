@@ -1,4 +1,5 @@
 // App.tsx
+import { outboundSrc } from '@/utils/legacyBeamioLinks'
 import { useEffect, useRef, useState, useLayoutEffect, startTransition } from "react"
 import { Navigate, Route, Routes, useNavigate, useLocation } from "react-router-dom"
 import { resolveBeamioUrl } from '@/utils/legacyBeamioLinks'
@@ -1552,7 +1553,7 @@ function AppShell() {
 										</div>
 										{redeemResult.tx && (
 											<a
-												href={`https://basescan.org/tx/${redeemResult.tx}`}
+												href={outboundSrc(`https://basescan.org/tx/${redeemResult.tx}`)}
 												target="_blank"
 												rel="noopener noreferrer"
 												className="block mb-4 text-sm text-[#1652f0] underline"

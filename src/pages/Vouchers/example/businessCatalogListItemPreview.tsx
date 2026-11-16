@@ -1,3 +1,4 @@
+import { outboundSrc } from '@/utils/legacyBeamioLinks'
 import { useCallback, useEffect, useState } from 'react';
 import { IpfsImg } from '@/components/IpfsImg';
 import { Check, FileText, Sparkles } from 'lucide-react';
@@ -282,7 +283,7 @@ export function BusinessCatalogVideoOgPreviewBlock(
       {hiddenCaptureVideo ? (
         <video
           {...captureSourceAttr}
-          src={productionVideoSrc}
+          src={outboundSrc(productionVideoSrc)}
           className="pointer-events-none absolute inset-0 z-0 h-full w-full opacity-0"
           muted
           playsInline
@@ -570,7 +571,7 @@ export function BusinessCatalogListItemPreviewContent(props: {
             />
           ) : (
             <video
-              src={row.productionImage}
+              src={outboundSrc(row.productionImage)}
               className="absolute inset-0 h-full w-full object-cover"
               muted
               playsInline

@@ -1,3 +1,4 @@
+import { outboundSrc } from '@/utils/legacyBeamioLinks'
 import { AnimatePresence, motion } from 'framer-motion';
 import { IpfsImg } from '@/components/IpfsImg';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -148,7 +149,7 @@ function ClickToPlayProductionVideo(props: {
     <div className="relative h-full w-full">
       <video
         ref={videoRef}
-        src={props.src}
+        src={outboundSrc(props.src)}
         className={props.className ?? 'h-full w-full object-cover'}
         playsInline
         preload="metadata"
@@ -207,7 +208,7 @@ function ProductionBackgroundMediaPreview(props: {
     if (embedUrl) {
       return (
         <iframe
-          src={embedUrl}
+          src={outboundSrc(embedUrl)}
           title={tu('programs_catalog_youtube_bg_title')}
           className={props.className ?? 'h-full w-full border-0'}
           allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
@@ -233,7 +234,7 @@ function ProductionBackgroundMediaPreview(props: {
         <FileText className="h-8 w-8 shrink-0" strokeWidth={2} aria-hidden />
         <span className="text-center text-[11px] font-semibold">{tu('programs_catalog_pdf_uploaded')}</span>
         <a
-          href={props.url}
+          href={outboundSrc(props.url)}
           target="_blank"
           rel="noopener noreferrer"
           className="text-[11px] font-bold text-[#ea580c] underline"
@@ -808,7 +809,7 @@ export function ProgramsProductionsPanel(props: ProgramsProductionsPanelProps) {
                             )}
                             {nftExplorerLink ? (
                               <a
-                                href={nftExplorerLink.url}
+                                href={outboundSrc(nftExplorerLink.url)}
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 className={`inline-flex shrink-0 items-center gap-1 rounded-full border border-[#cbd5e1] bg-[#f8fafc] px-2.5 py-1 text-[10px] font-bold tracking-tight text-[#334155] transition-colors hover:border-[#94a3b8] hover:bg-white ${bizFocusRingClass}`}

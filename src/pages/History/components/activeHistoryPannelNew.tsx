@@ -1,3 +1,4 @@
+import { outboundSrc } from '@/utils/legacyBeamioLinks'
 import { IpfsImg } from '@/components/IpfsImg';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
@@ -1672,7 +1673,7 @@ const ActiveHistoryPannelNew = ({
 							</h4>
 							{selectedTx.txHash ? (
 								<a
-									href={`https://basescan.org/tx/${selectedTx.txHash}`}
+									href={outboundSrc(`https://basescan.org/tx/${selectedTx.txHash}`)}
 									target="_blank"
 									rel="noopener noreferrer"
 									className="flex items-center justify-between p-3.5 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 rounded-[16px] shadow-sm active:bg-gray-50 dark:active:bg-slate-700 transition-colors cursor-pointer"

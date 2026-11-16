@@ -1,3 +1,4 @@
+import { outboundSrc } from '@/utils/legacyBeamioLinks'
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { IpfsImg } from '@/components/IpfsImg';
 import { Check, Loader2, Pause, Pencil, Play, Trash2 } from 'lucide-react';
@@ -333,7 +334,7 @@ export function ProductionVideoFilmstripTrimEditor(props: ProductionVideoFilmstr
       <div className="relative aspect-[16/10] w-full bg-black sm:aspect-video">
         <video
           ref={previewRef}
-          src={props.videoSrc}
+          src={outboundSrc(props.videoSrc)}
           className="h-full w-full object-contain"
           playsInline
           preload="auto"

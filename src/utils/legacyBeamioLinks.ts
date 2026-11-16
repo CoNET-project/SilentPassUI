@@ -160,3 +160,12 @@ export function resolveOutboundHref(raw: string): string | null {
 	if (!mentionsLegacyHost(raw)) return raw
 	return resolveBeamioHttpHref(raw, `https://${CONSUMER_HOST}`)
 }
+
+/**
+ * 原生标签的 src／href（img、video、iframe、a）：非字符串返回 undefined；旧域映射后使用，
+ * 不识别或被拒绝的旧域地址返回 undefined（不加载、不导航）。非旧域值原样返回。
+ */
+export function outboundSrc(raw: string | null | undefined): string | undefined {
+	if (typeof raw !== 'string') return undefined
+	return resolveOutboundHref(raw) ?? undefined
+}

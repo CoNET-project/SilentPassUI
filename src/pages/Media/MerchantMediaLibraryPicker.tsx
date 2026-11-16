@@ -1,3 +1,4 @@
+import { outboundSrc } from '@/utils/legacyBeamioLinks'
 import { ChevronLeft, Film, Images, Loader2 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
@@ -184,7 +185,7 @@ export function MerchantMediaLibraryPicker(props: MerchantMediaLibraryPickerProp
 										<div className="relative aspect-[16/9] bg-slate-100">
 											{item.kind === 'video' && !item.thumbnailUrl ? (
 												<video
-													src={item.url}
+													src={outboundSrc(item.url)}
 													className="h-full w-full object-cover"
 													muted
 													playsInline
@@ -192,7 +193,7 @@ export function MerchantMediaLibraryPicker(props: MerchantMediaLibraryPickerProp
 												/>
 											) : (
 												<img
-													src={previewSrc}
+													src={outboundSrc(previewSrc)}
 													alt=""
 													className="h-full w-full object-cover"
 													draggable={false}

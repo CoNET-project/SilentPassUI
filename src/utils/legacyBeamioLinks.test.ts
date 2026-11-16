@@ -1,4 +1,4 @@
-import { mapLegacyBeamioLink, resolveBeamioHttpHref, resolveBeamioLinkInput, resolveBeamioUrl, resolveOutboundHref, outboundSrc } from './legacyBeamioLinks'
+import { mapLegacyBeamioLink, resolveBeamioHttpHref, resolveBeamioUrl, resolveOutboundHref, outboundSrc } from './legacyBeamioLinks'
 
 describe('mapLegacyBeamioLink: legacy beamio.app links map to beamio.ca', () => {
 	test.each([
@@ -123,23 +123,11 @@ describe('mapLegacyBeamioLink: refuses anything that is not a legacy beamio.app 
 		;(globalThis as { fetch?: unknown }).fetch = fetchSpy
 		try {
 			mapLegacyBeamioLink('https://beamio.app/Vouchers?Amount=1')
-			resolveBeamioLinkInput('https://biz.beamio.app/biz/')
+			resolveBeamioUrl('https://biz.beamio.app/biz/')
 			expect(fetchSpy).not.toHaveBeenCalled()
 		} finally {
 			;(globalThis as { fetch?: unknown }).fetch = original
 		}
-	})
-})
-
-describe('resolveBeamioLinkInput', () => {
-	test('maps a legacy link', () => {
-		expect(resolveBeamioLinkInput('https://beamio.app/Vouchers?Amount=1')).toBe('https://beamio.ca/Vouchers?Amount=1')
-	})
-
-	test('returns other input unchanged', () => {
-		expect(resolveBeamioLinkInput('/Vouchers?Amount=1')).toBe('/Vouchers?Amount=1')
-		expect(resolveBeamioLinkInput('https://beamio.ca/app/?beamiocard=0x1')).toBe('https://beamio.ca/app/?beamiocard=0x1')
-		expect(resolveBeamioLinkInput('ipfs-search text')).toBe('ipfs-search text')
 	})
 })
 

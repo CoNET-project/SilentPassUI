@@ -70,11 +70,6 @@ export function mapLegacyBeamioLink(raw: string): string | null {
 	return `https://${loc.host}${loc.pathname}${u.search}${u.hash}`
 }
 
-/** 调用方入口：旧链接返回映射后的 https 链接，其他输入原样返回。 */
-export function resolveBeamioLinkInput(raw: string): string {
-	return mapLegacyBeamioLink(raw) ?? raw
-}
-
 /** 绝对地址的主机若为旧域，则以绝对解析为准（https:/beamio.app 在有 base 时会被当作相对路径）。 */
 function resolveWithBase(input: string, base: string): URL {
 	let absolute: URL | null = null

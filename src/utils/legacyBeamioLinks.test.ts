@@ -167,3 +167,35 @@ describe('resolveOutboundHref: outbound addresses', () => {
 		expect(resolveOutboundHref(input)).toBe(input)
 	})
 })
+
+describe('apex /biz paths map to the biz host (B3: beamio.ca/biz returns 500, biz.beamio.ca/biz/ returns 200)', () => {
+	test.each([
+		['https://beamio.app/biz/', 'https://biz.beamio.ca/biz/'],
+		['https://beamio.app/biz/?tab=members#top', 'https://biz.beamio.ca/biz/?tab=members#top'],
+		['https://beamio.app/biz', 'https://biz.beamio.ca/biz/'],
+		['https://beamio.app/biz/merchant/42?x=1', 'https://biz.beamio.ca/biz/merchant/42?x=1'],
+		['http://beamio.app/biz/', 'https://biz.beamio.ca/biz/'],
+		['beamio.app/biz/', 'https://biz.beamio.ca/biz/'],
+		['beamio.app/biz?x=1', 'https://biz.beamio.ca/biz/?x=1'],
+	])('%s maps to %s', (input, expected) => {
+		expect(mapLegacyBeamioLink(input)).toBe(expected)
+		expect(resolveBeamioHttpHref(input)).toBe(expected)
+	})
+
+	test.each([
+		'https://beamio.app/bizarre',
+		'https://beamio.app/business/',
+		'https://beamio.app/Biz/',
+	])('%s is not a biz path and maps to beamio.ca', (input) => {
+		expect(new URL(mapLegacyBeamioLink(input) as string).hostname).toBe('beamio.ca')
+	})
+
+	test('protocol-relative and single-slash apex /biz forms map to the biz host', () => {
+		expect(resolveBeamioUrl('//beamio.app/biz/x', 'https://beamio.ca').href).toBe('https://biz.beamio.ca/biz/x')
+		expect(resolveBeamioUrl('https:/beamio.app/biz/x').href).toBe('https://biz.beamio.ca/biz/x')
+	})
+
+	test('www keeps the consumer host for /biz (apex-only rule; see receipt, open decision)', () => {
+		expect(mapLegacyBeamioLink('https://www.beamio.app/biz/')).toBe('https://beamio.ca/biz/')
+	})
+})

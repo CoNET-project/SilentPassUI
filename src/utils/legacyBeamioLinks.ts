@@ -1,12 +1,13 @@
 /**
  * 旧域 beamio.app 链接的本地识别（纯函数，只做字符串解析与映射，不发起任何网络请求）。
  *
- * 识别范围与 a5cf3613 一致：beamio.app 本身及其所有子域（*.beamio.app）。
+ * 识别范围：beamio.app 本身及其所有子域（*.beamio.app）。
  * 已印刷的二维码与外链仍会带这些地址，因此先在本地映射为新域的对应路径，之后再按新地址请求。
  *
  * 映射规则：
  * - biz.beamio.app → biz.beamio.ca（商家后台，路径原样保留）
- * - beamio.app、其他子域（www、cashtrees、api 等）→ beamio.ca（路径、查询串、片段原样保留）
+ * - beamio.app 的 /biz 与 /biz/ 开头路径 → biz.beamio.ca/biz/…（/biz 映射为 /biz/，查询串与片段保留）
+ * - beamio.app 其余路径、www.beamio.app → beamio.ca（路径、查询串、片段原样保留）
  *
  * 映射结果只指向 beamio.ca 或 biz.beamio.ca。调用方只能使用映射后的字符串，
  * 不得把原始旧链接交给 fetch、XMLHttpRequest、img、iframe、window.open 或 location。
@@ -20,10 +21,15 @@ const LEGACY_BIZ = 'biz.beamio.app'
 /** 无协议的旧链接只在其后紧跟路径、查询或片段时识别，避免把裸域名误判为链接。 */
 const SCHEMELESS_LEGACY_RE = /^(?:[a-z0-9-]+\.)*beamio\.app(?=[/?#])/i
 
-/** 返回旧主机对应的新主机；不是 beamio.app 或其子域时返回 null。 */
-function targetHostFor(host: string): string | null {
-	if (host === LEGACY_BIZ) return BIZ_HOST
-	if (host === LEGACY_APEX || host.endsWith(`.${LEGACY_APEX}`)) return CONSUMER_HOST
+/** 旧主机与路径对应的新位置；不是 beamio.app 或其子域时返回 null。 */
+function legacyLocationFor(host: string, pathname: string): { host: string; pathname: string } | null {
+	if (host === LEGACY_BIZ) return { host: BIZ_HOST, pathname }
+	if (host === LEGACY_APEX) {
+		if (pathname === '/biz' || pathname === '/biz/') return { host: BIZ_HOST, pathname: '/biz/' }
+		if (pathname.startsWith('/biz/')) return { host: BIZ_HOST, pathname }
+		return { host: CONSUMER_HOST, pathname }
+	}
+	if (host.endsWith(`.${LEGACY_APEX}`)) return { host: CONSUMER_HOST, pathname }
 	return null
 }
 
@@ -49,9 +55,9 @@ export function mapLegacyBeamioLink(raw: string): string | null {
 	if (u.username !== '' || u.password !== '') return null
 	if (u.port !== '') return null
 	const host = u.hostname.toLowerCase().replace(/\.$/, '')
-	const target = targetHostFor(host)
-	if (!target) return null
-	return `https://${target}${u.pathname}${u.search}${u.hash}`
+	const loc = legacyLocationFor(host, u.pathname)
+	if (!loc) return null
+	return `https://${loc.host}${loc.pathname}${u.search}${u.hash}`
 }
 
 /** 调用方入口：旧链接返回映射后的 https 链接，其他输入原样返回。 */
@@ -67,7 +73,9 @@ function resolveWithBase(input: string, base: string): URL {
 	} catch {
 		absolute = null
 	}
-	if (absolute && targetHostFor(absolute.hostname.toLowerCase().replace(/\.$/, '')) !== null) return absolute
+	if (absolute && legacyLocationFor(absolute.hostname.toLowerCase().replace(/\.$/, ''), absolute.pathname) !== null) {
+		return absolute
+	}
 	return new URL(input, base)
 }
 
@@ -85,11 +93,12 @@ export function resolveBeamioUrl(input: string, base?: string): URL {
 		: base === undefined
 			? new URL(input)
 			: resolveWithBase(input, base)
-	const target = targetHostFor(u.hostname.toLowerCase().replace(/\.$/, ''))
-	if (target === null) return u
+	const loc = legacyLocationFor(u.hostname.toLowerCase().replace(/\.$/, ''), u.pathname)
+	if (loc === null) return u
 	const out = new URL(u.href)
 	out.protocol = 'https:'
-	out.hostname = target
+	out.hostname = loc.host
+	out.pathname = loc.pathname
 	out.port = ''
 	out.username = ''
 	out.password = ''

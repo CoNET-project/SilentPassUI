@@ -1,6 +1,6 @@
 import { normalizeVerraBusinessChannelKind, type VerraBusinessChannelKind } from '@/utils/verraBusinessProfileLocal'
 
-const BEAMIO_API_BASE_URL = 'https://beamio.app/api'
+const BEAMIO_API_BASE_URL = 'https://beamio.ca/api'
 export const ONBOARDING_WEB_CANDIDATE_SESSION_KEY = 'verra_onboarding_web_candidate_v1'
 
 export type OnboardingBusinessLookupCandidate = {

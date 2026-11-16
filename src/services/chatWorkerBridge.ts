@@ -28,7 +28,7 @@ import { CONET_ADDRESS_PGP, CONET_CHAT_INDEX_REGISTRY } from '../config/chainAdd
 
 const CONET_RPC_URL = 'https://rpc1.conet.network'
 const IPFS_BASE_URL = 'https://ipfs.conet.network/api'
-const BEAMIO_API_BASE_URL = 'https://beamio.app/api'
+const BEAMIO_API_BASE_URL = 'https://beamio.ca/api'
 
 type ChatWorkerClient = ReturnType<typeof createBeamioChatClient>
 

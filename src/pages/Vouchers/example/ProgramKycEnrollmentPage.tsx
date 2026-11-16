@@ -560,7 +560,7 @@ export function ProgramKycEnrollmentPage({
     }
     void (async () => {
       try {
-        const response = await fetch(`https://beamio.app/api/cardMetadata?cardAddress=${cardKey}`);
+        const response = await fetch(`https://beamio.ca/api/cardMetadata?cardAddress=${cardKey}`);
         if (!response.ok) throw new Error('metadata');
         const body = await response.json() as { metadata_json?: unknown; metadata?: unknown };
         const meta = (body.metadata_json ?? body.metadata ?? body) as { shareTokenMetadata?: { kyc?: Record<string, unknown> } };

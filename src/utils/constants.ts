@@ -17,7 +17,7 @@ const _envConetWss =
 export const CONET_MAINNET_WSS = _envConetWss || 'wss://publicrpc.conet.network/ws';
 const paypal_endpoint = `https://centerapi.fx168api.com/`;
 
-const beamioApi = 'https://beamio.app'
+const beamioApi = 'https://beamio.ca'
 /** API 端点：提交 Open Relay 支付（扫码得到的 payload + 金额 + 收款 AA） */
 const voucherRelayApi = `${beamioApi}/api/voucher/relay`
 

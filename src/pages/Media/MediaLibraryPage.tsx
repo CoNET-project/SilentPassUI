@@ -47,7 +47,7 @@ export function MediaLibraryPage({ cardAddress, initialMedia = [] }: MediaLibrar
 		if (!normalizedCardAddress || initialMedia.length > 0) return
 		let cancelled = false
 		void fetch(
-			`https://beamio.app/api/cardMetadata?cardAddress=${encodeURIComponent(normalizedCardAddress)}`,
+			`https://beamio.ca/api/cardMetadata?cardAddress=${encodeURIComponent(normalizedCardAddress)}`,
 			{ credentials: 'omit' },
 		)
 			.then(async (response) => {

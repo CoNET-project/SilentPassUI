@@ -1549,7 +1549,7 @@ const BEAMIO_USER_CARD_OWNER_ADMIN_LIST_ABI = [
   'function owner() view returns (address)',
   'function getAdminListWithMetadata() view returns (address[] admins, string[] metadatas, address[] parents)',
 ] as const
-const BEAMIO_APP_URL = 'https://beamio.app'
+const BEAMIO_APP_URL = 'https://beamio.ca'
 const DASHBOARD_POINTS_TOKEN_ID = 0n
 const ACTIVE_CARDS_LOOKBACK_DAYS = 90
 

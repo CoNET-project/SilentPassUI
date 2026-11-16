@@ -8,7 +8,7 @@ import { CONET_AGENT_REFERRER_REGISTRY } from '@/config/chainAddresses'
 import { conetDepinProvider } from '@/utils/constants'
 import { getSessionPrivateKeyArmor } from '@/utils/beamioSessionSecrets'
 
-const BEAMIO_API = 'https://beamio.app/api'
+const BEAMIO_API = 'https://beamio.ca/api'
 
 export const AGENT_REFERRER_EIP712_DOMAIN = {
 	name: 'BeamioAgentReferrerRegistry',

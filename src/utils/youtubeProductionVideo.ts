@@ -67,7 +67,7 @@ export function isProductionBackgroundYoutubeMedia(args: {
   return url.length > 0 && isYoutubeProductionVideoUrl(url);
 }
 
-export const BEAMIO_YOUTUBE_PRODUCTION_VIDEO_API_BASE = 'https://beamio.app/api/youtubeProductionVideo';
+export const BEAMIO_YOUTUBE_PRODUCTION_VIDEO_API_BASE = 'https://beamio.ca/api/youtubeProductionVideo';
 
 export type YoutubeProductionVideoValidateResponse = {
   ok: boolean;

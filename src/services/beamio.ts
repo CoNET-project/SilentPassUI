@@ -139,7 +139,7 @@ const duplicate_readOnly = new ethers.Contract(duplicate.address, duplicate.abi,
 const isLocal = false
 const remote = 'https://api.settleonbase.xyz'
 const local = 'http://localhost:4088'
-const beamioApi = 'https://beamio.app'
+const beamioApi = 'https://beamio.ca'
 const ipfsEndpoint = `https://ipfs.conet.network/api/`
 
 const getFaucetEndpoint = isLocal ? `${local}/api/BeamioFaucet` : `${remote}/api/BeamioFaucet`

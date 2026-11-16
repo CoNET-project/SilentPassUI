@@ -325,7 +325,7 @@ export function validateAAtoEOAUserOp(packedUserOp: AAtoEOAUserOp): { valid: tru
 }
 
 /** AAtoEOA 接口根地址（Beamio 正式环境） */
-const defaultApiBase = 'https://beamio.app'
+const defaultApiBase = 'https://beamio.ca'
 
 /**
  * 调用服务端 POST /api/AAtoEOA，提交 AA→EOA 的已签字 UserOp，由 Beamio 代付 Gas。

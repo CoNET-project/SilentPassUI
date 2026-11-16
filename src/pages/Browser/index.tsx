@@ -1,4 +1,4 @@
-import { resolveBeamioLinkInput } from '@/utils/legacyBeamioLinks'
+import { resolveBeamioUrl } from '@/utils/legacyBeamioLinks'
 
 import { useState, useRef, useEffect } from 'react'
 import { onWalletEvent } from '@/services/beamio'
@@ -58,7 +58,7 @@ const Browser = ({}) => {
 	const handleOpen = () => {
 		if (!value.trim()) return
 		try {
-			const url = new URL(resolveBeamioLinkInput(value))
+			const url = resolveBeamioUrl(value)
 
 			const isBeamio = url.hostname === "beamio.ca"
 			const hasParams = [...url.searchParams].length > 0
@@ -96,12 +96,11 @@ const Browser = ({}) => {
 	}
 
 
-	const checkUrl = async (rawUrlPath: string) => {
-		const urlPath = resolveBeamioLinkInput(rawUrlPath)
+	const checkUrl = async (urlPath: string) => {
 	
 		let searchParams: URLSearchParams
 		try {
-			const u = new URL(urlPath)
+			const u = resolveBeamioUrl(urlPath)
 			searchParams = u.searchParams
 		} catch {
 			searchParams = new URLSearchParams(urlPath)

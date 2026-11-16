@@ -1,7 +1,7 @@
 // App.tsx
 import { useEffect, useRef, useState, useLayoutEffect, startTransition } from "react"
 import { Navigate, Route, Routes, useNavigate, useLocation } from "react-router-dom"
-import { resolveBeamioLinkInput } from '@/utils/legacyBeamioLinks'
+import { resolveBeamioUrl } from '@/utils/legacyBeamioLinks'
 import RequireUnlockedWallet from "@/components/RequireUnlockedWallet"
 import { useDaemonContext } from "./providers/DaemonProvider"
 import SearchInputWithDropdown from "@/components/Home/SearchBarWithResults"
@@ -1013,7 +1013,7 @@ function AppShell() {
   const isRedeemUrl = (raw: string): boolean => {
     try {
       if (!raw || typeof raw !== 'string') return false
-      const u = new URL(resolveBeamioLinkInput(raw), 'https://beamio.ca')
+      const u = resolveBeamioUrl(raw, 'https://beamio.ca')
       const redeemcode = u.searchParams.get('redeemcode') ?? u.searchParams.get('Redeemcode')
       return !!(redeemcode?.trim())
     } catch {
@@ -1023,7 +1023,7 @@ function AppShell() {
 
   const parseRedeemUrl = (raw: string): { cardAddress?: string; redeemCode: string } | null => {
     try {
-      const u = new URL(resolveBeamioLinkInput(raw), 'https://beamio.ca')
+      const u = resolveBeamioUrl(raw, 'https://beamio.ca')
       const redeemcode = u.searchParams.get('redeemcode') ?? u.searchParams.get('Redeemcode')
       const beamiocard = u.searchParams.get('beamiocard') ?? u.searchParams.get('Beamiocard')
       if (!redeemcode?.trim()) return null
@@ -1040,7 +1040,7 @@ function AppShell() {
   const isPaymentUrl = (raw: string): boolean => {
     try {
       if (!raw || typeof raw !== 'string') return false
-      const u = new URL(resolveBeamioLinkInput(raw), 'https://beamio.ca')
+      const u = resolveBeamioUrl(raw, 'https://beamio.ca')
       const amount = u.searchParams.get('Amount') ?? u.searchParams.get('amount')
       const currency = u.searchParams.get('currency') ?? u.searchParams.get('币种') ?? ''
       const acceptTokens = u.searchParams.get('acceptTokens') ?? u.searchParams.get('accepttokens') ?? ''
@@ -1063,7 +1063,7 @@ function AppShell() {
 
     let searchParams: URLSearchParams
     try {
-      const u = new URL(url)
+      const u = resolveBeamioUrl(url)
       searchParams = u.searchParams
     } catch {
       searchParams = new URLSearchParams(url)

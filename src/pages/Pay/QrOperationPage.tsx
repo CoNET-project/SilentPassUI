@@ -1,4 +1,4 @@
-import { resolveBeamioLinkInput } from '@/utils/legacyBeamioLinks'
+import { resolveBeamioHttpHref } from '@/utils/legacyBeamioLinks'
 import { IpfsImg } from '@/components/IpfsImg';
 import React, { useState, useEffect } from "react"
 import { useNavigate, useLocation } from "react-router-dom"
@@ -110,16 +110,16 @@ export default function QrOperationPage() {
     }
   }
 
-  const onShare = (rawUrlOrValue: string) => {
-    const urlOrValue = resolveBeamioLinkInput(rawUrlOrValue)
+  const onShare = (urlOrValue: string) => {
+    const href = resolveBeamioHttpHref(urlOrValue)
     if (navigator.share) {
       navigator.share({
         title: "Beamio 收款",
-        text: urlOrValue,
-        url: urlOrValue.startsWith("http") ? urlOrValue : undefined,
+        text: href ?? urlOrValue,
+        url: href ?? undefined,
       }).catch(() => {})
     } else {
-      window.open(urlOrValue.startsWith("http") ? urlOrValue : "#", "_blank")
+      window.open(href ?? "#", "_blank")
     }
   }
 

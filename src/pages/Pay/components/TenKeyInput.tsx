@@ -1,4 +1,4 @@
-import { resolveBeamioLinkInput } from '@/utils/legacyBeamioLinks'
+import { resolveBeamioUrl } from '@/utils/legacyBeamioLinks'
 import React, { useState, useEffect, useRef, useMemo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Camera, QrCode, Loader, Check, X, RefreshCw, Zap, Copy, ExternalLink, SmartphoneNfc } from 'lucide-react'
@@ -763,7 +763,7 @@ const TenKeyInputComponent = (props: TenKeyInputComponentProps) => {
 
 			// --- Bill paymentUrl 分支：Amount、currency、acceptTokens、to 均为必选项，缺一视为非法 bill ---
 			try {
-				const u = new URL(resolveBeamioLinkInput(scanData), 'https://beamio.ca')
+				const u = resolveBeamioUrl(scanData, 'https://beamio.ca')
 				const amountParam = u.searchParams.get('Amount') ?? u.searchParams.get('amount')
 				const currencyParam = u.searchParams.get('currency') ?? u.searchParams.get('币种') ?? ''
 				const acceptTokensParam = u.searchParams.get('acceptTokens') ?? u.searchParams.get('accepttokens') ?? ''

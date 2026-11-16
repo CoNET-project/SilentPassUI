@@ -1,3 +1,4 @@
+import { resolveBeamioLinkInput } from '@/utils/legacyBeamioLinks'
 import { IpfsImg } from '@/components/IpfsImg';
 import React, { useEffect, useLayoutEffect, useState, useRef, forwardRef, useImperativeHandle } from 'react'
 import { Search, ChevronLeft} from 'lucide-react'
@@ -49,7 +50,7 @@ const shortAddress = (addr: string) =>
 const isPaymentUrl = (raw: string): boolean => {
 	try {
 		if (!raw || typeof raw !== 'string') return false
-		const u = raw.startsWith('http') ? new URL(raw) : new URL(raw, 'https://beamio.ca')
+		const u = new URL(resolveBeamioLinkInput(raw), 'https://beamio.ca')
 		const amount = u.searchParams.get('Amount') ?? u.searchParams.get('amount')
 		const currency = u.searchParams.get('currency') ?? u.searchParams.get('币种') ?? ''
 		const acceptTokens = u.searchParams.get('acceptTokens') ?? u.searchParams.get('accepttokens') ?? ''
@@ -210,7 +211,7 @@ const SearchInputWithDropdown =
 		try {
 			let url: URL
 			try {
-				url = new URL(qq)
+				url = new URL(resolveBeamioLinkInput(qq))
 			} catch {
 				// 智能对应：无协议时，尝试以 beamio.ca 为 base 解析
 				if (/redeemcode=|beamiocard=/i.test(qq)) {

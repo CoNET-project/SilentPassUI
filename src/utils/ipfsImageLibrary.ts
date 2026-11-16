@@ -1,3 +1,4 @@
+import { resolveBeamioLinkInput } from './legacyBeamioLinks'
 /**
  * Local-first permanent IPFS fragment image library (IndexedDB, keyed by keccak hash).
  * Read local cache before network getFragment; persist trusted fetches indefinitely.
@@ -30,7 +31,7 @@ export function normalizeFragmentHash(raw: string | undefined | null): string | 
 /** Parse hash from ipfs.conet.network getFragment or beamio.ca /api/fragment URLs. */
 export function parseFragmentHashFromUrl(url: string): string | null {
   try {
-    const u = new URL(url.trim())
+    const u = new URL(resolveBeamioLinkInput(url.trim()))
     const host = u.hostname.toLowerCase()
     if (host === 'ipfs.conet.network' || host.endsWith('.ipfs.conet.network')) {
       if (!u.pathname.endsWith('/getFragment')) return null

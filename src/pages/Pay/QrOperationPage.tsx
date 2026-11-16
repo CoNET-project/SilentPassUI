@@ -1,3 +1,4 @@
+import { resolveBeamioLinkInput } from '@/utils/legacyBeamioLinks'
 import { IpfsImg } from '@/components/IpfsImg';
 import React, { useState, useEffect } from "react"
 import { useNavigate, useLocation } from "react-router-dom"
@@ -109,7 +110,8 @@ export default function QrOperationPage() {
     }
   }
 
-  const onShare = (urlOrValue: string) => {
+  const onShare = (rawUrlOrValue: string) => {
+    const urlOrValue = resolveBeamioLinkInput(rawUrlOrValue)
     if (navigator.share) {
       navigator.share({
         title: "Beamio 收款",

@@ -1,0 +1,60 @@
+/**
+ * 旧域 beamio.app 链接的本地识别（纯函数，只做字符串解析与映射，不发起任何网络请求）。
+ *
+ * 识别范围与 a5cf3613 一致：beamio.app 本身及其所有子域（*.beamio.app）。
+ * 已印刷的二维码与外链仍会带这些地址，因此先在本地映射为新域的对应路径，之后再按新地址请求。
+ *
+ * 映射规则：
+ * - biz.beamio.app → biz.beamio.ca（商家后台，路径原样保留）
+ * - beamio.app、其他子域（www、cashtrees、api 等）→ beamio.ca（路径、查询串、片段原样保留）
+ *
+ * 映射结果只指向 beamio.ca 或 biz.beamio.ca。调用方只能使用映射后的字符串，
+ * 不得把原始旧链接交给 fetch、XMLHttpRequest、img、iframe、window.open 或 location。
+ */
+
+const CONSUMER_HOST = 'beamio.ca'
+const BIZ_HOST = 'biz.beamio.ca'
+const LEGACY_APEX = 'beamio.app'
+const LEGACY_BIZ = 'biz.beamio.app'
+
+/** 无协议的旧链接只在其后紧跟路径、查询或片段时识别，避免把裸域名误判为链接。 */
+const SCHEMELESS_LEGACY_RE = /^(?:[a-z0-9-]+\.)*beamio\.app(?=[/?#])/i
+
+/** 返回旧主机对应的新主机；不是 beamio.app 或其子域时返回 null。 */
+function targetHostFor(host: string): string | null {
+	if (host === LEGACY_BIZ) return BIZ_HOST
+	if (host === LEGACY_APEX || host.endsWith(`.${LEGACY_APEX}`)) return CONSUMER_HOST
+	return null
+}
+
+/**
+ * 若 raw 是旧域 beamio.app 系列的链接，返回等价的 https 链接（beamio.ca 或 biz.beamio.ca）；否则返回 null。
+ * 拒绝：非 http(s) 协议、带用户名或密码、非默认端口、主机不是 beamio.app 或其子域（含 beamio.app.evil.com 这类后缀伪装）。
+ */
+export function mapLegacyBeamioLink(raw: string): string | null {
+	if (typeof raw !== 'string') return null
+	const s = raw.trim()
+	if (!s) return null
+	let candidate: string
+	if (/^https?:\/\//i.test(s)) candidate = s
+	else if (SCHEMELESS_LEGACY_RE.test(s)) candidate = `https://${s}`
+	else return null
+	let u: URL
+	try {
+		u = new URL(candidate)
+	} catch {
+		return null
+	}
+	if (u.protocol !== 'https:' && u.protocol !== 'http:') return null
+	if (u.username !== '' || u.password !== '') return null
+	if (u.port !== '') return null
+	const host = u.hostname.toLowerCase().replace(/\.$/, '')
+	const target = targetHostFor(host)
+	if (!target) return null
+	return `https://${target}${u.pathname}${u.search}${u.hash}`
+}
+
+/** 调用方入口：旧链接返回映射后的 https 链接，其他输入原样返回。 */
+export function resolveBeamioLinkInput(raw: string): string {
+	return mapLegacyBeamioLink(raw) ?? raw
+}

@@ -1012,7 +1012,7 @@ function AppShell() {
   const isRedeemUrl = (raw: string): boolean => {
     try {
       if (!raw || typeof raw !== 'string') return false
-      const u = raw.startsWith('http') ? new URL(raw) : new URL(raw, 'http://beamio.app')
+      const u = raw.startsWith('http') ? new URL(raw) : new URL(raw, 'https://beamio.ca')
       const redeemcode = u.searchParams.get('redeemcode') ?? u.searchParams.get('Redeemcode')
       return !!(redeemcode?.trim())
     } catch {
@@ -1022,7 +1022,7 @@ function AppShell() {
 
   const parseRedeemUrl = (raw: string): { cardAddress?: string; redeemCode: string } | null => {
     try {
-      const u = raw.startsWith('http') ? new URL(raw) : new URL(raw, 'http://beamio.app')
+      const u = raw.startsWith('http') ? new URL(raw) : new URL(raw, 'https://beamio.ca')
       const redeemcode = u.searchParams.get('redeemcode') ?? u.searchParams.get('Redeemcode')
       const beamiocard = u.searchParams.get('beamiocard') ?? u.searchParams.get('Beamiocard')
       if (!redeemcode?.trim()) return null
@@ -1039,13 +1039,13 @@ function AppShell() {
   const isPaymentUrl = (raw: string): boolean => {
     try {
       if (!raw || typeof raw !== 'string') return false
-      const u = raw.startsWith('http') ? new URL(raw) : new URL(raw, 'http://beamio.app')
+      const u = raw.startsWith('http') ? new URL(raw) : new URL(raw, 'https://beamio.ca')
       const amount = u.searchParams.get('Amount') ?? u.searchParams.get('amount')
       const currency = u.searchParams.get('currency') ?? u.searchParams.get('币种') ?? ''
       const acceptTokens = u.searchParams.get('acceptTokens') ?? u.searchParams.get('accepttokens') ?? ''
       if (!amount || Number(amount) <= 0) return false
       if (!currency || !acceptTokens) return false
-      if (u.pathname === '/Vouchers' || /beamio\.app/i.test(u.origin)) return true
+      if (u.pathname === '/Vouchers' || /beamio\.ca/i.test(u.origin)) return true
       return /\/Vouchers/i.test(u.pathname)
     } catch {
       return false

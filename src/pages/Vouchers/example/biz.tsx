@@ -890,7 +890,7 @@ function computeCardSetupDiscoverPreviewScale(scrollTop: number): number {
 }
 
 /** verra NDEF / SoftPOS — cluster short link (UA redirect on server). */
-const VERRA_NDEF_GO_URL = 'https://beamio.app/go/verra-ndef';
+const VERRA_NDEF_GO_URL = 'https://beamio.ca/go/verra-ndef';
 
 function openVerraNdefNativeAppInstall(): void {
   if (typeof window === 'undefined') return;
@@ -901,7 +901,7 @@ function openVerraNdefNativeAppInstall(): void {
 }
 
 const USDC_ICON_URL = 'https://assets.coingecko.com/coins/images/6319/small/usdc.png';
-const BASE_ICON_URL = 'https://beamio.app/app/static/media/base-logo.275b67e94556e30ce59b.png';
+const BASE_ICON_URL = 'https://beamio.ca/app/static/media/base-logo.275b67e94556e30ce59b.png';
 const CADD_ICON_URL = `${process.env.PUBLIC_URL || ''}/assets/cadd-icon.png`;
 
 /** Self-custody / security hero illustration (`public/assets/mbiz-self-custody-hero.png`) */
@@ -3911,7 +3911,7 @@ function WalletsTreasuryShell(props: {
   }, [receiveUsdcAmount]);
   const receivePaymentUrl = useMemo(() => {
     if (!receiveEoaValue || !receiveAmountNormalized) return '';
-    return `https://beamio.app/Vouchers?Amount=${encodeURIComponent(receiveAmountNormalized)}&currency=${encodeURIComponent('USDC')}&acceptTokens=USDC&to=${encodeURIComponent(receiveEoaValue)}`;
+    return `https://beamio.ca/Vouchers?Amount=${encodeURIComponent(receiveAmountNormalized)}&currency=${encodeURIComponent('USDC')}&acceptTokens=USDC&to=${encodeURIComponent(receiveEoaValue)}`;
   }, [receiveEoaValue, receiveAmountNormalized]);
   useEffect(() => {
     if (!receiveQrOpen) {
@@ -4849,7 +4849,7 @@ function WalletSendUsdcSheet(props: {
       const currencyAmount = formatAmount(amt, 'USDC');
 
       if (payeeIsAA) {
-        const paymentUrl = `https://beamio.app/Vouchers?Amount=${encodeURIComponent(rawAmt)}&currency=${encodeURIComponent('USDC')}&acceptTokens=USDC&to=${encodeURIComponent(toAddress)}`;
+        const paymentUrl = `https://beamio.ca/Vouchers?Amount=${encodeURIComponent(rawAmt)}&currency=${encodeURIComponent('USDC')}&acceptTokens=USDC&to=${encodeURIComponent(toAddress)}`;
         setScanData(paymentUrl);
         setScanIntent('payBill');
         setVoucherPayAmount(rawAmt);
@@ -12027,10 +12027,10 @@ function buildProgramsCouponOpenClaimShareUrl(
   const addr = cardAddress?.trim() ?? '';
   const cid = couponId?.trim() ?? '';
   if (!addr || !cid || !ethers.isAddress(addr)) return '';
-  const claimUrl = `https://beamio.app/app/?beamiocard=${encodeURIComponent(
+  const claimUrl = `https://beamio.ca/app/?beamiocard=${encodeURIComponent(
     ethers.getAddress(addr)
   )}&couponId=${encodeURIComponent(cid)}&claim=open`;
-  const base = `https://beamio.app/app-download?target=${encodeURIComponent(claimUrl)}`;
+  const base = `https://beamio.ca/app-download?target=${encodeURIComponent(claimUrl)}`;
   return cacheBustV ? appendAppDownloadShareCacheBust(base, cacheBustV) : base;
 }
 
@@ -12057,8 +12057,8 @@ function buildProgramsMerchantCardShareUrl(
   if (referrerEoa?.trim() && ethers.isAddress(referrerEoa.trim())) {
     params.set('ref', ethers.getAddress(referrerEoa.trim()));
   }
-  const appUrl = `https://beamio.app/app/?${params.toString()}`;
-  const base = `https://beamio.app/app-download?target=${encodeURIComponent(appUrl)}`;
+  const appUrl = `https://beamio.ca/app/?${params.toString()}`;
+  const base = `https://beamio.ca/app-download?target=${encodeURIComponent(appUrl)}`;
   return appendAppDownloadShareCacheBust(base, cacheBustV);
 }
 
@@ -12076,8 +12076,8 @@ function buildProgramsCouponRedeemShareUrl(
   params.set('redeemcode', code);
   const cid = couponId?.trim() ?? '';
   if (cid) params.set('couponId', cid);
-  const redeemUrl = `https://beamio.app/app/?${params.toString()}`;
-  const base = `https://beamio.app/app-download?target=${encodeURIComponent(redeemUrl)}`;
+  const redeemUrl = `https://beamio.ca/app/?${params.toString()}`;
+  const base = `https://beamio.ca/app-download?target=${encodeURIComponent(redeemUrl)}`;
   return cacheBustV ? appendAppDownloadShareCacheBust(base, cacheBustV) : base;
 }
 

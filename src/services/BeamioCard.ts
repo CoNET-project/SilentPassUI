@@ -641,7 +641,7 @@ export const fetchPosTerminalMetadataFromApi = async (
 export const buildBeamioUserCardRedeemShareUrl = (cardAddress: string, redeemCode: string): string => {
 	if (!cardAddress || !redeemCode?.trim() || !ethers.isAddress(cardAddress)) return ''
 	const card = ethers.getAddress(cardAddress)
-	return `https://beamio.app/app/?beamiocard=${encodeURIComponent(card)}&redeemcode=${encodeURIComponent(redeemCode.trim())}`
+	return `https://beamio.ca/app/?beamiocard=${encodeURIComponent(card)}&redeemcode=${encodeURIComponent(redeemCode.trim())}`
 }
 
 /** 客户端兑换前预检：链上 redeem 是否仍可用（Cluster 直读，不消耗码）。 */

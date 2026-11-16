@@ -762,7 +762,7 @@ const TenKeyInputComponent = (props: TenKeyInputComponentProps) => {
 
 			// --- Bill paymentUrl 分支：Amount、currency、acceptTokens、to 均为必选项，缺一视为非法 bill ---
 			try {
-				const u = scanData.startsWith('http') ? new URL(scanData) : new URL(scanData, 'http://beamio.app')
+				const u = scanData.startsWith('http') ? new URL(scanData) : new URL(scanData, 'https://beamio.ca')
 				const amountParam = u.searchParams.get('Amount') ?? u.searchParams.get('amount')
 				const currencyParam = u.searchParams.get('currency') ?? u.searchParams.get('币种') ?? ''
 				const acceptTokensParam = u.searchParams.get('acceptTokens') ?? u.searchParams.get('accepttokens') ?? ''
@@ -1612,7 +1612,7 @@ const TenKeyInputComponent = (props: TenKeyInputComponentProps) => {
 	// 商家 bill 必选项：Amount、currency、acceptTokens、to（收款方 AA）；to 为当前商家 AA，支付方扫码后款项转入此地址
 	const merchantAA = profiles?.[0]?.aaAccount
 	const paymentUrl = value && merchantAA && ethers.isAddress(merchantAA)
-		? `http://beamio.app/Vouchers?Amount=${encodeURIComponent(value)}&currency=CAD&acceptTokens=USDC,CCSA&to=${encodeURIComponent(merchantAA)}`
+		? `https://beamio.ca/Vouchers?Amount=${encodeURIComponent(value)}&currency=CAD&acceptTokens=USDC,CCSA&to=${encodeURIComponent(merchantAA)}`
 		: ''
 
 	// voucherPay / payBill / payByNfc workflow：Confirm → Submitting 成功 → 显示 PaymentSuccessView；仅当用户点击「Done & Go to Chat」才 onPaymentSuccess 回到父页面（不在此前关闭）

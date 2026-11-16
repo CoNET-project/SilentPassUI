@@ -105,26 +105,26 @@ export default function BeamioPrivacySettingsScreen({colse}:prof) {
             <div className="space-y-2 text-sm">
               <button
                 type="button"
-                onClick={() => window.open("https://beamio.app/privacy", "_blank", "noopener,noreferrer")}
+                onClick={() => window.open("https://beamio.ca/privacy", "_blank", "noopener,noreferrer")}
                 className="w-full h-10 px-4 rounded-2xl border border-slate-200 bg-slate-50 flex items-center justify-between text-slate-700"
               >
                 <span className="inline-flex items-center gap-2">
                   <FileText className="h-3.5 w-3.5 text-slate-500" />
                   <span>Open Privacy Policy</span>
                 </span>
-                <span className="text-[11px] text-slate-400">Opens beamio.app/privacy</span>
+                <span className="text-[11px] text-slate-400">Opens beamio.ca/privacy</span>
               </button>
 
               <button
                 type="button"
-                onClick={() => window.open("https://beamio.app/terms", "_blank", "noopener,noreferrer")}
+                onClick={() => window.open("https://beamio.ca/terms", "_blank", "noopener,noreferrer")}
                 className="w-full h-10 px-4 rounded-2xl border border-slate-200 bg-slate-50 flex items-center justify-between text-slate-700"
               >
                 <span className="inline-flex items-center gap-2">
                   <FileText className="h-3.5 w-3.5 text-slate-500" />
                   <span>Open Terms of Service</span>
                 </span>
-                <span className="text-[11px] text-slate-400">Opens beamio.app/terms</span>
+                <span className="text-[11px] text-slate-400">Opens beamio.ca/terms</span>
               </button>
             </div>
           </section>

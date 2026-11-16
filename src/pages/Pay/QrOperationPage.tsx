@@ -12,7 +12,7 @@ import { tu } from '@/locale/beamioLocale'
 const QR_SIZE = 320
 const QR_LOGO_SIZE = 64
 
-const showPaylinkSite = "https://beamio.app"
+const showPaylinkSite = "https://beamio.ca"
 const shortAddress = (addr: string) => (addr ? `${addr.slice(0, 6)}…${addr.slice(-4)}` : "")
 
 const getImg = (avatarSeed: string | undefined) =>

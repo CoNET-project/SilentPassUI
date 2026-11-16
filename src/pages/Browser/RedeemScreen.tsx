@@ -33,7 +33,7 @@ const getImg = (avatarSeed: string) =>
 const isLocal = false
 const remote = 'https://api.settleonbase.xyz'
 const local = 'http://localhost:4088'
-const showPaylinkSite = 'https://beamio.app'
+const showPaylinkSite = 'https://beamio.ca'
 const aptEndpoint = isLocal ? local : remote
 
 const displayName = (item: searchResult) => {

@@ -18,7 +18,7 @@ import type { OpenContainerRelayPayload } from '@/services/AAaccount'
 import { X } from 'lucide-react'
 import ShowPayQR from '@/pages/Vouchers/showPayQR'
 
-const showPaylinkSite = 'https://beamio.app'
+const showPaylinkSite = 'https://beamio.ca'
 /** 0.8% fee, min 0.02, max 2 USDC */
 const calcFeeUsdc = (amountUsdc: number) => {
 	if (!isFinite(amountUsdc) || amountUsdc <= 0) return 0
@@ -140,7 +140,7 @@ export default function BeamioPayMe(props: BeamioPayMeProps) {
 		})
 		if (billForText.trim()) params.set('forText', billForText.trim())
 		if (billValidDays >= 1) params.set('validDays', String(Math.floor(billValidDays)))
-		const url = `https://beamio.app/Vouchers?${params.toString()}`
+		const url = `https://beamio.ca/Vouchers?${params.toString()}`
 		setBillPaymentUrl(url)
 		setShowAmountInput(false)
 		postToEndpoint<{ success?: boolean; indexed?: boolean; syncTx?: string }>(`${showPaylinkSite}/api/requestAccounting`, true, {

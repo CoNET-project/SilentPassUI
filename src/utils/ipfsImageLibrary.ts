@@ -34,7 +34,7 @@ export function parseFragmentHashFromUrl(url: string): string | null {
     const host = u.hostname.toLowerCase()
     if (host === 'ipfs.conet.network' || host.endsWith('.ipfs.conet.network')) {
       if (!u.pathname.endsWith('/getFragment')) return null
-    } else if (host === 'beamio.app' || host.endsWith('.beamio.app')) {
+    } else if (host === 'beamio.ca' || host.endsWith('.beamio.ca')) {
       if (u.pathname !== '/api/fragment') return null
     } else {
       return null

@@ -1,7 +1,7 @@
 import { ethers } from 'ethers'
 
 /** Homepage third-party wallet page — `workflow=fuelPack` / `walletDeposit`. */
-export const BEAMIO_USDC_TOPUP_URL = 'https://beamio.app/usdc-topup'
+export const BEAMIO_USDC_TOPUP_URL = 'https://beamio.ca/usdc-topup'
 
 export const FUEL_PACK_USDC_TOPUP_WORKFLOW = 'fuelPack'
 

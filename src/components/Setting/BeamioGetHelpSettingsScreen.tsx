@@ -52,7 +52,7 @@ export default function BeamioGetHelpSettingsScreen({colse}:prof) {
             <button
               type="button"
               onClick={() =>
-                window.open("https://beamio.app/help", "_blank", "noopener,noreferrer")
+                window.open("https://beamio.ca/help", "_blank", "noopener,noreferrer")
               }
               className="w-full h-11 px-4 rounded-2xl border border-slate-200 bg-slate-50 flex items-center justify-between text-slate-800"
             >
@@ -63,7 +63,7 @@ export default function BeamioGetHelpSettingsScreen({colse}:prof) {
                 <div className="flex flex-col items-start">
                   <span>Open help center</span>
                   <span className="text-[11px] text-slate-400">
-                    FAQs and step-by-step guides (opens beamio.app/help)
+                    FAQs and step-by-step guides (opens beamio.ca/help)
                   </span>
                 </div>
               </div>

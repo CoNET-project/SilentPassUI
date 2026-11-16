@@ -2944,7 +2944,7 @@ export default function MyWalletDashboardNew() {
 										onMore={() => {}}
 									/>
 									<ShowPayQR
-										successUrl={'https://beamio.app?beamio=' + (beamio?.accountName ?? '')}
+										successUrl={'https://beamio.ca?beamio=' + (beamio?.accountName ?? '')}
 										beamio={beamio ?? null}
 										qrValue={undefined}
 									/>
@@ -3029,7 +3029,7 @@ export default function MyWalletDashboardNew() {
 							/>
 							{aaRelayQRPayload && (
 								<ShowPayQR
-									successUrl={'https://beamio.app?beamio=' + (beamio?.accountName ?? '')}
+									successUrl={'https://beamio.ca?beamio=' + (beamio?.accountName ?? '')}
 									beamio={beamio ?? null}
 									qrValue={JSON.stringify({
 										...aaRelayQRPayload,

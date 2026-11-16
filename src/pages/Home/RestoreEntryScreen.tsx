@@ -459,7 +459,7 @@ const RestoreEntryScreen = ({
 				</div>
 				<div className="mb-4 flex flex-wrap justify-center gap-8 md:mb-0">
 					<a
-						href="https://beamio.app/privacy"
+						href="https://beamio.ca/privacy"
 						target="_blank"
 						rel="noopener noreferrer"
 						className="text-xs uppercase tracking-widest text-slate-400 transition-colors hover:text-[#1562f0]"
@@ -467,7 +467,7 @@ const RestoreEntryScreen = ({
 						Privacy Policy
 					</a>
 					<a
-						href="https://beamio.app/terms"
+						href="https://beamio.ca/terms"
 						target="_blank"
 						rel="noopener noreferrer"
 						className="text-xs uppercase tracking-widest text-slate-400 transition-colors hover:text-[#1562f0]"

@@ -1094,7 +1094,7 @@ export default function Market() {
 							)}
 							{settingsOpen === "showPayQR" && (
 								<ShowPayQR
-									successUrl={"https://beamio.app?beamio=" + (beamio?.accountName || "")}
+									successUrl={"https://beamio.ca?beamio=" + (beamio?.accountName || "")}
 									beamio={beamio}
 									qrValue={qrPayload || undefined}
 								/>

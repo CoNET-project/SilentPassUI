@@ -49,13 +49,13 @@ const shortAddress = (addr: string) =>
 const isPaymentUrl = (raw: string): boolean => {
 	try {
 		if (!raw || typeof raw !== 'string') return false
-		const u = raw.startsWith('http') ? new URL(raw) : new URL(raw, 'https://beamio.app')
+		const u = raw.startsWith('http') ? new URL(raw) : new URL(raw, 'https://beamio.ca')
 		const amount = u.searchParams.get('Amount') ?? u.searchParams.get('amount')
 		const currency = u.searchParams.get('currency') ?? u.searchParams.get('币种') ?? ''
 		const acceptTokens = u.searchParams.get('acceptTokens') ?? u.searchParams.get('accepttokens') ?? ''
 		if (!amount || Number(amount) <= 0) return false
 		if (!currency || !acceptTokens) return false
-		if (u.pathname === '/Vouchers' || /beamio\.app/i.test(u.origin)) return true
+		if (u.pathname === '/Vouchers' || /beamio\.ca/i.test(u.origin)) return true
 		return /\/Vouchers/i.test(u.pathname)
 	} catch {
 		return false
@@ -214,10 +214,10 @@ const SearchInputWithDropdown =
 			} catch {
 				// 智能对应：无协议时，尝试以 beamio.app 为 base 解析
 				if (/redeemcode=|beamiocard=/i.test(qq)) {
-					url = new URL(qq.startsWith('/') || qq.startsWith('?') ? qq : qq.includes('?') ? qq : '/app/?' + qq, 'https://beamio.app')
-				} else if ((/Amount=/i.test(qq) && /Vouchers|beamio\.app/i.test(qq)) && !/^https?:\/\//i.test(qq)) {
+					url = new URL(qq.startsWith('/') || qq.startsWith('?') ? qq : qq.includes('?') ? qq : '/app/?' + qq, 'https://beamio.ca')
+				} else if ((/Amount=/i.test(qq) && /Vouchers|beamio\.ca/i.test(qq)) && !/^https?:\/\//i.test(qq)) {
 					// Vouchers 支付 URL 无协议时补全（如 beamio.app/Vouchers?Amount=... 或 /Vouchers?Amount=...）
-					const withProto = qq.startsWith('/') ? 'https://beamio.app' + qq : 'https://' + qq
+					const withProto = qq.startsWith('/') ? 'https://beamio.ca' + qq : 'https://' + qq
 					if (isPaymentUrl(withProto)) url = new URL(withProto)
 					else throw new Error('not url')
 				} else {

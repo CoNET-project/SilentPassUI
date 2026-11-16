@@ -637,7 +637,7 @@ export const fetchPosTerminalMetadataFromApi = async (
 	}
 }
 
-/** SilentPassUI / beamio.app deep link for BeamioUserCard redeem codes. */
+/** SilentPassUI / beamio.ca deep link for BeamioUserCard redeem codes. */
 export const buildBeamioUserCardRedeemShareUrl = (cardAddress: string, redeemCode: string): string => {
 	if (!cardAddress || !redeemCode?.trim() || !ethers.isAddress(cardAddress)) return ''
 	const card = ethers.getAddress(cardAddress)
@@ -4960,7 +4960,7 @@ function parseNftTierMetadataJson(json: {
 	}
 }
 
-/** EIP-1155 `uri()` 模板 `{id}` → 64 位小写 hex（与 beamio.app `/api/metadata/` 路由一致）。 */
+/** EIP-1155 `uri()` 模板 `{id}` → 64 位小写 hex（与 beamio.ca `/api/metadata/` 路由一致）。 */
 function erc1155MetadataIdHex(tokenId: bigint | number | string = 0): string {
 	return BigInt(tokenId).toString(16).padStart(64, '0').toLowerCase()
 }
@@ -4975,7 +4975,7 @@ function beamioApiErc1155MetadataUrl(cardAddress: string, tokenId: bigint | numb
 	return `${beamioApi}/api/metadata/0x${hex40}${erc1155MetadataIdHex(tokenId)}.json`
 }
 
-/** 从 BeamioUserCard 的 uri 获取 metadata（name、image、tiers）。base 为 `https://beamio.app/api/metadata/0x` + 卡地址 + `{id}.json`。 */
+/** 从 BeamioUserCard 的 uri 获取 metadata（name、image、tiers）。base 为 `https://beamio.ca/api/metadata/0x` + 卡地址 + `{id}.json`。 */
 export const getCardMetadataFromUri = async (cardAddress: string): Promise<CardMetadataFromUri | null> => {
 	const key = cardAddress.toLowerCase()
 	const cached = cardMetadataCache.get(key)

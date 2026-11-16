@@ -1,5 +1,5 @@
 import { IpfsImg } from '@/components/IpfsImg';
-//		`https://beamio.app/app/?beamiocard=${cardaddress}&redeemcode=${redeemcode}`
+//		`https://beamio.ca/app/?beamiocard=${cardaddress}&redeemcode=${redeemcode}`
 
 
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react'

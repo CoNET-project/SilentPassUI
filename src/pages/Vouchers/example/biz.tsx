@@ -1441,7 +1441,7 @@ function retainedCapitalTrustedCacheKeyForCard(cardBucket: string): string {
   return `card:${cardBucket}:dashboard:token0-customer-held:v2`
 }
 
-/** Flattened row for Members & Loyalty table (beamio.app `/api/cardMemberTopups` mode=directory + program name) */
+/** Flattened row for Members & Loyalty table (beamio.ca `/api/cardMemberTopups` mode=directory + program name) */
 type BizTopupMemberTableRow = {
   cardLower: string
   programName: string
@@ -9638,7 +9638,7 @@ function parseDiscountPctFromTierMetadataDescription(description: string | undef
 
 const fmtAddr = (a: string | undefined) => (a && a.length >= 10 ? `${a.slice(0, 6)}…${a.slice(-4)}` : (a || '—'));
 
-/** beamio.app cardMemberTopups — mode=card */
+/** beamio.ca cardMemberTopups — mode=card */
 type BeamioCardMemberTopupsCardResponse = {
   mode: 'card'
   cardAddress: string
@@ -9648,7 +9648,7 @@ type BeamioCardMemberTopupsCardResponse = {
   appActivationCount?: number
 }
 
-/** beamio.app cardMemberTopups — mode=members (one page) */
+/** beamio.ca cardMemberTopups — mode=members (one page) */
 type BeamioCardMemberTopupsMembersResponse = {
   mode: 'members'
   cardAddress: string
@@ -9668,7 +9668,7 @@ type BeamioCardMemberTopupsMembersResponse = {
   }>
 }
 
-/** beamio.app cardMemberTopups — mode=directory (members + NFC/App channel fields) */
+/** beamio.ca cardMemberTopups — mode=directory (members + NFC/App channel fields) */
 type BeamioCardMemberDirectoryPageResponse = {
   mode: 'directory'
   cardAddress: string
@@ -27719,7 +27719,7 @@ useEffect(() => {
  useEffect(() => {
    membersOwnedProgramsRef.current = membersOwnedPrograms;
  }, [membersOwnedPrograms]);
- /** Members & Loyalty: rows from `beamio.app/api/cardMemberTopups` (mode=directory), refreshed by feeder; cache keys include EOA */
+ /** Members & Loyalty: rows from `beamio.ca/api/cardMemberTopups` (mode=directory), refreshed by feeder; cache keys include EOA */
  const [membersLoyaltyTopupRows, setMembersLoyaltyTopupRows] = useState<BizTopupMemberTableRow[]>([]);
  const [membersMobileDirectTopupRows, setMembersMobileDirectTopupRows] = useState<BizTopupMemberTableRow[]>([]);
  const membersLoyaltyTopupRowsRef = useRef<BizTopupMemberTableRow[]>([]);

@@ -1,6 +1,6 @@
 /**
  * 动态更新 PWA manifest 的 start_url，使「添加到主屏幕」时能携带当前 URL 参数（如 beamioTag、MasterKey）。
- * Merchant OS 挂在 /biz/；勿指向 Consumer PWA 的 /app/manifest.json（biz.beamio.app 上会 404）。
+ * Merchant OS 挂在 /biz/；勿指向 Consumer PWA 的 /app/manifest.json（biz.beamio.ca 上会 404）。
  * 使用 cache-busting (_v) 并预取 manifest，避免浏览器使用旧缓存导致 Add to Home Screen 显示错误 URL。
  */
 export function updateManifestStartUrl(startUrl: string): void {

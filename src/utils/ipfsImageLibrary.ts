@@ -27,7 +27,7 @@ export function normalizeFragmentHash(raw: string | undefined | null): string | 
   return `0x${body.toLowerCase()}`
 }
 
-/** Parse hash from ipfs.conet.network getFragment or beamio.app /api/fragment URLs. */
+/** Parse hash from ipfs.conet.network getFragment or beamio.ca /api/fragment URLs. */
 export function parseFragmentHashFromUrl(url: string): string | null {
   try {
     const u = new URL(url.trim())

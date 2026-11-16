@@ -1,6 +1,6 @@
 /**
  * BeamioAgentReferrerRegistry — Merchant OS client (RPC read + gasless EIP-712 write).
- * Writes: offline sign → POST https://beamio.app/api/agentReferrerRegister
+ * Writes: offline sign → POST https://beamio.ca/api/agentReferrerRegister
  * Reads: CoNET RPC first; GET /api/agentReferrerRegistry as nonce helper.
  */
 import { ethers } from 'ethers'

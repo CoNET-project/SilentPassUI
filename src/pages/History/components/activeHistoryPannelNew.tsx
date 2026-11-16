@@ -283,7 +283,7 @@ function serializeTransaction(tx: RawTxRecord): Record<string, unknown> {
 	return toNamedTransactionJson(tx)
 }
 
-/** 从 request 类 Transaction 组装 https://beamio.app/Vouchers URL */
+/** 从 request 类 Transaction 组装 https://beamio.ca/Vouchers URL */
 function buildVouchersUrl(tx: TxView): string | null {
 	const raw = tx.rawTransaction as RawTxRecord | undefined
 	if (!raw) return null

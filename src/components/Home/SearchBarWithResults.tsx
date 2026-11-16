@@ -212,11 +212,11 @@ const SearchInputWithDropdown =
 			try {
 				url = new URL(qq)
 			} catch {
-				// 智能对应：无协议时，尝试以 beamio.app 为 base 解析
+				// 智能对应：无协议时，尝试以 beamio.ca 为 base 解析
 				if (/redeemcode=|beamiocard=/i.test(qq)) {
 					url = new URL(qq.startsWith('/') || qq.startsWith('?') ? qq : qq.includes('?') ? qq : '/app/?' + qq, 'https://beamio.ca')
 				} else if ((/Amount=/i.test(qq) && /Vouchers|beamio\.ca/i.test(qq)) && !/^https?:\/\//i.test(qq)) {
-					// Vouchers 支付 URL 无协议时补全（如 beamio.app/Vouchers?Amount=... 或 /Vouchers?Amount=...）
+					// Vouchers 支付 URL 无协议时补全（如 beamio.ca/Vouchers?Amount=... 或 /Vouchers?Amount=...）
 					const withProto = qq.startsWith('/') ? 'https://beamio.ca' + qq : 'https://' + qq
 					if (isPaymentUrl(withProto)) url = new URL(withProto)
 					else throw new Error('not url')

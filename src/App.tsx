@@ -149,7 +149,7 @@ function AppShell() {
 
   const navigate = useNavigate()
 
-  // 直接打开 redeem URL（如 https://beamio.app/app/?beamiocard=...&redeemcode=...）时解析并跳转
+  // 直接打开 redeem URL（如 https://beamio.ca/app/?beamiocard=...&redeemcode=...）时解析并跳转
   useEffect(() => {
     if (isInitialLoading || initialRedeemUrlProcessedRef.current) return
     if (typeof window === 'undefined') return

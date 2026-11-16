@@ -64,7 +64,7 @@ export { postWithTimeout }
 
 const probeGossipNode = async (node: NodeInfo, timeoutMs = 4_000): Promise<boolean> => {
 	// Optional hint only. SI GET / is forwarded to silentpass.io and often has no
-	// ACAO for biz.beamio.app — a CORS failure here is NOT "node down".
+	// ACAO for biz.beamio.ca — a CORS failure here is NOT "node down".
 	// Listen must use pickListenEntryNodes (POST /post), never this probe as a gate.
 	try {
 		const res = await postWithTimeout(

@@ -329,7 +329,7 @@ const defaultApiBase = 'https://beamio.ca'
 
 /**
  * 调用服务端 POST /api/AAtoEOA，提交 AA→EOA 的已签字 UserOp，由 Beamio 代付 Gas。
- * @param apiBaseUrl 接口根地址，如 https://beamio.app
+ * @param apiBaseUrl 接口根地址，如 https://beamio.ca
  * @param toEOA 收款 EOA 地址
  * @param amountUSDC6 金额（USDC 6 位小数，字符串）
  * @param packedUserOp ERC-4337 PackedUserOperation（客户端已签字）

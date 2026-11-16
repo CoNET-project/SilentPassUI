@@ -1,13 +1,14 @@
 /**
  * 旧域 beamio.app 链接的本地识别（纯函数，只做字符串解析与映射，不发起任何网络请求）。
  *
- * 识别范围：beamio.app 本身及其所有子域（*.beamio.app）。
- * 已印刷的二维码与外链仍会带这些地址，因此先在本地映射为新域的对应路径，之后再按新地址请求。
+ * 已印刷的二维码与外链仍会带旧域地址，因此先在本地映射为新域的对应路径，之后再按新地址请求。
  *
- * 映射规则：
- * - biz.beamio.app → biz.beamio.ca（商家后台，路径原样保留）
+ * 识别与映射范围（DM-BIZ-01 第二轮，总 PM 裁定）：只有 apex、www、biz 三类做映射。
  * - beamio.app 的 /biz 与 /biz/ 开头路径 → biz.beamio.ca/biz/…（/biz 映射为 /biz/，查询串与片段保留）
- * - beamio.app 其余路径、www.beamio.app → beamio.ca（路径、查询串、片段原样保留）
+ * - beamio.app 其余路径 → beamio.ca（路径、查询串、片段原样保留）
+ * - www.beamio.app → beamio.ca（路径、查询串、片段原样保留）
+ * - biz.beamio.app → biz.beamio.ca（路径、查询串、片段原样保留）
+ * - 其他子域（cashtrees、api 等）没有对应目标：不识别，既不映射也不请求，按拒绝处理。
  *
  * 映射结果只指向 beamio.ca 或 biz.beamio.ca。调用方只能使用映射后的字符串，
  * 不得把原始旧链接交给 fetch、XMLHttpRequest、img、iframe、window.open 或 location。
@@ -16,6 +17,7 @@
 const CONSUMER_HOST = 'beamio.ca'
 const BIZ_HOST = 'biz.beamio.ca'
 const LEGACY_APEX = 'beamio.app'
+const LEGACY_WWW = 'www.beamio.app'
 const LEGACY_BIZ = 'biz.beamio.app'
 
 /** 无协议的旧链接只在其后紧跟路径、查询或片段时识别，避免把裸域名误判为链接。 */
@@ -26,7 +28,7 @@ function isLegacyHostName(host: string): boolean {
 	return host === LEGACY_APEX || host.endsWith(`.${LEGACY_APEX}`)
 }
 
-/** 旧主机与路径对应的新位置；不是 beamio.app 或其子域时返回 null。 */
+/** 旧主机与路径对应的新位置；不在 apex、www、biz 映射范围内（含其他子域）时返回 null。 */
 function legacyLocationFor(host: string, pathname: string): { host: string; pathname: string } | null {
 	if (host === LEGACY_BIZ) return { host: BIZ_HOST, pathname }
 	if (host === LEGACY_APEX) {
@@ -34,7 +36,8 @@ function legacyLocationFor(host: string, pathname: string): { host: string; path
 		if (pathname.startsWith('/biz/')) return { host: BIZ_HOST, pathname }
 		return { host: CONSUMER_HOST, pathname }
 	}
-	if (host.endsWith(`.${LEGACY_APEX}`)) return { host: CONSUMER_HOST, pathname }
+	if (host === LEGACY_WWW) return { host: CONSUMER_HOST, pathname }
+	// 其他子域没有对应目标：不识别
 	return null
 }
 

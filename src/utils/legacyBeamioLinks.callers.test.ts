@@ -22,7 +22,6 @@ describe('legacy fragment links are recognized locally and never requested from 
 	test.each([
 		`https://beamio.app/api/fragment?hash=${HASH}`,
 		`http://www.beamio.app/api/fragment?hash=${HASH}`,
-		`https://cashtrees.beamio.app/api/fragment?hash=${HASH}`,
 		`https://biz.beamio.app/api/fragment?hash=${HASH}`,
 	])('recognizes %s', (url) => {
 		expect(parseFragmentHashFromUrl(url)).toBe(HASH)
@@ -35,6 +34,9 @@ describe('legacy fragment links are recognized locally and never requested from 
 	})
 
 	test.each([
+		`https://cashtrees.beamio.app/api/fragment?hash=${HASH}`,
+		`https://beamio.app:8443/api/fragment?hash=${HASH}`,
+		`https://user:pw@beamio.app/api/fragment?hash=${HASH}`,
 		`https://beamio.app/api/other?hash=${HASH}`,
 		`https://beamio.app.evil.com/api/fragment?hash=${HASH}`,
 		`https://evilbeamio.app/api/fragment?hash=${HASH}`,

@@ -54,6 +54,8 @@ describe('syncImgSrcFor: image sources never load from the legacy host', () => {
 	test('a refused legacy image source yields an empty src (existing placeholder)', () => {
 		expect(syncImgSrcFor('https://beamio.app:8443/uploads/a.png')).toBe('')
 		expect(syncImgSrcFor('https://user:pw@beamio.app/uploads/a.png')).toBe('')
+		expect(syncImgSrcFor('https://cashtrees.beamio.app/uploads/a.png')).toBe('')
+		expect(syncImgSrcFor('https://api.beamio.app/uploads/a.png')).toBe('')
 	})
 
 	test('legacy fragment URLs go to the IPFS library path, not to the image src', () => {

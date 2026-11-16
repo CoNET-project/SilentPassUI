@@ -30,7 +30,6 @@ describe('searchInputToUrl: legacy search-bar input never yields an old-host URL
 		['/\\beamio.app/app/?redeemcode=ABC', 'https://beamio.ca/app/?redeemcode=ABC'],
 		// biz host and subdomains
 		['https://biz.beamio.app/biz/?redeemcode=ABC', 'https://biz.beamio.ca/biz/?redeemcode=ABC'],
-		['https://cashtrees.beamio.app/app/?redeemcode=ABC', 'https://beamio.ca/app/?redeemcode=ABC'],
 		// relative bill
 		[`/Vouchers?${BILL}`, `https://beamio.ca/Vouchers?${BILL}`],
 		// redeem fragment without scheme
@@ -52,6 +51,8 @@ describe('searchInputToUrl: legacy search-bar input never yields an old-host URL
 		'beamio',
 		'beamio.app',
 		'beamio.app Amount=1 Vouchers',
+		'https://cashtrees.beamio.app/app/?redeemcode=ABC',
+		`https://cashtrees.beamio.app/Vouchers?${BILL}`,
 		'javascript:alert(1)',
 		`beamio.app\tVouchers?${BILL}`,
 	])('non-URL or non-web input %j is not routed to a legacy host', (input) => {

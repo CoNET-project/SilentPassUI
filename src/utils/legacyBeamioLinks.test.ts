@@ -27,7 +27,6 @@ describe('mapLegacyBeamioLink: legacy beamio.app links map to beamio.ca', () => 
 		['www.beamio.app/help', 'https://beamio.ca/help'],
 		['biz.beamio.app/biz/', 'https://biz.beamio.ca/biz/'],
 		['beamio.app?beamiocard=0x1&redeemcode=abc', 'https://beamio.ca/?beamiocard=0x1&redeemcode=abc'],
-		['cashtrees.beamio.app/x', 'https://beamio.ca/x'],
 	])('scheme-less %s', (input, expected) => {
 		expect(mapLegacyBeamioLink(input)).toBe(expected)
 	})
@@ -47,14 +46,40 @@ describe('mapLegacyBeamioLink: legacy beamio.app links map to beamio.ca', () => 
 	})
 })
 
-describe('mapLegacyBeamioLink: every beamio.app subdomain is in scope (same as a5cf3613)', () => {
+describe('B-10: only apex, www and biz are mapped; other subdomains are not recognized', () => {
 	test.each([
 		['https://cashtrees.beamio.app/x', 'https://beamio.ca/x'],
 		['https://api.beamio.app/api/x', 'https://beamio.ca/api/x'],
 		['https://x.biz.beamio.app/', 'https://beamio.ca/'],
-		['https://biz.beamio.app/biz/?a=1', 'https://biz.beamio.ca/biz/?a=1'],
-	])('%s', (input, expected) => {
-		expect(mapLegacyBeamioLink(input)).toBe(expected)
+	])('%s is not mapped (refused)', (input) => {
+		expect(mapLegacyBeamioLink(input)).toBeNull()
+		expect(() => resolveBeamioUrl(input)).toThrow()
+		expect(resolveBeamioHttpHref(input)).toBeNull()
+		expect(resolveOutboundHref(input)).toBeNull()
+	})
+
+	test('biz and www keep their mapping', () => {
+		expect(mapLegacyBeamioLink('https://biz.beamio.app/biz/?a=1')).toBe('https://biz.beamio.ca/biz/?a=1')
+		expect(mapLegacyBeamioLink('https://www.beamio.app/help')).toBe('https://beamio.ca/help')
+	})
+
+	test.each([
+		'cashtrees.beamio.app/x',
+		'api.beamio.app/api/x',
+	])('scheme-less %s is not recognized', (input) => {
+		expect(mapLegacyBeamioLink(input)).toBeNull()
+	})
+
+	test('a refused subdomain link does not reach the network through the outbound helper', () => {
+		const fetchSpy = jest.fn()
+		const original = (globalThis as { fetch?: unknown }).fetch
+		;(globalThis as { fetch?: unknown }).fetch = fetchSpy
+		try {
+			expect(resolveOutboundHref('https://cashtrees.beamio.app/x')).toBeNull()
+			expect(fetchSpy).not.toHaveBeenCalled()
+		} finally {
+			;(globalThis as { fetch?: unknown }).fetch = original
+		}
 	})
 })
 

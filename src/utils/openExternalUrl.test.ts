@@ -43,6 +43,11 @@ describe('openExternalUrl: legacy links reach window.open and the native bridge 
 		expect(winOpen).not.toHaveBeenCalled()
 	})
 
+	test('an unrecognized legacy subdomain is not opened', () => {
+		expect(openExternalUrl('https://cashtrees.beamio.app/x')).toBe(false)
+		expect(winOpen).not.toHaveBeenCalled()
+	})
+
 	test('empty input opens nothing', () => {
 		expect(openExternalUrl('')).toBe(false)
 		expect(winOpen).not.toHaveBeenCalled()

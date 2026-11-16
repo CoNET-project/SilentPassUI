@@ -59,6 +59,18 @@ export function resolveBeamioLinkInput(raw: string): string {
 	return mapLegacyBeamioLink(raw) ?? raw
 }
 
+/** 绝对地址的主机若为旧域，则以绝对解析为准（https:/beamio.app 在有 base 时会被当作相对路径）。 */
+function resolveWithBase(input: string, base: string): URL {
+	let absolute: URL | null = null
+	try {
+		absolute = new URL(input)
+	} catch {
+		absolute = null
+	}
+	if (absolute && targetHostFor(absolute.hostname.toLowerCase().replace(/\.$/, '')) !== null) return absolute
+	return new URL(input, base)
+}
+
 /**
  * 把任意输入解析为 URL，并保证结果的主机永不是旧域。
  * 与 new URL(input, base) 相同，但若解析结果落在 beamio.app 或其子域上（包括协议相对 //beamio.app、
@@ -67,8 +79,12 @@ export function resolveBeamioLinkInput(raw: string): string {
  * 解析失败时与 new URL 一样抛出异常。
  */
 export function resolveBeamioUrl(input: string, base?: string): URL {
-	const resolved = resolveBeamioLinkInput(input)
-	const u = base === undefined ? new URL(resolved) : new URL(resolved, base)
+	const mapped = mapLegacyBeamioLink(input)
+	const u = mapped !== null
+		? new URL(mapped)
+		: base === undefined
+			? new URL(input)
+			: resolveWithBase(input, base)
 	const target = targetHostFor(u.hostname.toLowerCase().replace(/\.$/, ''))
 	if (target === null) return u
 	const out = new URL(u.href)
@@ -81,11 +97,44 @@ export function resolveBeamioUrl(input: string, base?: string): URL {
 }
 
 /** 用于分享或打开外部链接：返回 http(s) 的 href（旧域已映射），其他输入返回 null。 */
-export function resolveBeamioHttpHref(raw: string): string | null {
+export function resolveBeamioHttpHref(raw: string, base?: string): string | null {
 	try {
-		const u = resolveBeamioUrl(raw)
+		const u = resolveBeamioUrl(raw, base)
 		return u.protocol === 'https:' || u.protocol === 'http:' ? u.href : null
 	} catch {
 		return null
 	}
+}
+
+/**
+ * 输入的主机是否为旧域（beamio.app 或其子域），只做字符串与 URL 解析，不发请求。
+ * 先按绝对地址解析（https:/beamio.app 这类形式需要如此），失败再以 beamio.ca 为 base 解析协议相对与相对形式。
+ */
+function mentionsLegacyHost(raw: string): boolean {
+	const s = raw.trim()
+	if (SCHEMELESS_LEGACY_RE.test(s)) return true
+	let u: URL
+	try {
+		u = new URL(s)
+	} catch {
+		try {
+			u = new URL(s, `https://${CONSUMER_HOST}`)
+		} catch {
+			return false
+		}
+	}
+	const host = u.hostname.toLowerCase().replace(/\.$/, '')
+	return host === LEGACY_APEX || host.endsWith(`.${LEGACY_APEX}`)
+}
+
+/**
+ * 出站地址（window.open、location、a[href]、img、iframe、video 等）的统一入口。
+ * - 非旧域输入：原样返回，行为与改造前相同；
+ * - 旧域输入：映射后返回 https 新域地址；
+ * - 旧域但无映射目标、带用户名或密码、非默认端口、非 http(s)：返回 null，调用方不得导航或加载。
+ */
+export function resolveOutboundHref(raw: string): string | null {
+	if (typeof raw !== 'string') return null
+	if (!mentionsLegacyHost(raw)) return raw
+	return resolveBeamioHttpHref(raw, `https://${CONSUMER_HOST}`)
 }

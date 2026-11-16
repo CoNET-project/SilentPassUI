@@ -1,4 +1,4 @@
-import { mapLegacyBeamioLink, resolveBeamioHttpHref, resolveBeamioLinkInput, resolveBeamioUrl } from './legacyBeamioLinks'
+import { mapLegacyBeamioLink, resolveBeamioHttpHref, resolveBeamioLinkInput, resolveBeamioUrl, resolveOutboundHref } from './legacyBeamioLinks'
 
 describe('mapLegacyBeamioLink: legacy beamio.app links map to beamio.ca', () => {
 	test.each([
@@ -144,3 +144,26 @@ describe('resolveBeamioHttpHref', () => {
 	})
 })
 
+
+describe('resolveOutboundHref: outbound addresses', () => {
+	test.each([
+		['https://beamio.app/Vouchers?Amount=1', 'https://beamio.ca/Vouchers?Amount=1'],
+		['https:/beamio.app/x', 'https://beamio.ca/x'],
+		['//beamio.app/x', 'https://beamio.ca/x'],
+		['https://biz.beamio.app/biz/?a=1', 'https://biz.beamio.ca/biz/?a=1'],
+		['beamio.app/Vouchers?Amount=1', 'https://beamio.ca/Vouchers?Amount=1'],
+	])('maps legacy %s to %s', (input, expected) => {
+		expect(resolveOutboundHref(input)).toBe(expected)
+	})
+
+	test.each([
+		'https://example.com/a?b=beamio.app',
+		'https://beamio.ca/app/?beamiocard=0x1',
+		'mailto:support@beamio.app?subject=Beamio%20help',
+		'tel:+1234',
+		'/Vouchers?Amount=1',
+		'https://evilbeamio.app/x',
+	])('passes non-legacy %s through unchanged', (input) => {
+		expect(resolveOutboundHref(input)).toBe(input)
+	})
+})

@@ -58,3 +58,34 @@ export function mapLegacyBeamioLink(raw: string): string | null {
 export function resolveBeamioLinkInput(raw: string): string {
 	return mapLegacyBeamioLink(raw) ?? raw
 }
+
+/**
+ * 把任意输入解析为 URL，并保证结果的主机永不是旧域。
+ * 与 new URL(input, base) 相同，但若解析结果落在 beamio.app 或其子域上（包括协议相对 //beamio.app、
+ * 反斜杠、制表符、单斜杠 https:/beamio.app 等形式），只改写主机为新域，路径、查询、片段保留，
+ * 并清除用户名、密码与端口。调用方拿到的 href 因此不会携带旧域主机。
+ * 解析失败时与 new URL 一样抛出异常。
+ */
+export function resolveBeamioUrl(input: string, base?: string): URL {
+	const resolved = resolveBeamioLinkInput(input)
+	const u = base === undefined ? new URL(resolved) : new URL(resolved, base)
+	const target = targetHostFor(u.hostname.toLowerCase().replace(/\.$/, ''))
+	if (target === null) return u
+	const out = new URL(u.href)
+	out.protocol = 'https:'
+	out.hostname = target
+	out.port = ''
+	out.username = ''
+	out.password = ''
+	return out
+}
+
+/** 用于分享或打开外部链接：返回 http(s) 的 href（旧域已映射），其他输入返回 null。 */
+export function resolveBeamioHttpHref(raw: string): string | null {
+	try {
+		const u = resolveBeamioUrl(raw)
+		return u.protocol === 'https:' || u.protocol === 'http:' ? u.href : null
+	} catch {
+		return null
+	}
+}

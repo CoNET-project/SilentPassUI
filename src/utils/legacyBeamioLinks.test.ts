@@ -1,4 +1,4 @@
-import { mapLegacyBeamioLink, resolveBeamioLinkInput } from './legacyBeamioLinks'
+import { mapLegacyBeamioLink, resolveBeamioHttpHref, resolveBeamioLinkInput, resolveBeamioUrl } from './legacyBeamioLinks'
 
 describe('mapLegacyBeamioLink: legacy beamio.app links map to beamio.ca', () => {
 	test.each([
@@ -117,3 +117,30 @@ describe('resolveBeamioLinkInput', () => {
 		expect(resolveBeamioLinkInput('ipfs-search text')).toBe('ipfs-search text')
 	})
 })
+
+describe('resolveBeamioUrl: no parsed URL keeps the old host', () => {
+	test.each([
+		['//beamio.app/x', 'https://beamio.ca/x', 'https://beamio.ca'],
+		['https:/beamio.app/x', 'https://beamio.ca/x', undefined],
+		['https://beamio.app\\Vouchers?x=1', 'https://beamio.ca/Vouchers?x=1', undefined],
+		['https://user:pw@beamio.app/x', 'https://beamio.ca/x', undefined],
+		['https://beamio.app:8443/x', 'https://beamio.ca/x', undefined],
+		['/Vouchers?Amount=1', 'https://beamio.ca/Vouchers?Amount=1', 'https://beamio.ca'],
+		['https://example.com/a', 'https://example.com/a', undefined],
+	])('%s', (input, expected, base) => {
+		expect(resolveBeamioUrl(input, base).href).toBe(expected)
+	})
+
+	test('throws for text that is not a URL, like new URL', () => {
+		expect(() => resolveBeamioUrl('plain text')).toThrow()
+	})
+})
+
+describe('resolveBeamioHttpHref', () => {
+	test('maps legacy hosts and returns http(s) hrefs only', () => {
+		expect(resolveBeamioHttpHref('https:/beamio.app/x')).toBe('https://beamio.ca/x')
+		expect(resolveBeamioHttpHref('javascript:alert(1)')).toBeNull()
+		expect(resolveBeamioHttpHref('plain text')).toBeNull()
+	})
+})
+

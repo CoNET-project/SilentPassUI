@@ -1,4 +1,4 @@
-import { resolveBeamioLinkInput } from '@/utils/legacyBeamioLinks'
+import { isBillPaymentUrlText as isPaymentUrl, searchInputToUrl } from '@/utils/searchInputUrl'
 import { IpfsImg } from '@/components/IpfsImg';
 import React, { useEffect, useLayoutEffect, useState, useRef, forwardRef, useImperativeHandle } from 'react'
 import { Search, ChevronLeft} from 'lucide-react'
@@ -45,23 +45,6 @@ const displayName = (item: searchResult) => {
 
 const shortAddress = (addr: string) =>
 	addr ? `${addr.slice(0, 6)}…${addr.slice(-4)}` : ''
-
-/** 商家 bill paymentUrl：Amount、currency、acceptTokens 必选；与扫码 QR workflow 一致 */
-const isPaymentUrl = (raw: string): boolean => {
-	try {
-		if (!raw || typeof raw !== 'string') return false
-		const u = new URL(resolveBeamioLinkInput(raw), 'https://beamio.ca')
-		const amount = u.searchParams.get('Amount') ?? u.searchParams.get('amount')
-		const currency = u.searchParams.get('currency') ?? u.searchParams.get('币种') ?? ''
-		const acceptTokens = u.searchParams.get('acceptTokens') ?? u.searchParams.get('accepttokens') ?? ''
-		if (!amount || Number(amount) <= 0) return false
-		if (!currency || !acceptTokens) return false
-		if (u.pathname === '/Vouchers' || /beamio\.ca/i.test(u.origin)) return true
-		return /\/Vouchers/i.test(u.pathname)
-	} catch {
-		return false
-	}
-}
 
 function formatUserDate(timestamp?: string | number): string {
 	if (!timestamp) return ""
@@ -209,32 +192,19 @@ const SearchInputWithDropdown =
 
 		// URL 逻辑：只有长度>=2才会走到这里（符合你的要求）
 		try {
-			let url: URL
-			try {
-				url = new URL(resolveBeamioLinkInput(qq))
-			} catch {
-				// 智能对应：无协议时，尝试以 beamio.ca 为 base 解析
-				if (/redeemcode=|beamiocard=/i.test(qq)) {
-					url = new URL(qq.startsWith('/') || qq.startsWith('?') ? qq : qq.includes('?') ? qq : '/app/?' + qq, 'https://beamio.ca')
-				} else if ((/Amount=/i.test(qq) && /Vouchers|beamio\.ca/i.test(qq)) && !/^https?:\/\//i.test(qq)) {
-					// Vouchers 支付 URL 无协议时补全（如 beamio.ca/Vouchers?Amount=... 或 /Vouchers?Amount=...）
-					const withProto = qq.startsWith('/') ? 'https://beamio.ca' + qq : 'https://' + qq
-					if (isPaymentUrl(withProto)) url = new URL(withProto)
-					else throw new Error('not url')
-				} else {
-					throw new Error('not url')
+			const url = searchInputToUrl(qq)
+			if (url) {
+				if (url.protocol === 'https:' || url.protocol === 'http:') {
+					await requestUrl(url)
+					setLoading(false)
+					setShowDropdown(false)
+					return
 				}
-			}
-			if (url.protocol === 'https:' || url.protocol === 'http:') {
-				await requestUrl(url)
+				setInternalError(true)
 				setLoading(false)
 				setShowDropdown(false)
 				return
 			}
-			setInternalError(true)
-			setLoading(false)
-			setShowDropdown(false)
-			return
 		} catch {
 			// 非 URL，继续走用户名/地址搜索
 		}

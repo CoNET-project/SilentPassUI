@@ -80,7 +80,7 @@
 		"postinstall": "node scripts/copyFfmpegCorePublic.mjs",
 		"prebuild": "node scripts/copyFfmpegCorePublic.mjs",
 		"start": "craco start",
-		"build:react": "CI=false env=production node node_modules/.bin/craco build",
+		"build:react": "CI=false GENERATE_SOURCEMAP=false env=production node node_modules/.bin/craco build",
 		"test": "craco test",
 		"eject": "react-scripts eject",
 		"build:loader": "node scripts/build-loader.js",

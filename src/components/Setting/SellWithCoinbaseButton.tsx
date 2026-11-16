@@ -1,5 +1,6 @@
 
 import { AppButton } from '../button/AppButton'
+import { resolveOutboundHref } from '@/utils/legacyBeamioLinks'
 import { useEffect, useRef, useState } from 'react'
 
 type Prof = {
@@ -35,7 +36,12 @@ export const SellWithCoinbaseButton = ({ myAddress }: Prof) => {
 		}
 
 		// ⭐ 打开 Coinbase 提现 / 卖币 UI
-		window.open(offrampUrl, '_blank', 'noopener,noreferrer')
+		const offrampHref = resolveOutboundHref(offrampUrl)
+		if (!offrampHref) {
+			console.error('Invalid offrampUrl in response')
+			return
+		}
+		window.open(offrampHref, '_blank', 'noopener,noreferrer')
 		} catch (e) {
 		console.error('open coinbase offramp error', e)
 		} finally {

@@ -171,6 +171,7 @@ import {
 } from '@/utils/cardProgramReferrerChain';
 import { resolveBeamioAaForEoaWithFallback } from '@/utils/resolveBeamioAaFromCardFactory';
 import { ensureConetAaForEoa } from '@/utils/ensureConetAa';
+import { resolveOutboundHref } from '@/utils/legacyBeamioLinks';
 import { parseRedeemAdminFromUrl } from '@/utils/parseRedeemAdminFromUrl';
 import { BIZ_PUBLIC_LOGO512 } from '@/pages/Home/brandUi';
 import {
@@ -4005,7 +4006,12 @@ function WalletsTreasuryShell(props: {
         setCashOutError('Invalid response from server.');
         return;
       }
-      window.open(data.offrampUrl, '_blank', 'noopener,noreferrer');
+      const offrampHref = resolveOutboundHref(data.offrampUrl);
+      if (!offrampHref) {
+        setCashOutError('Invalid response from server.');
+        return;
+      }
+      window.open(offrampHref, '_blank', 'noopener,noreferrer');
       setCashOutModalOpen(false);
     } catch {
       setCashOutError('Something went wrong.');
@@ -30350,8 +30356,14 @@ const overviewCustomerBalanceFromActivity = useMemo(() => {
          return;
        }
        setMerchantKitStripeSessionId(j.sessionId);
+       const checkoutHref = resolveOutboundHref(j.url);
+       if (!checkoutHref) {
+         setMerchantKitStripeUi('failed');
+         setMerchantKitStripeMessage('Invalid response from server.');
+         return;
+       }
        /* No noopener: we need a real Window ref so `popup.closed` works when the user dismisses Checkout. */
-       const popup = window.open(j.url, '_blank');
+       const popup = window.open(checkoutHref, '_blank');
        if (!popup) {
          setMerchantKitStripeUi('failed');
          setMerchantKitStripeMessage('Popup was blocked. Allow popups for this site and try again.');
@@ -30529,7 +30541,13 @@ const overviewCustomerBalanceFromActivity = useMemo(() => {
          return;
        }
        setFuelPackStripeSessionId(j.sessionId);
-       const popup = window.open(j.url, '_blank');
+       const checkoutHref = resolveOutboundHref(j.url);
+       if (!checkoutHref) {
+         setFuelPackStripeUi('failed');
+         setFuelPackStripeMessage('Invalid response from server.');
+         return;
+       }
+       const popup = window.open(checkoutHref, '_blank');
        if (!popup) {
          setFuelPackStripeUi('failed');
          setFuelPackStripeMessage('Popup was blocked. Allow popups for this site and try again.');

@@ -6,6 +6,7 @@ import {useState, useMemo} from 'react'
 
 import { ethers } from "ethers"
 import {AppButton} from '@/components/button/AppButton'
+import { resolveOutboundHref } from '@/utils/legacyBeamioLinks'
 
 const capitalize = (str: string) => {
   if (!str) return ''
@@ -146,7 +147,9 @@ export const RedeemOrLinkCard = ({
 
 	const handleOpenLink = () => {
 		if (!successUrl) return
-		window.open(successUrl, '_blank')
+		const href = resolveOutboundHref(successUrl)
+		if (!href) return
+		window.open(href, '_blank')
 	}
 
 	const requestGross = amt + tip; // payer will pay

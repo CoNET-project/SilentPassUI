@@ -3,6 +3,7 @@ import { CheckCircle2, ChevronDown, ChevronRight, CreditCard, ExternalLink, Load
 import { ethers } from 'ethers'
 import { useDaemonContext } from '@/providers/DaemonProvider'
 import { beamioApi } from '@/utils/constants'
+import { resolveOutboundHref } from '@/utils/legacyBeamioLinks'
 import {
 	encodeAddAdminsWithMintLimit,
 	postCardAddAdminBatch,
@@ -149,7 +150,10 @@ function sendStripeTabMessage(stripeTab: Window, payload: Record<string, unknown
 	}
 }
 
-function navigateStripeTab(stripeTab: Window, url: string): void {
+function navigateStripeTab(stripeTab: Window, rawUrl: string): void {
+	// 服务端返回的地址先经旧域映射；映射失败（不识别或被拒绝）时不导航
+	const url = resolveOutboundHref(rawUrl)
+	if (!url) return
 	sendStripeTabMessage(stripeTab, { type: STRIPE_OAUTH_NAVIGATE_TYPE, url })
 	try {
 		stripeTab.location.replace(url)

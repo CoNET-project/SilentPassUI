@@ -21,6 +21,11 @@ const LEGACY_BIZ = 'biz.beamio.app'
 /** 无协议的旧链接只在其后紧跟路径、查询或片段时识别，避免把裸域名误判为链接。 */
 const SCHEMELESS_LEGACY_RE = /^(?:[a-z0-9-]+\.)*beamio\.app(?=[/?#])/i
 
+/** 主机是否为旧域（beamio.app 或其子域）。 */
+function isLegacyHostName(host: string): boolean {
+	return host === LEGACY_APEX || host.endsWith(`.${LEGACY_APEX}`)
+}
+
 /** 旧主机与路径对应的新位置；不是 beamio.app 或其子域时返回 null。 */
 function legacyLocationFor(host: string, pathname: string): { host: string; pathname: string } | null {
 	if (host === LEGACY_BIZ) return { host: BIZ_HOST, pathname }
@@ -32,6 +37,8 @@ function legacyLocationFor(host: string, pathname: string): { host: string; path
 	if (host.endsWith(`.${LEGACY_APEX}`)) return { host: CONSUMER_HOST, pathname }
 	return null
 }
+
+const REFUSED = 'legacy beamio.app link refused'
 
 /**
  * 若 raw 是旧域 beamio.app 系列的链接，返回等价的 https 链接（beamio.ca 或 biz.beamio.ca）；否则返回 null。
@@ -73,17 +80,15 @@ function resolveWithBase(input: string, base: string): URL {
 	} catch {
 		absolute = null
 	}
-	if (absolute && legacyLocationFor(absolute.hostname.toLowerCase().replace(/\.$/, ''), absolute.pathname) !== null) {
-		return absolute
-	}
+	if (absolute && isLegacyHostName(absolute.hostname.toLowerCase().replace(/\.$/, ''))) return absolute
 	return new URL(input, base)
 }
 
 /**
- * 把任意输入解析为 URL，并保证结果的主机永不是旧域。
- * 与 new URL(input, base) 相同，但若解析结果落在 beamio.app 或其子域上（包括协议相对 //beamio.app、
- * 反斜杠、制表符、单斜杠 https:/beamio.app 等形式），只改写主机为新域，路径、查询、片段保留，
- * 并清除用户名、密码与端口。调用方拿到的 href 因此不会携带旧域主机。
+ * 把输入解析为 URL，并保证结果的主机永不是旧域。
+ * 与 new URL(input, base) 相同；若解析结果落在 beamio.app 或其子域上（包括协议相对 //beamio.app、
+ * 反斜杠、制表符、单斜杠 https:/beamio.app 等形式），映射为新域，路径、查询、片段保留。
+ * 旧域但不允许映射（带用户名或密码、非默认端口、非 http(s)、无映射目标）时抛出异常，调用方不得请求或导航。
  * 解析失败时与 new URL 一样抛出异常。
  */
 export function resolveBeamioUrl(input: string, base?: string): URL {
@@ -93,8 +98,13 @@ export function resolveBeamioUrl(input: string, base?: string): URL {
 		: base === undefined
 			? new URL(input)
 			: resolveWithBase(input, base)
-	const loc = legacyLocationFor(u.hostname.toLowerCase().replace(/\.$/, ''), u.pathname)
-	if (loc === null) return u
+	const host = u.hostname.toLowerCase().replace(/\.$/, '')
+	if (!isLegacyHostName(host)) return u
+	// 旧域主机：带用户名或密码、非默认端口、非 http(s)、或无映射目标的，一律拒绝（不映射、不请求）
+	if (u.username !== '' || u.password !== '' || u.port !== '') throw new Error(REFUSED)
+	if (u.protocol !== 'https:' && u.protocol !== 'http:') throw new Error(REFUSED)
+	const loc = legacyLocationFor(host, u.pathname)
+	if (loc === null) throw new Error(REFUSED)
 	const out = new URL(u.href)
 	out.protocol = 'https:'
 	out.hostname = loc.host

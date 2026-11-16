@@ -42,6 +42,20 @@ describe('syncImgSrcFor: image sources never load from the legacy host', () => {
 		expect(xhrOpenSpy).not.toHaveBeenCalled()
 	})
 
+	test.each([
+		'https://beamio.app:8443/uploads/a.png',
+		'https://user:pw@beamio.app/uploads/a.png',
+		'https://beamio.app/uploads/a.png?x=1',
+	])('refused or unrefused legacy %s never returns the old host', (input) => {
+		const out = syncImgSrcFor(input) as string
+		expect(out.toLowerCase()).not.toContain('beamio.app')
+	})
+
+	test('a refused legacy image source yields an empty src (existing placeholder)', () => {
+		expect(syncImgSrcFor('https://beamio.app:8443/uploads/a.png')).toBe('')
+		expect(syncImgSrcFor('https://user:pw@beamio.app/uploads/a.png')).toBe('')
+	})
+
 	test('legacy fragment URLs go to the IPFS library path, not to the image src', () => {
 		expect(syncImgSrcFor(`https://beamio.app/api/fragment?hash=${HASH}`)).toBeNull()
 		expect(syncImgSrcFor(`https://ipfs.conet.network/api/getFragment?hash=${HASH}`)).toBeNull()

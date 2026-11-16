@@ -32,7 +32,13 @@ describe('openCashcodeInNewTab: cashcode links map to beamio.ca before opening',
 		expect(xhrOpenSpy).not.toHaveBeenCalled()
 	})
 
-	test.each(['not a url', 'javascript:alert(1)', ''])('does not open %j', (input) => {
+	test.each([
+		'not a url',
+		'javascript:alert(1)',
+		'',
+		'https://beamio.app:8443/app/?cashcode=ABC',
+		'https://user:pw@beamio.app/app/?cashcode=ABC',
+	])('does not open %j', (input) => {
 		const open = jest.fn()
 		expect(openCashcodeInNewTab(input, open)).toBe(false)
 		expect(open).not.toHaveBeenCalled()

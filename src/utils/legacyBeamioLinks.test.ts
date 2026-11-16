@@ -123,8 +123,6 @@ describe('resolveBeamioUrl: no parsed URL keeps the old host', () => {
 		['//beamio.app/x', 'https://beamio.ca/x', 'https://beamio.ca'],
 		['https:/beamio.app/x', 'https://beamio.ca/x', undefined],
 		['https://beamio.app\\Vouchers?x=1', 'https://beamio.ca/Vouchers?x=1', undefined],
-		['https://user:pw@beamio.app/x', 'https://beamio.ca/x', undefined],
-		['https://beamio.app:8443/x', 'https://beamio.ca/x', undefined],
 		['/Vouchers?Amount=1', 'https://beamio.ca/Vouchers?Amount=1', 'https://beamio.ca'],
 		['https://example.com/a', 'https://example.com/a', undefined],
 	])('%s', (input, expected, base) => {
@@ -197,5 +195,51 @@ describe('apex /biz paths map to the biz host (B3: beamio.ca/biz returns 500, bi
 
 	test('www keeps the consumer host for /biz (apex-only rule; see receipt, open decision)', () => {
 		expect(mapLegacyBeamioLink('https://www.beamio.app/biz/')).toBe('https://beamio.ca/biz/')
+	})
+})
+
+describe('F7: legacy links with credentials or a non-default port are refused, never mapped or requested', () => {
+	test.each([
+		'https://user:pw@beamio.app/x',
+		'https://beamio.app@evil.com/x',
+		'https://beamio.app:8443/x',
+		'http://beamio.app:443/x',
+		'https://beamio.app:80/x',
+		'https://biz.beamio.app:8443/biz/',
+		'https://beamio.app:8443/biz/',
+		'https://www.beamio.app:8080/help',
+		'ftp://beamio.app/x',
+	])('mapLegacyBeamioLink returns null for %s', (input) => {
+		expect(mapLegacyBeamioLink(input)).toBeNull()
+	})
+
+	test.each([
+		'https://user:pw@beamio.app/x',
+		'https://beamio.app:8443/x',
+		'http://beamio.app:443/x',
+		'ftp://beamio.app/x',
+		'//beamio.app:8443/x',
+	])('resolveBeamioUrl throws for %s, with or without a base', (input) => {
+		expect(() => resolveBeamioUrl(input)).toThrow()
+		expect(() => resolveBeamioUrl(input, 'https://beamio.ca')).toThrow()
+	})
+
+	test.each([
+		'https://user:pw@beamio.app/x',
+		'https://beamio.app:8443/x',
+	])('resolveBeamioHttpHref returns null for %s', (input) => {
+		expect(resolveBeamioHttpHref(input)).toBeNull()
+		expect(resolveBeamioHttpHref(input, 'https://beamio.ca')).toBeNull()
+	})
+
+	test('default ports are not a refusal: https:443 and http:80 map normally', () => {
+		expect(mapLegacyBeamioLink('https://beamio.app:443/x')).toBe('https://beamio.ca/x')
+		expect(mapLegacyBeamioLink('http://beamio.app:80/x')).toBe('https://beamio.ca/x')
+		expect(resolveBeamioUrl('https://beamio.app:443/x').href).toBe('https://beamio.ca/x')
+	})
+
+	test('the outbound helper returns null for refused legacy links', () => {
+		expect(resolveOutboundHref('https://beamio.app:8443/x')).toBeNull()
+		expect(resolveOutboundHref('https://user:pw@beamio.app/x')).toBeNull()
 	})
 })

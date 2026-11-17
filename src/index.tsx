@@ -17,8 +17,11 @@ import { BeamioTagDatabaseProvider } from './providers/BeamioTagDatabaseProvider
 import { IpfsImageLibraryProvider } from './providers/IpfsImageLibraryProvider'
 import { HashRouter as Router } from 'react-router-dom'
 import { applyPendingConsumerDeepLinkIfNeeded } from './utils/pendingConsumerDeepLink'
+import { installBeamioChatReceiver } from './utils/androidChatChannel'
 void loadApiExcludedUserCards()
 applyPendingConsumerDeepLinkIfNeeded()
+// window.BeamioChat (top frame, Android shell); a no-op without it.
+installBeamioChatReceiver()
 
 const root = ReactDOM.createRoot(
   	document.getElementById('root') as HTMLElement

@@ -13,7 +13,8 @@ import {ethers} from 'ethers'
 import {aesGcmEncrypt, aesGcmDecrypt, toBase64, fromBase64, storeSystemData } from '@/services/beamio'
 import { publishNativePwaLog } from '@/utils/cashTreesNativePwaLog'
 import { sendChatViaNativeDaemon, getWorkerGossipListenParams, getWorkerGossipRouteArmor, isWorkerGossipActive, isWorkerGossipBusy, isNativeChatListenOwner, pauseNativeChatListen, resumeNativeChatListen, retargetWorkerGossipRoute, startWorkerGossipListen, stopWorkerGossip } from '@/services/chatWorkerBridge'
-import { isCashTreesAndroidChatModuleAvailable, isCashTreesAndroidChatModuleRunning } from '@/utils/cashTreesAndroidConetChat'
+import { isCashTreesAndroidChatModuleRunning } from '@/utils/cashTreesAndroidConetChat'
+import { androidChatModulePresent } from '@/utils/androidChatChannel'
 import { wrapArmorToMailboxWork } from '@conet.project/chat-sdk'
 import { createOwnRegisterBackoff, pickRecordedMailbox, planOwnChatRoute, readOwnChainState, recheckListenRoute, resolveCurrentMailbox, verifyRegistration } from '@/services/chatOwnRoutePlan'
 import type { OwnPrivateBlob } from '@/services/chatOwnRoutePlan'
@@ -1457,7 +1458,8 @@ export const shouldResumeGossipListen = (staleMs = 45_000): boolean => {
 	// itself. Rebuilding chat here took ~9 s and held the incoming offer and the
 	// caller's cancel in the mailbox meanwhile.
 	if (isNativeChatListenOwner()) return false
-	if (isCashTreesAndroidChatModuleAvailable() && isCashTreesAndroidChatModuleRunning()) return false
+	// The Android module through either channel (window.BeamioChat, or the legacy chatModuleCommand) owns the listen as well.
+	if (androidChatModulePresent() && isCashTreesAndroidChatModuleRunning()) return false
 	// Connecting / draining offline — do not abort
 	if (!lastGossipActivityAt) return false
 	return Date.now() - lastGossipActivityAt > staleMs

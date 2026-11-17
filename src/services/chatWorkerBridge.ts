@@ -54,6 +54,7 @@ import {
 } from './nativeConetChatTransport'
 import { ackInboundHashesInBrowser } from './browserInboundAck'
 import { isMailboxAckSent, noteMailboxAckSent } from '../utils/chatDeliveryReceipt'
+import { postAndroidChatCommand } from '../utils/androidChatChannel'
 
 /** True when any native shell path must own Chat (no TS gossip Worker). */
 function mustUseNativeChatBridge(): boolean {
@@ -452,9 +453,8 @@ export const clearNativeChatIdentity = (): void => {
 			ios.chatModuleCommand({ action: 'chatModuleCommand', command: cmd })
 			return
 		}
-		const android = (window as unknown as { CashTreesAndroid?: { chatModuleCommand?: (json: string) => void } })
-			.CashTreesAndroid
-		android?.chatModuleCommand?.(JSON.stringify(cmd))
+		// window.BeamioChat (top frame) when present, else CashTreesAndroid.chatModuleCommand (androidChatChannel.ts).
+		postAndroidChatCommand(cmd)
 	} catch {
 		/* no shell */
 	}

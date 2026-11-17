@@ -37,10 +37,15 @@ import type {
 import {
 	callAndroidBridgeSafe,
 	getAndroidChatHost,
-	isCashTreesAndroidChatModuleAvailable,
 	isCashTreesAndroidConetChatAvailable,
 	isCashTreesAndroidShell,
 } from '../utils/cashTreesAndroidConetChat'
+import {
+	androidChatChannelKind,
+	androidChatModulePresent,
+	postAndroidChatCommand,
+	postAndroidSignResponse,
+} from '../utils/androidChatChannel'
 import { createNativeConetChatClient, type NativeChatBridge } from './nativeConetChatTransport'
 
 type ListenerBag<K extends ChatEventName> = Set<ChatEventListener<K>>
@@ -98,7 +103,8 @@ function nodesForNative(nodes: NodeInfo[]): Array<{
  * briefly fails).
  */
 export function preferAndroidNativeChatClient(): boolean {
-	return isCashTreesAndroidConetChatAvailable() || isCashTreesAndroidShell()
+	// window.BeamioChat (top frame) is a shell too: a page with only that channel must never start the TS gossip Worker.
+	return isCashTreesAndroidConetChatAvailable() || isCashTreesAndroidShell() || androidChatModulePresent()
 }
 
 /**
@@ -109,28 +115,25 @@ const ANDROID_NATIVE_CHAT_BRIDGE: NativeChatBridge = {
 	label: 'android native chat',
 	eventName: 'cashtreesandroid',
 	postCommand(cmd) {
-		const host = getAndroidChatHost()
-		if (!host || typeof host.chatModuleCommand !== 'function') {
+		// window.BeamioChat (top frame) when present, else CashTreesAndroid.chatModuleCommand (androidChatChannel.ts).
+		if (!postAndroidChatCommand(cmd as Record<string, unknown>)) {
 			throw new Error('CashTreesAndroid.chatModuleCommand unavailable')
 		}
-		// Reflect.apply: never detach a Java bridge method from its host (Illegal invocation).
-		Reflect.apply(host.chatModuleCommand, host, [JSON.stringify(cmd)])
 	},
 	signResponse(payload) {
-		const host = getAndroidChatHost()
-		if (!host || typeof host.chatModuleSignResponse !== 'function') {
+		if (!postAndroidSignResponse(payload as Record<string, unknown>)) {
 			throw new Error('chatModuleSignResponse unavailable')
 		}
-		Reflect.apply(host.chatModuleSignResponse, host, [JSON.stringify(payload)])
 	},
 }
 
 /**
- * Android shell chat client. With `chat-sdk-android` (`chatModuleCommand`) this is the same native
- * client the iOS shell uses; older shells fall back to the listen-only bridge below.
+ * Android shell chat client. With a chat channel (`window.BeamioChat` in the top frame, or the legacy
+ * `chatModuleCommand`) this is the same native client the iOS shell uses; older shells fall back to the
+ * listen-only bridge below.
  */
 export function createAndroidNativeChatClient(config: BeamioChatConfig): BeamioChatClient {
-	if (isCashTreesAndroidChatModuleAvailable()) {
+	if (androidChatChannelKind() !== 'none') {
 		return createNativeConetChatClient(config, ANDROID_NATIVE_CHAT_BRIDGE)
 	}
 	return createLegacyAndroidListenClient(config)

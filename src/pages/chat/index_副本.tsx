@@ -50,7 +50,7 @@ const Browser = ({}) => {
 		try {
 			const url = new URL(value)
 
-			const isBeamio = url.hostname === "beamio.app"
+			const isBeamio = url.hostname === "beamio.ca" || url.hostname === "beamio.app"
 			const hasParams = [...url.searchParams].length > 0
 
 			if (!isBeamio || !hasParams) {
@@ -219,7 +219,7 @@ const Browser = ({}) => {
 										<input
 											value={value}
 											onChange={(e) => setValue(e.target.value)}
-											placeholder="https://beamio.app/pay/..."
+											placeholder="https://beamio.ca/pay/..."
 											className="flex-1 bg-transparent outline-none text-xs md:text-sm text-slate-900 placeholder:text-slate-400 text-center"
 										/>
 										<button

@@ -482,7 +482,7 @@ async function registerDeviceToken(
 }
 
 /**
- * iOS WKWebView custom-scheme fetch to beamio.app can fail silently.
+ * iOS WKWebView custom-scheme fetch to beamio.ca can fail silently.
  * Native URLSession posts the already-signed body (PWA still owns EIP-191).
  */
 async function postRegisterPushDeviceHttp(body: {

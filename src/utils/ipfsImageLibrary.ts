@@ -82,14 +82,14 @@ export function normalizeFragmentHash(raw: string | undefined | null): string | 
   return `0x${body.toLowerCase()}`
 }
 
-/** Parse hash from ipfs.conet.network getFragment or beamio.app /api/fragment URLs. */
+/** Parse hash from ipfs.conet.network getFragment or beamio.ca /api/fragment URLs. */
 export function parseFragmentHashFromUrl(url: string): string | null {
   try {
     const u = new URL(url.trim())
     const host = u.hostname.toLowerCase()
     if (host === 'ipfs.conet.network' || host.endsWith('.ipfs.conet.network')) {
       if (!u.pathname.endsWith('/getFragment')) return null
-    } else if (host === 'beamio.app' || host.endsWith('.beamio.app')) {
+    } else if (host === 'beamio.ca' || host.endsWith('.beamio.ca') || host === 'beamio.app' || host.endsWith('.beamio.app')) {
       if (u.pathname !== '/api/fragment') return null
     } else {
       return null
@@ -280,7 +280,7 @@ async function parseFragmentResponseToBlob(res: Response): Promise<{ blob: Blob;
   return null
 }
 
-const BEAMIO_FRAGMENT_PROXY_BASE = 'https://beamio.app/api/fragment?hash='
+const BEAMIO_FRAGMENT_PROXY_BASE = 'https://beamio.ca/api/fragment?hash='
 
 /** Network fetch only; does not read or write local library. */
 export async function fetchIpfsFragmentFromNetwork(
@@ -295,7 +295,7 @@ export async function fetchIpfsFragmentFromNetwork(
   ]
 
   for (const url of candidateUrls) {
-    // A stalled first host must not keep the beamio.app proxy from being tried.
+    // A stalled first host must not keep the beamio.ca proxy from being tried.
     const controller = new AbortController()
     const timer = setTimeout(() => controller.abort(), IPFS_IMAGE_FETCH_TIMEOUT_MS)
     try {

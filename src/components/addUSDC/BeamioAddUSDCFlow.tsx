@@ -25,7 +25,7 @@ import StepAmount, { type RampMode } from './StepAmount'
 import { AppButton } from "../button/AppButton";
 import { tu } from '@/locale/beamioLocale'
 import { closeReservedExternalWindow, navigateReservedOrOpenExternal, peekReservedExternalWindow, reserveExternalBrowserWindow } from '@/utils/cashTreesNativeNfc'
-const remote = 'https://beamio.app'
+const remote = 'https://beamio.ca'
 
 
 type Screen = "hub" | "stripe" | "coinbase" | "coinbase_error" | "transfer" | "receive" | "profile_qr" | 'coinbase_next'

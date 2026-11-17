@@ -8,7 +8,7 @@ import { multicallAggregate3Conet, decodeUint256 } from '../multicall'
 const LIKE_TOKEN_ID = 19n
 const REF_CLICK_TOKEN_ID = 21n
 const READ_IFACE = new ethers.Interface(['function totalSupply(uint256 id) view returns (uint256)'])
-const SOCIAL_API = 'https://beamio.app/api/cardProgramSocial'
+const SOCIAL_API = 'https://beamio.ca/api/cardProgramSocial'
 
 export type WorkerDiscoverMerchantStat = {
 	cardAddress: string

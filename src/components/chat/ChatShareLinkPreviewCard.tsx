@@ -120,7 +120,7 @@ export function ChatShareLinkPreviewCard({ shareUrl, timeLabel, isMe, onOpen }: 
 				<div className="mt-2.5 flex items-center gap-1 pt-2 border-t border-slate-100">
 					<ExternalLink className="h-3 w-3 text-slate-400" aria-hidden />
 					<span className="text-[10px] font-semibold text-slate-400 tracking-wider uppercase truncate">
-						beamio.app
+						beamio.ca
 					</span>
 				</div>
 			</div>

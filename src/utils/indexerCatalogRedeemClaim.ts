@@ -2,7 +2,7 @@ import { ethers } from 'ethers';
 
 export const CATALOG_ISSUED_NFT_TOKEN_ID_MIN = 100_000_000_000n;
 
-const BEAMIO_SERIES_METADATA_ORIGIN = 'https://beamio.app';
+const BEAMIO_SERIES_METADATA_ORIGIN = 'https://beamio.ca';
 
 /** `/api/seriesSharedMetadata` — coupon/catalog redeem display name source. */
 export async function fetchBeamioSeriesSharedMetadata(

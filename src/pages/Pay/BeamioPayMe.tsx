@@ -21,7 +21,7 @@ import ShowPayQR from '@/pages/Vouchers/showPayQR'
 import { tu } from '@/locale/beamioLocale'
 import { openExternalUrl } from '@/utils/cashTreesNativeNfc'
 
-const showPaylinkSite = 'https://beamio.app'
+const showPaylinkSite = 'https://beamio.ca'
 /** B-Unit fee: 0.8% of amount in USDC, 100 B-Units = 1 USDC. Min 2, max 200 B-Units; >=5000 USDC → 500 B-Units */
 const calcFeeBUnits = (amountUsdc: number) => {
 	if (!isFinite(amountUsdc) || amountUsdc <= 0) return 0
@@ -180,7 +180,7 @@ export default function BeamioPayMe(props: BeamioPayMeProps) {
 		})
 		if (billForText.trim()) params.set('forText', billForText.trim())
 		if (billValidDays >= 1) params.set('validDays', String(Math.floor(billValidDays)))
-		const url = `https://beamio.app/Vouchers?${params.toString()}`
+		const url = `https://beamio.ca/Vouchers?${params.toString()}`
 		setPendingPaymentUrl(url)
 		setShowAmountInput(false)
 

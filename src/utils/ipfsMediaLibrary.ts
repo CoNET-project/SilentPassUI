@@ -9,7 +9,7 @@ import {
 const DB_NAME = 'beamio_ipfs_media_library_v1'
 const DB_VERSION = 1
 const STORE = 'fragments'
-const BEAMIO_FRAGMENT_PROXY_BASE = 'https://beamio.app/api/fragment?hash='
+const BEAMIO_FRAGMENT_PROXY_BASE = 'https://beamio.ca/api/fragment?hash='
 /** Videos are tens of MB; this only bounds a stalled connection, not a slow download. */
 const IPFS_MEDIA_FETCH_TIMEOUT_MS = 120000
 

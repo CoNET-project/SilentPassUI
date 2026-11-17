@@ -16,11 +16,11 @@ export function buildMerchantGiftRedeemShareUrl(
 	const addr = cardAddress?.trim() ?? ''
 	const code = redeemCode?.trim() ?? ''
 	if (!addr || !code || !ethers.isAddress(addr)) return ''
-	const redeemUrl = `https://beamio.app/app/?beamiocard=${encodeURIComponent(
+	const redeemUrl = `https://beamio.ca/app/?beamiocard=${encodeURIComponent(
 		ethers.getAddress(addr),
 	)}&redeemcode=${encodeURIComponent(code)}${
 		giftImageUrl?.trim() ? `&giftimage=${encodeURIComponent(giftImageUrl.trim())}` : ''
 	}`
-	const base = `https://beamio.app/app-download?target=${encodeURIComponent(redeemUrl)}`
+	const base = `https://beamio.ca/app-download?target=${encodeURIComponent(redeemUrl)}`
 	return appendAppDownloadShareCacheBust(base, cacheBustV)
 }

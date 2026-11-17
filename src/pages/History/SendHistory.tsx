@@ -30,7 +30,7 @@ import { useNavigate, useLocation } from 'react-router-dom'
 
 
 
-const showPaylinkSite = 'https://beamio.app'
+const showPaylinkSite = 'https://beamio.ca'
 
 
 const getBadgeClass = (type: HistoryFilter) => {

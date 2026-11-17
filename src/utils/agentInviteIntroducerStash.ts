@@ -132,6 +132,6 @@ export function stashAgentInviteIntroducerFromCurrentUrl(): string | null {
 export function buildAgentInviteAppUrl(introducerEoa: string): string {
 	const addr = normalizeAddress(introducerEoa)
 	if (!addr) return ''
-	const app = `https://beamio.app/app/?invite=${addr}`
-	return `https://beamio.app/app-download?target=${encodeURIComponent(app)}`
+	const app = `https://beamio.ca/app/?invite=${addr}`
+	return `https://beamio.ca/app-download?target=${encodeURIComponent(app)}`
 }

@@ -2,14 +2,14 @@
  * Cluster JSON for Blockscout `/validator/:pubkey` pages.
  *
  * HTML: https://mainnet.conet.network/validator/{pubkey}
- * API:  https://beamio.app/api/v2/conet/validators/{pubkey}
+ * API:  https://beamio.ca/api/v2/conet/validators/{pubkey}
  *
  * Blockscout native `https://mainnet.conet.network/api/v2/...` does **not** expose this
  * (`Unknown API v2 action`). CL skim (`clRewardPaidWei`) is the server-side aggregate of
  * `NodeRewardSettled` — never recover it with genesis `eth_getLogs`.
  */
 
-const BEAMIO_API_BASE = 'https://beamio.app'
+const BEAMIO_API_BASE = 'https://beamio.ca'
 const PUBKEY_RE = /^0x[0-9a-f]{96}$/
 const FETCH_TIMEOUT_MS = 12_000
 const MEMORY_TTL_MS = 30_000

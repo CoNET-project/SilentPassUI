@@ -4,7 +4,7 @@ import { useSearchParams } from 'react-router-dom'
 import { useDaemonContext } from '@/providers/DaemonProvider'
 
 /** Absolute API host — required in iOS Embedded OTA (`cashtrees-local://`). */
-const BEAMIO_API_BASE = 'https://beamio.app'
+const BEAMIO_API_BASE = 'https://beamio.ca'
 
 type StripeStatus = {
 	status?: 'pending' | 'succeeded' | 'failed'

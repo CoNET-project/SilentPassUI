@@ -13,13 +13,13 @@ export const BEAMIO_TAG_PROFILE_STALE_MS = 7 * 24 * 60 * 60 * 1000
 export const BEAMIO_TAG_DISPLAY_FRESH_MS = 180_000
 export const BEAMIO_TAG_FETCH_MAX_PER_TICK = 28
 export const BEAMIO_TAG_BACKGROUND_TICK_MS = 60_000
-export const BEAMIO_TAG_SEARCH_USERS_URL = 'https://beamio.app/api/search-users'
+export const BEAMIO_TAG_SEARCH_USERS_URL = 'https://beamio.ca/api/search-users'
 
 /** Merchant program cards — global store (not EOA-partitioned). Keep current product cadence. */
 export const MERCHANT_CARD_STALE_MS = 5 * 60 * 1000
 export const MERCHANT_CARD_FETCH_MAX_PER_TICK = 16
 export const MERCHANT_CARD_BACKGROUND_TICK_MS = 5 * 60 * 1000
-export const MERCHANT_CARD_API_BASE = 'https://beamio.app'
+export const MERCHANT_CARD_API_BASE = 'https://beamio.ca'
 export const MERCHANT_CARD_RPC_URL = 'https://publicrpc.conet.network'
 
 export type BeamioTagWorkerInitPayload = {

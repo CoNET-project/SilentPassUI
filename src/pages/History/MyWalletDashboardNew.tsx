@@ -1,5 +1,5 @@
 import { IpfsImg } from '@/components/IpfsImg';
-//		`https://beamio.app/app/?beamiocard=${cardaddress}&redeemcode=${redeemcode}`
+//		`https://beamio.ca/app/?beamiocard=${cardaddress}&redeemcode=${redeemcode}`
 
 
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react'
@@ -995,9 +995,9 @@ export default function MyWalletDashboardNew() {
 
 	const storeDepositQrValue = useMemo(() => {
 		const tag = beamio?.accountName?.trim()
-		if (tag) return `https://beamio.app?beamio=${encodeURIComponent(tag)}`
+		if (tag) return `https://beamio.ca?beamio=${encodeURIComponent(tag)}`
 		if (myAddress && ethers.isAddress(myAddress)) return ethers.getAddress(myAddress)
-		return 'https://beamio.app'
+		return 'https://beamio.ca'
 	}, [beamio?.accountName, myAddress])
 
 	const addCashCadRate = useMemo(() => fxRateUSDCToCurrency('CAD'), [fxRateUSDCToCurrency])
@@ -3359,7 +3359,7 @@ export default function MyWalletDashboardNew() {
 										onMore={() => {}}
 									/>
 									<ShowPayQR
-										successUrl={'https://beamio.app?beamio=' + (beamio?.accountName ?? '')}
+										successUrl={'https://beamio.ca?beamio=' + (beamio?.accountName ?? '')}
 										beamio={beamio ?? null}
 										qrValue={undefined}
 									/>
@@ -3444,7 +3444,7 @@ export default function MyWalletDashboardNew() {
 							/>
 							{aaRelayQRPayload && (
 								<ShowPayQR
-									successUrl={'https://beamio.app?beamio=' + (beamio?.accountName ?? '')}
+									successUrl={'https://beamio.ca?beamio=' + (beamio?.accountName ?? '')}
 									beamio={beamio ?? null}
 									qrValue={encodeOpenContainerRelayQrPayload(aaRelayQRPayload)}
 									hideActions

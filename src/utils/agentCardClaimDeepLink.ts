@@ -6,7 +6,7 @@ import { ethers } from 'ethers'
 import { unlockDetachedRecoverPrivateKey } from '@/services/beamio'
 import type { AgentTempAccount } from '@/utils/agentBusinessWorkspace'
 
-const MERCHANT_OS_BASE = 'https://biz.beamio.app/biz/'
+const MERCHANT_OS_BASE = 'https://biz.beamio.ca/biz/'
 const FLOW = 'agentCardClaim'
 
 export function buildAgentCardClaimUrl(input: {

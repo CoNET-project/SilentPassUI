@@ -88,7 +88,7 @@ export function ConformSignInfo({
 								Your Beamio wallet
 							</span>
 							<span className="text-[11px] text-slate-500">
-								Request from https://beamio.app
+								Request from https://beamio.ca
 							</span>
 						</div>
 						<div className="flex flex-col items-end gap-0.5 text-xs text-slate-600">

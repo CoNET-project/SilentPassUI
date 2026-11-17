@@ -41,6 +41,8 @@ export function isMeaningfulConsumerAppDeepLink(raw: string): boolean {
 		const u = new URL(input)
 		const host = u.host.toLowerCase()
 		const okHost =
+			host === 'beamio.ca' ||
+			host === 'www.beamio.ca' ||
 			host === 'beamio.app' ||
 			host === 'www.beamio.app' ||
 			host === 'localhost' ||

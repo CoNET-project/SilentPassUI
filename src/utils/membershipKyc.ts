@@ -194,7 +194,7 @@ function armorFromStored(raw: string): string {
 
 export async function loadMembershipKycPolicy(cardAddress: string): Promise<MembershipKycFormPolicy | null> {
 	const card = getAddress(cardAddress)
-	const response = await fetch(`https://beamio.app/api/cardMetadata?cardAddress=${card}`)
+	const response = await fetch(`https://beamio.ca/api/cardMetadata?cardAddress=${card}`)
 	if (!response.ok) {
 		throw new Error('Could not load membership details.')
 	}
@@ -420,7 +420,7 @@ export async function saveMembershipKycAndLink(params: {
 					},
 					value,
 				)
-	const response = await fetch('https://beamio.app/api/linkMembershipKyc', {
+	const response = await fetch('https://beamio.ca/api/linkMembershipKyc', {
 		method: 'POST',
 		headers: { 'content-type': 'application/json' },
 		body: JSON.stringify({

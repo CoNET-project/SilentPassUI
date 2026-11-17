@@ -14,14 +14,14 @@ export function buildCouponOpenClaimDistributionShareUrl(
 	const addr = cardAddress?.trim() ?? ''
 	const cid = couponId?.trim() ?? ''
 	if (!addr || !cid || !ethers.isAddress(addr)) return ''
-	let claimUrl = `https://beamio.app/app/?beamiocard=${encodeURIComponent(
+	let claimUrl = `https://beamio.ca/app/?beamiocard=${encodeURIComponent(
 		ethers.getAddress(addr),
 	)}&couponId=${encodeURIComponent(cid)}&claim=open`
 	const refRaw = referrerEoa?.trim() ?? ''
 	if (refRaw && ethers.isAddress(refRaw)) {
 		claimUrl += `&ref=${encodeURIComponent(ethers.getAddress(refRaw))}`
 	}
-	const base = `https://beamio.app/app-download?target=${encodeURIComponent(claimUrl)}`
+	const base = `https://beamio.ca/app-download?target=${encodeURIComponent(claimUrl)}`
 	return appendAppDownloadShareCacheBust(base)
 }
 

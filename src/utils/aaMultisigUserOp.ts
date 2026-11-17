@@ -297,7 +297,7 @@ export async function submitAaMultisigUserOp(params: {
 	packedUserOp: AaMultisigPackedUserOp
 	transferAsset: AaMultisigTransferAssetId
 }): Promise<{ success: boolean; hash?: string; error?: string }> {
-	const res = await fetch('https://beamio.app/api/AAtoEOA', {
+	const res = await fetch('https://beamio.ca/api/AAtoEOA', {
 		method: 'POST',
 		headers: { 'Content-Type': 'application/json' },
 		body: JSON.stringify({

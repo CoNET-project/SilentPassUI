@@ -82,7 +82,7 @@ const SPINNER_CLASS =
 	'[&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none [-moz-appearance:textfield]'
 
 /** Absolute API host — required in iOS Embedded OTA (`cashtrees-local://`); relative `/api` fails there. */
-const BEAMIO_API_BASE = 'https://beamio.app'
+const BEAMIO_API_BASE = 'https://beamio.ca'
 
 function readPendingStripeSession(key: string): string | null {
 	if (!key) return null

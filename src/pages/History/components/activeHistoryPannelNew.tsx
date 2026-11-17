@@ -309,7 +309,7 @@ function buildSmartReceiptIndexerRowJson(tx: TxView, fullRaw: Record<string, unk
 	}
 }
 
-/** 从 request 类 Transaction 组装 https://beamio.app/Vouchers URL */
+/** 从 request 类 Transaction 组装 https://beamio.ca/Vouchers URL */
 function buildVouchersUrl(tx: TxView): string | null {
 	const raw = tx.rawTransaction as RawTxRecord | undefined
 	if (!raw) return null
@@ -336,7 +336,7 @@ function buildVouchersUrl(tx: TxView): string | null {
 		validDays: String(validDays),
 	})
 	if (forText) params.set('forText', forText)
-	return `https://beamio.app/Vouchers?${params.toString()}`
+	return `https://beamio.ca/Vouchers?${params.toString()}`
 }
 
 /** 从地址构建最小 searchResult（无链上 profile 时用于 Chat initMessage） */

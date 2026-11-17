@@ -53,7 +53,7 @@ export default function BeamioGetHelpSettingsScreen({colse}:prof) {
             <button
               type="button"
               onClick={() =>
-                openExternalUrl("https://beamio.app/help")
+                openExternalUrl("https://beamio.ca/help")
               }
               className="w-full h-11 px-4 rounded-2xl border border-slate-200 bg-slate-50 flex items-center justify-between text-slate-800"
             >
@@ -64,7 +64,7 @@ export default function BeamioGetHelpSettingsScreen({colse}:prof) {
                 <div className="flex flex-col items-start">
                   <span>Open help center</span>
                   <span className="text-[11px] text-slate-400">
-                    FAQs and step-by-step guides (opens beamio.app/help)
+                    FAQs and step-by-step guides (opens beamio.ca/help)
                   </span>
                 </div>
               </div>
@@ -87,7 +87,7 @@ export default function BeamioGetHelpSettingsScreen({colse}:prof) {
                 <div className="flex flex-col items-start">
                   <span>Email support</span>
                   <span className="text-[11px] text-slate-400">
-                    support@beamio.app — we read every message during early access.
+                    support@beamio.ca — we read every message during early access.
                   </span>
                 </div>
               </div>

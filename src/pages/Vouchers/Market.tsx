@@ -7878,7 +7878,7 @@ function DiscoverMerchantDetailFullScreen({
 			setUsdcTopupRecipientAa(userAa)
 			setUsdcTopupWorkflow('treasuryBridge')
 			setUsdcTopupQrValue(qrValue)
-			setUsdcTopupProgress('Waiting for payment on beamio.app…')
+			setUsdcTopupProgress('Waiting for payment on beamio.ca…')
 			setUsdcTopupPhase('receive')
 		} catch (e: unknown) {
 			setDiscoverPayPanelError(mapServerError(e instanceof Error ? e.message : 'Failed to prepare receive QR'))
@@ -10513,7 +10513,7 @@ export default function Market() {
 							)}
 							{settingsOpen === "showPayQR" && (
 								<ShowPayQR
-									successUrl={"https://beamio.app?beamio=" + (beamio?.accountName || "")}
+									successUrl={"https://beamio.ca?beamio=" + (beamio?.accountName || "")}
 									beamio={beamio}
 									qrValue={qrPayload || undefined}
 								/>

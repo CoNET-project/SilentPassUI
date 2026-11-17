@@ -31,7 +31,7 @@ function fiatPrefix(ccy: ICurrency) {
 
 const getImg = (avatarSeed: string) => `https://api.dicebear.com/8.x/fun-emoji/svg?seed=${encodeURIComponent(avatarSeed).toString()}`
 const aptEndpoint = 'https://api.settleonbase.xyz'
-const showPaylinkSite = 'https://beamio.app'
+const showPaylinkSite = 'https://beamio.ca'
 
 const defaultTextTemp = `通过 Beamio 发送，免 Gas 费。`
 

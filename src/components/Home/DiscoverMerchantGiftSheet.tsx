@@ -104,7 +104,7 @@ import {
 
 const GIFT_BRAND_FALLBACK = '#2c2416'
 const AMOUNT_PRESETS = [25, 50, 100, 200] as const
-const BEAMIO_API_BASE = 'https://beamio.app'
+const BEAMIO_API_BASE = 'https://beamio.ca'
 
 type GiftFlowStep = 1 | 2 | 3 | 'select'
 type DeliveryMode = 'friend' | 'link'
@@ -1180,7 +1180,7 @@ export default function DiscoverMerchantGiftSheet({
 
 	const giftPurchaseUrl = useMemo(
 		() =>
-			`https://beamio.app/gift/${
+			`https://beamio.ca/gift/${
 				ethers.isAddress(cardAddress) ? encodeURIComponent(ethers.getAddress(cardAddress)) : encodeURIComponent(cardAddress)
 			}`,
 		[cardAddress],

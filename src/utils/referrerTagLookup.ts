@@ -14,7 +14,7 @@ import { localCallerAvatarDataUri } from './callerAvatar'
  * caller keeps showing the short address.
  */
 
-export const REFERRER_TAG_SEARCH_URL = 'https://beamio.app/api/search-users'
+export const REFERRER_TAG_SEARCH_URL = 'https://beamio.ca/api/search-users'
 export const REFERRER_TAG_TIMEOUT_MS = 4_000
 
 type FetchLike = (input: string, init?: RequestInit) => Promise<Pick<Response, 'ok' | 'json'>>

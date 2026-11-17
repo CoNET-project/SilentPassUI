@@ -29,7 +29,7 @@ export const DISCOVER_GENESIS_NODE_SEAT_WORKFLOW = 'genesisNodeSeat'
 /** Wallet USDC deposit: settle Base USDC → treasury initiator; LockMint CoNET-USDC → beneficiary (EOA or AA). */
 export const WALLET_USDC_DEPOSIT_WORKFLOW = 'walletDeposit'
 
-const BEAMIO_USDC_TOPUP_URL = 'https://beamio.app/usdc-topup'
+const BEAMIO_USDC_TOPUP_URL = 'https://beamio.ca/usdc-topup'
 
 /** Per-node list price (includes OPEX 120), USDC human units. */
 export const GENESIS_NODE_SEAT_USDC_PER_NODE = 4000
@@ -140,7 +140,7 @@ export function buildDiscoverUsdcClientTopupQrUrl(params: {
 	return url.toString()
 }
 
-/** Discover insufficient-balance path: third-party pays on beamio.app; settle → treasury; points → AA. */
+/** Discover insufficient-balance path: third-party pays on beamio.ca; settle → treasury; points → AA. */
 export type DiscoverMembershipPayFields = {
 	membershipTierIndex?: number | null
 	membershipFeeFiat6?: string | null
@@ -184,7 +184,7 @@ export function buildDiscoverUsdcTreasuryBridgeQrUrl(params: {
 	return url.toString()
 }
 
-/** CoNET Genesis Seat lock: open beamio.app x402 page (when local EOA USDC is insufficient). */
+/** CoNET Genesis Seat lock: open beamio.ca x402 page (when local EOA USDC is insufficient). */
 export function buildDiscoverGenesisNodeSeatUrl(params: {
 	cardAddress: string
 	cardOwner: string
@@ -762,7 +762,7 @@ type NfcUsdcTopupQuoteResponse = {
 	quotedUsdc?: string
 }
 
-/** Same quote as beamio.app/usdc-topup payment page — must match what the payer actually sends. */
+/** Same quote as beamio.ca/usdc-topup payment page — must match what the payer actually sends. */
 export async function fetchDiscoverClientTopupQuotedUsdc6(params: {
 	cardAddress: string
 	cardOwner: string

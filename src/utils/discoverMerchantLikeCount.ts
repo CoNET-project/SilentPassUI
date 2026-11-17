@@ -73,7 +73,7 @@ export function fetchDiscoverMerchantRefClickCount(cardAddress: string): Promise
 	return fetchDiscoverMerchantStatCount(cardAddress, DISCOVER_MERCHANT_CARD_REF_CLICK_TOKEN_ID)
 }
 
-const BEAMIO_CARD_PROGRAM_SOCIAL_API = 'https://beamio.app/api/cardProgramSocial'
+const BEAMIO_CARD_PROGRAM_SOCIAL_API = 'https://beamio.ca/api/cardProgramSocial'
 
 /** Trusted API success → dbShareClickTotal (recorded going forward list); failure → null. */
 export async function fetchDiscoverMerchantDbShareClickTotal(cardAddress: string): Promise<number | null> {

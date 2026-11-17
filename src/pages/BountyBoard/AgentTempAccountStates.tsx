@@ -38,7 +38,7 @@ import { unlockDetachedRecoverPrivateKey } from '@/services/beamio'
 
 const M_PURPLE = '#8b3e91'
 const M_SOFT = '#f6edf9'
-const MERCHANT_OS_AGENT_URL = 'https://biz.beamio.app/biz/'
+const MERCHANT_OS_AGENT_URL = 'https://biz.beamio.ca/biz/'
 
 type SubView = 'states' | 'preview' | 'handoff'
 

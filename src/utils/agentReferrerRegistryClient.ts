@@ -1,7 +1,7 @@
 /**
  * BeamioAgentReferrerRegistry — Consumer PWA client (RPC read + gasless EIP-712 write).
  * Invite path: new user offline-signs RegisterReferrer under introducer EOA.
- * Writes: POST https://beamio.app/api/agentReferrerRegister
+ * Writes: POST https://beamio.ca/api/agentReferrerRegister
  * Reads: CoNET RPC first; GET /api/agentReferrerRegistry as nonce helper.
  */
 import { ethers } from 'ethers'
@@ -10,7 +10,7 @@ import { conetDepinProvider } from '@/utils/constants'
 import { resolveSigningPrivateKeyArmor } from '@/utils/resolveSigningPrivateKeyArmor'
 import { CoNET_Data } from '@/utils/globals'
 
-const BEAMIO_API = 'https://beamio.app/api'
+const BEAMIO_API = 'https://beamio.ca/api'
 
 export const AGENT_REFERRER_EIP712_DOMAIN = {
 	name: 'BeamioAgentReferrerRegistry',

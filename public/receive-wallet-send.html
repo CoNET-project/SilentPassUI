@@ -783,7 +783,7 @@
 					if (btn) btn.disabled = true
 				} catch (_) {}
 				setStatus('Submitting payment…', 'ok')
-				fetch('https://beamio.app/api/receiveUsdc3009', {
+				fetch('https://beamio.ca/api/receiveUsdc3009', {
 					method: 'POST',
 					headers: { 'content-type': 'application/json' },
 					body: JSON.stringify(Object.assign({}, auth, { token: auth.token || USDC })),
@@ -833,7 +833,7 @@
 			function navigateBackToBeamio(query, statusOk, authB64) {
 				signState.done = true
 				var nativeUrl = 'beamio://open?' + query
-				var webUrl = 'https://beamio.app/app/?' + query
+				var webUrl = 'https://beamio.ca/app/?' + query
 				var walletBrowser = isLikelyWalletInAppBrowser()
 				/*
 				 * Wallet in-app browsers (MetaMask iOS) block beamio://, Universal Links and _blank,

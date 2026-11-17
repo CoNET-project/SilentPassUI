@@ -272,7 +272,7 @@ export async function searchBeamioTagRemote(query: string): Promise<{
 	const networkOnly = async () => {
 		try {
 			const params = new URLSearchParams({ keyward: q }).toString()
-			const res = await fetch(`https://beamio.app/api/search-users?${params}`, { method: 'GET' })
+			const res = await fetch(`https://beamio.ca/api/search-users?${params}`, { method: 'GET' })
 			if (!res.ok) return null
 			const json = (await res.json()) as { results?: Array<Record<string, unknown>> }
 			return { results: json?.results ?? [], ingested: {} }

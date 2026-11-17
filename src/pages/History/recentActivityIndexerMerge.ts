@@ -1186,7 +1186,7 @@ export type TxDisplayType =
 	| 'fuel_yield'
 	| 'unknown'
 
-const BEAMIO_APP_METADATA_ORIGIN = 'https://beamio.app'
+const BEAMIO_APP_METADATA_ORIGIN = 'https://beamio.ca'
 
 function txCategoryToType(txCategory: string): TxDisplayType {
 	const cat = txCategory.toLowerCase()

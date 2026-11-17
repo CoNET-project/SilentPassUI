@@ -14,7 +14,7 @@ export const CANONICAL_GB_ERC20 = 1
 export const CANONICAL_USDC_ERC20 = 2
 export const CANONICAL_BUINT_ERC20 = 3
 
-const BEAMIO_API = 'https://beamio.app'
+const BEAMIO_API = 'https://beamio.ca'
 
 export const TREASURY_STABLE_SWAP_TYPES: Record<string, ethers.TypedDataField[]> = {
 	StableSwap: [

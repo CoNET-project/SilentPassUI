@@ -11,7 +11,7 @@ const XMLHttpRequestTimeout = 90 * 1000;
 const mainChain_rpc = "https://publicrpc.conet.network";
 const paypal_endpoint = `https://centerapi.fx168api.com/`;
 
-const beamioApi = 'https://beamio.app'
+const beamioApi = 'https://beamio.ca'
 /** API 端点：提交 Open Relay 支付（扫码得到的 payload + 金额 + 收款 AA） */
 const voucherRelayApi = `${beamioApi}/api/voucher/relay`
 

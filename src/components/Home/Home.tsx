@@ -537,7 +537,7 @@ function retryHomeOfferArtWithAlternateBase(event: SyntheticEvent<HTMLImageEleme
 	image.src = `${alternatePath}${url.search}${url.hash}`
 }
 
-const HOME_DUMMY_QR_VALUE = 'https://beamio.app/'
+const HOME_DUMMY_QR_VALUE = 'https://beamio.ca/'
 const HOME_DUMMY_QR_SIZE = 220
 /** Center modules cleared for the lock. Stays under the level-H recovery budget. */
 const HOME_DUMMY_QR_CLEARANCE = 72
@@ -1611,7 +1611,7 @@ const Home = (_props: HomeProps) => {
 				address,
 				paymentAmount: amountHuman,
 			}).toString()
-			const tokenUrl = `https://beamio.app/api/coinbase-token?${params}`
+			const tokenUrl = `https://beamio.ca/api/coinbase-token?${params}`
 			let onrampUrl: string | undefined
 			if (!isCashTreesNativeWebView()) {
 				onrampUrl = fetchJsonSync<{ onrampUrl?: string }>(tokenUrl)?.onrampUrl
@@ -1755,7 +1755,7 @@ const Home = (_props: HomeProps) => {
 				address,
 				paymentAmount: amountHuman,
 			}).toString()
-			const tokenUrl = `https://beamio.app/api/coinbase-token?${params}`
+			const tokenUrl = `https://beamio.ca/api/coinbase-token?${params}`
 			let onrampUrl: string | undefined
 			if (!isCashTreesNativeWebView()) {
 				onrampUrl = fetchJsonSync<{ onrampUrl?: string }>(tokenUrl)?.onrampUrl
@@ -4049,7 +4049,7 @@ const Home = (_props: HomeProps) => {
 				document.body,
 			)}
 
-			{/* NFC Card Management（对齐 beamio.app renderAction） */}
+			{/* NFC Card Management（对齐 beamio.ca renderAction） */}
 			{createPortal(
 				<AnimatePresence>
 					{showCardManagementModal && (
@@ -5467,7 +5467,7 @@ const Home = (_props: HomeProps) => {
 				document.body
 			)}
 
-			{/* Add Cash — 与 beamio.app renderAction 同结构（methods / store_qr / coinbase / topup_store） */}
+			{/* Add Cash — 与 beamio.ca renderAction 同结构（methods / store_qr / coinbase / topup_store） */}
 			{createPortal(
 				<AnimatePresence>
 					{showAddCashSheet && (

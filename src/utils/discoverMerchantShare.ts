@@ -117,12 +117,12 @@ export function buildDiscoverMerchantShareUrl(
 	const addr = cardAddress?.trim() ?? ''
 	if (!addr || !ethers.isAddress(addr)) return ''
 	const cardNorm = ethers.getAddress(addr)
-	let discoverUrl = `https://beamio.app/app/?beamiocard=${encodeURIComponent(cardNorm)}&discover=open`
+	let discoverUrl = `https://beamio.ca/app/?beamiocard=${encodeURIComponent(cardNorm)}&discover=open`
 	const refRaw = referrerEoa?.trim() ?? ''
 	if (refRaw && ethers.isAddress(refRaw)) {
 		discoverUrl += `&ref=${encodeURIComponent(ethers.getAddress(refRaw))}`
 	}
-	const base = `https://beamio.app/app-download?target=${encodeURIComponent(discoverUrl)}`
+	const base = `https://beamio.ca/app-download?target=${encodeURIComponent(discoverUrl)}`
 	return appendAppDownloadShareCacheBust(base)
 }
 

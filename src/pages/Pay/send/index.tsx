@@ -578,7 +578,7 @@ export default function PayScreen ({close, beamioer, preferredToAddress, mode = 
 				const doRedirectToSmartRouting = () => {
 					// 传入原始币种金额，USDC 换算由 Smart Routing Analysis 内部处理；避免 JPY 1 等小额换算成 USDC 后截断为 0
 					const nativeAmount = currentCurrency === 'USDC' ? sendAmount : formatAmount(usdcToCurrencyAmount(Number(sendAmount), currentCurrency), currentCurrency)
-					const paymentUrl = `https://beamio.app/Vouchers?Amount=${encodeURIComponent(nativeAmount)}&currency=${encodeURIComponent(currentCurrency)}&acceptTokens=USDC&to=${encodeURIComponent(toAddress)}`
+					const paymentUrl = `https://beamio.ca/Vouchers?Amount=${encodeURIComponent(nativeAmount)}&currency=${encodeURIComponent(currentCurrency)}&acceptTokens=USDC&to=${encodeURIComponent(toAddress)}`
 					setScanData(paymentUrl)
 					setScanIntent('payBill')
 					setVoucherPayAmount(nativeAmount)

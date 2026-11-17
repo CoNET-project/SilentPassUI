@@ -19,7 +19,7 @@ import {
  *
  * 链上 view 走 RPC（beamio-rpc-first-no-centralized-api.mdc）。CL skim（NodeRewardSettled /
  * 私有 `clRewardPaid`）无 public getter：用 Cluster
- * `GET https://beamio.app/api/v2/conet/validators/:pubkey`（与 Blockscout
+ * `GET https://beamio.ca/api/v2/conet/validators/:pubkey`（与 Blockscout
  * `/validator/:pubkey` 页同一 JSON）。禁止创世 `eth_getLogs`。
  */
 
@@ -1455,7 +1455,7 @@ function applyRemotePaidGbFallback(
 async function mergeBeamioDaemonIncomeEnrichment(stats: UnifiedIncomeStats, beneficiary: string): Promise<void> {
 	try {
 		const res = await fetch(
-			`https://beamio.app/api/v2/conet/beneficiary-income/${ethers.getAddress(beneficiary)}`,
+			`https://beamio.ca/api/v2/conet/beneficiary-income/${ethers.getAddress(beneficiary)}`,
 			{ signal: AbortSignal.timeout(12_000) },
 		)
 		if (!res.ok) return
@@ -1648,7 +1648,7 @@ export async function fetchUnifiedIncomeStats(
 // ----------------------------------------------------------------------------------------------------
 
 const CONET_MAINNET_CHAIN_ID = 224422
-const BEAMIO_API_BASE = 'https://beamio.app'
+const BEAMIO_API_BASE = 'https://beamio.ca'
 
 const VALIDATOR_DEPOSIT_REDEEM_TRANSFER_ABI = [
 	'function beneficiaryNonces(address account) view returns (uint256)',

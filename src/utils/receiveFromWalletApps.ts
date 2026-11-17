@@ -229,7 +229,7 @@ export function parseReceiveUsdcAmount6(
  * New filename breaks Coinbase in-app WebView cache of the old SMART/EOA error page.
  * Always use the production `/app/` host — embedded OTA origins are not public HTTPS.
  */
-const RECEIVE_WALLET_SEND_PAGE = 'https://beamio.app/app/receive-wallet-send-sw.html'
+const RECEIVE_WALLET_SEND_PAGE = 'https://beamio.ca/app/receive-wallet-send-sw.html'
 const RECEIVE_WALLET_HANDOFF_CACHE_TAG = 'mm-smart-precheck-v11'
 
 /** Cache-bust Coinbase in-app WebView (stale handoff showed SMART/EOA error). */
@@ -613,7 +613,7 @@ export async function openReceiveWalletApp(
 		}
 	}
 
-	// Native shell: open the third-party wallet APP (custom scheme / UL), never bare beamio.app.
+	// Native shell: open the third-party wallet APP (custom scheme / UL), never bare beamio.ca.
 	const scheme = receiveWalletNativeSchemeUrl(row, address, amount6)
 	if (scheme && openExternalUrl(scheme)) {
 		return { ok: true }

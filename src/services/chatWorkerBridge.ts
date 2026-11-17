@@ -72,7 +72,7 @@ const IPFS_BASE_URL = 'https://ipfs.conet.network/api'
  * `/setChatIndexPointer` — matching the `x402sdk` router mounted at `/api` (see
  * beamioServer). Keep in sync with `services/AAaccount.beamioApiBase`.
  */
-const BEAMIO_API_BASE_URL = 'https://beamio.app/api'
+const BEAMIO_API_BASE_URL = 'https://beamio.ca/api'
 
 /** TS Worker client or Android native adapter — both implement BeamioChatClient. */
 type ChatWorkerClient = BeamioChatClient

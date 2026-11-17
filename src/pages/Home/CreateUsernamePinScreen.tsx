@@ -21,8 +21,8 @@ import { useTu } from '@/locale/beamioLocale'
 import { getCurrentBeamioUiLocale } from '@/locale/i18n'
 import { openInAppBrowser } from '@/utils/cashTreesNativeNfc'
 
-const BEAMIO_TERMS_URL = "https://beamio.app/terms"
-const BEAMIO_PRIVACY_URL = "https://beamio.app/privacy"
+const BEAMIO_TERMS_URL = "https://beamio.ca/terms"
+const BEAMIO_PRIVACY_URL = "https://beamio.ca/privacy"
 const APP_LOGO_SRC = `${process.env.PUBLIC_URL ?? ''}/logo192.png`
 
 function CreateIdentityDecorativeBg() {

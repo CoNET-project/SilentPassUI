@@ -109,7 +109,7 @@ export function collectDeepLinkSearchParams(raw: string): URLSearchParams {
 		if (!target) return
 		try {
 			const targetUrl = new URL(target)
-			if (targetUrl.origin !== 'https://beamio.app') return
+			if (targetUrl.origin !== 'https://beamio.ca') return
 			if (targetUrl.pathname !== '/app/' && targetUrl.pathname !== '/app' && !targetUrl.pathname.startsWith('/app/')) return
 			appendParams(targetUrl.searchParams)
 			const hash = targetUrl.hash || ''
@@ -123,7 +123,7 @@ export function collectDeepLinkSearchParams(raw: string): URLSearchParams {
 	}
 
 	try {
-		const u = input.startsWith('http') ? new URL(input) : new URL(input, 'https://beamio.app')
+		const u = input.startsWith('http') ? new URL(input) : new URL(input, 'https://beamio.ca')
 		appendParams(u.searchParams)
 		appendNestedEncodedParams(u.searchParams)
 		appendWrappedTargetParams(u.searchParams)

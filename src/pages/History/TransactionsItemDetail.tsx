@@ -40,7 +40,7 @@ type Props = {
 	onSendAgain?: (tx: TransferHistork) => void
 	onMessage?: (address: string) => void
 }
-const showPaylinkSite = 'https://beamio.app'
+const showPaylinkSite = 'https://beamio.ca'
 const shortHash = (h: string) => (h ? `${h.slice(0, 6)}…${h.slice(-4)}` : "")
 const shortAddress = (a: string) => (a ? `${a.slice(0, 6)}…${a.slice(-4)}` : "")
 

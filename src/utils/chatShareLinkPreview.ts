@@ -27,7 +27,7 @@ export type ChatShareLinkMeta = {
 
 export type ChatShareLinkKind = 'open_claim' | 'redeem' | 'discover_merchant' | 'app_share'
 
-const BEAMIO_API = 'https://beamio.app/api'
+const BEAMIO_API = 'https://beamio.ca/api'
 
 const URL_IN_TEXT_RE =
 	/https?:\/\/(?:www\.)?beamio\.app\/(?:app-download(?:\?[^\s]*)?|app\/?(?:\?[^\s]*)?)/gi
@@ -44,7 +44,7 @@ export function normalizeBeamioShareUrlCandidate(raw: string): string {
 	s = s.replace(/[),.;!?]+$/g, '')
 	try {
 		const u = new URL(s)
-		if (u.hostname.replace(/^www\./, '') !== 'beamio.app') return ''
+		if (u.hostname.replace(/^www\./, '') !== 'beamio.ca') return ''
 		return u.toString()
 	} catch {
 		return ''
@@ -77,7 +77,7 @@ export function classifyBeamioShareUrl(url: string): ChatShareLinkKind | null {
 	if (!norm) return null
 	try {
 		const u = new URL(norm)
-		const hostOk = u.hostname.replace(/^www\./, '') === 'beamio.app'
+		const hostOk = u.hostname.replace(/^www\./, '') === 'beamio.ca'
 		if (!hostOk) return null
 		const path = u.pathname.replace(/\/+$/, '') || '/'
 		const isAppDownload = path === '/app-download'
@@ -154,7 +154,7 @@ export function resolveBeamioShareInAppNavigation(shareUrl: string): { pathname:
 			const target = (u.searchParams.get('target') || '').trim()
 			if (!target) return null
 			const t = new URL(target)
-			if (t.origin !== 'https://beamio.app') return null
+			if (t.origin !== 'https://beamio.ca') return null
 			if (t.pathname !== '/app/' && t.pathname !== '/app' && !t.pathname.startsWith('/app/')) return null
 			return { pathname: '/', search: t.search || '' }
 		}

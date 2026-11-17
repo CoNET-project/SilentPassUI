@@ -51,7 +51,7 @@ import { tu } from '@/locale/beamioLocale'
 
 type SectionTx = TransferHistork
 
-const showPaylinkSite = "https://beamio.app"
+const showPaylinkSite = "https://beamio.ca"
 
 const getBadgeClass = (type: HistoryFilter) => {
   switch (type) {

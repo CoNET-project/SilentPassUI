@@ -11,7 +11,7 @@ import { tu } from '@/locale/beamioLocale'
 const USDC_ADDRESS_BASE = USDCContract_BASE
 
 /** POST /api/AAtoEOA 等 Beamio API 根 URL（与 bizSite AAaccount.beamioApiBase 一致） */
-export const beamioApiBase = 'https://beamio.app'
+export const beamioApiBase = 'https://beamio.ca'
 
 export type ContainerItemLike = {
 	kind: number

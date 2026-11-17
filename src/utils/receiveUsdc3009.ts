@@ -1,7 +1,7 @@
 import { ethers } from 'ethers'
 import { USDC_BASE } from '../config/chainAddresses'
 
-const BEAMIO_API = 'https://beamio.app'
+const BEAMIO_API = 'https://beamio.ca'
 
 export const RECEIVE_USDC_AUTH_QUERY = 'receiveUsdcAuth'
 export const RECEIVE_USDC_AUTH_EVENT = 'beamioReceiveUsdcAuth'

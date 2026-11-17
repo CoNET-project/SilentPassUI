@@ -49,7 +49,7 @@ export default function RedeemListScreen({ onClose, onRemoveNotFound, refreshVer
 
     const redeemQrUrl = useMemo(() => {
         if (!qrRedeem) return ''
-        return `https://beamio.app/app/?beamiocard=${encodeURIComponent(qrRedeem.cardAddress)}&redeemcode=${encodeURIComponent(qrRedeem.redeemCode)}`
+        return `https://beamio.ca/app/?beamiocard=${encodeURIComponent(qrRedeem.cardAddress)}&redeemcode=${encodeURIComponent(qrRedeem.redeemCode)}`
     }, [qrRedeem])
 
     const beamioAvatarSrc = beamio?.image?.trim()

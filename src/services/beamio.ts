@@ -137,7 +137,7 @@ const duplicate_readOnly = new ethers.Contract(duplicate.address, duplicate.abi,
 const isLocal = false
 const remote = 'https://api.settleonbase.xyz'
 const local = 'http://localhost:4088'
-const beamioApi = 'https://beamio.app'
+const beamioApi = 'https://beamio.ca'
 const ipfsEndpoint = `https://ipfs.conet.network/api/`
 
 const getFaucetEndpoint = isLocal ? `${local}/api/BeamioFaucet` : `${remote}/api/BeamioFaucet`
@@ -892,7 +892,7 @@ export const composeNfcLinkAppRedeemCodeForChain = (publicRedeemCode: string): s
 export const nfcLinkAppRedeemPackedHash = (publicRedeemCode: string): string =>
 	ethers.keccak256(ethers.toUtf8Bytes(publicRedeemCode))
 
-/** POS Link App 深链，如 https://beamio.app/app/?nftRedeemcode=...&tagid=...&uid=...&counter=... */
+/** POS Link App 深链，如 https://beamio.ca/app/?nftRedeemcode=...&tagid=...&uid=...&counter=... */
 export type NfcLinkAppDeepLinkParsed = {
 	nftRedeemcode: string
 	tagid: string
@@ -902,7 +902,7 @@ export type NfcLinkAppDeepLinkParsed = {
 
 export const parseNfcLinkAppDeepLink = (raw: string): NfcLinkAppDeepLinkParsed | null => {
 	try {
-		const u = raw.startsWith('http') ? new URL(raw) : new URL(raw, 'https://beamio.app')
+		const u = raw.startsWith('http') ? new URL(raw) : new URL(raw, 'https://beamio.ca')
 		const code = (u.searchParams.get('nftRedeemcode') ?? u.searchParams.get('NFTREDEEMCODE') ?? '').trim()
 		const tagid = (u.searchParams.get('tagid') ?? u.searchParams.get('tagId') ?? '').trim().replace(/^0x/i, '')
 		const uid = (u.searchParams.get('uid') ?? '').trim().replace(/^0x/i, '')
@@ -930,7 +930,7 @@ export const generateRequestHash = (): string => {
 	return ethers.keccak256(ethers.toUtf8Bytes(seed))
 }
 
-//		https://beamio.app/app/?nftRedeemcode=null&tagid=${tagid}&uid=${uid}&counter=${counter}
+//		https://beamio.ca/app/?nftRedeemcode=null&tagid=${tagid}&uid=${uid}&counter=${counter}
 
 /**
  * 将金额格式化为人类可读的文字形式

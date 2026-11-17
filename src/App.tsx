@@ -387,7 +387,7 @@ function AppShell() {
     window.addEventListener(DISCOVER_SHARE_REFERRER_STASHED_EVENT, retryBind)
     return () => window.removeEventListener(DISCOVER_SHARE_REFERRER_STASHED_EVENT, retryBind)
   }, [isInitialLoading, profiles?.[0]?.keyID, profiles?.[0]?.aaAccount])
-  // 直接打开 redeem URL（如 https://beamio.app/app/?beamiocard=...&redeemcode=...）时先打开确认页
+  // 直接打开 redeem URL（如 https://beamio.ca/app/?beamiocard=...&redeemcode=...）时先打开确认页
   useEffect(() => {
     if (isInitialLoading || initialRedeemUrlProcessedRef.current) return
     if (typeof window === 'undefined') return
@@ -2546,7 +2546,7 @@ function AppShell() {
   const isPaymentUrl = (raw: string): boolean => {
     try {
       if (!raw || typeof raw !== 'string') return false
-      const u = raw.startsWith('http') ? new URL(raw) : new URL(raw, 'http://beamio.app')
+      const u = raw.startsWith('http') ? new URL(raw) : new URL(raw, 'http://beamio.ca')
       const amount = u.searchParams.get('Amount') ?? u.searchParams.get('amount')
       const currency = u.searchParams.get('currency') ?? u.searchParams.get('Currency') ?? ''
       const acceptTokens = u.searchParams.get('acceptTokens') ?? u.searchParams.get('accepttokens') ?? ''

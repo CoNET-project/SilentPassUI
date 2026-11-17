@@ -7,7 +7,7 @@ import bIcon from '@/components/Footer/assets/B-icon-app.svg'
 import {AuthorizationSign, getBalanceProcess, generateCODE} from '@/services/beamio'
 
 const aptEndpoint = 'https://api.settleonbase.xyz'
-const showPaylinkSite = 'https://beamio.app'
+const showPaylinkSite = 'https://beamio.ca'
 const displayName = (item: beamio|null) => {
 	if (!item) return ''
 	const lastname = item?.lastName?.split('\r\n')||''

@@ -104,7 +104,7 @@ export const CONET_ADDRESS_PGP = '0x684b0ac760cEE9c9b85de36d69746420648Cf9e2'
 /**
  * CoNET 224422 — ChatIndexRegistry (UUPS proxy). On-chain head pointer to the encrypted
  * chat-history index (IPFS content hash). Read via RPC `getPointer(eoa)`; write via
- * EOA off-chain EIP-712 signature relayed gaslessly through beamio.app/api. Enables
+ * EOA off-chain EIP-712 signature relayed gaslessly through beamio.ca/api. Enables
  * fresh-device recovery of chat history after account delete/restore.
  */
 export const CONET_CHAT_INDEX_REGISTRY = '0x1511Caa71081C84d8a591490D1b83879088EED72'

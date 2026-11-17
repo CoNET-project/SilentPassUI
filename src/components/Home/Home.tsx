@@ -4049,7 +4049,7 @@ const Home = (_props: HomeProps) => {
 				document.body,
 			)}
 
-			{/* NFC Card Management（对齐 beamio.ca renderAction） */}
+			{/* NFC Card Management（对齐 beamio.app renderAction） */}
 			{createPortal(
 				<AnimatePresence>
 					{showCardManagementModal && (
@@ -5467,7 +5467,7 @@ const Home = (_props: HomeProps) => {
 				document.body
 			)}
 
-			{/* Add Cash — 与 beamio.ca renderAction 同结构（methods / store_qr / coinbase / topup_store） */}
+			{/* Add Cash — 与 beamio.app renderAction 同结构（methods / store_qr / coinbase / topup_store） */}
 			{createPortal(
 				<AnimatePresence>
 					{showAddCashSheet && (

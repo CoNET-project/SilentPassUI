@@ -87,7 +87,7 @@ export default function BeamioGetHelpSettingsScreen({colse}:prof) {
                 <div className="flex flex-col items-start">
                   <span>Email support</span>
                   <span className="text-[11px] text-slate-400">
-                    support@beamio.ca — we read every message during early access.
+                    support@beamio.app — we read every message during early access.
                   </span>
                 </div>
               </div>
